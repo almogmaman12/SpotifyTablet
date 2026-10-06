@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <style name="Theme.SpotifyTablet" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <!-- Dark background and text colors -->
+        <item name="colorPrimary">#121212</item>
+        <item name="colorPrimaryDark">#000000</item>
+        <item name="colorAccent">#1DB954</item>
+        <item name="colorSecondary">#1DB954</item>
+        <item name="colorOnSurface">#FFFFFF</item>
+        <item name="android:windowBackground">#121212</item>
+        <item name="android:textColorPrimary">#FFFFFF</item>
+    </style>
+
+
+    <style name="Theme.JellyfinTablet" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <!-- Dark background and text colors -->
+        <item name="colorPrimary">#121212</item>
+        <item name="colorPrimaryDark">#000000</item>
+        <item name="colorAccent">@color/jellyfin_purple</item>
+        <item name="android:windowBackground">#121212</item>
+        <item name="android:textColorPrimary">#FFFFFF</item>
+    </style>
+
+</resources>

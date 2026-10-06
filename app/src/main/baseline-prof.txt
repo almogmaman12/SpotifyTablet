@@ -1,0 +1,10 @@
+# Baseline Profile for SpotifyTablet2
+# Classes pre-compiled by ART at install time to eliminate JIT Davey stalls.
+# The 4974ms startup Davey frame was caused by JIT-compiling LyricsContent.
+HSPLcom/almog/spotifytablet/lyrics/ui/LyricsViewKt;->LyricsContent(Lcom/almog/spotifytablet/lyrics/viewmodel/LyricsUiState;Landroidx/compose/ui/Modifier;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+HSPLcom/almog/spotifytablet/lyrics/ui/LyricsViewKt;->LyricsView(Lcom/almog/spotifytablet/lyrics/viewmodel/LyricsViewModel;Landroidx/compose/ui/Modifier;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+HSPLcom/almog/spotifytablet/lyrics/ui/LyricsViewKt;->SingleLyricLineRow(Lcom/almog/spotifytablet/lyrics/model/LyricLine;JZZZZLcom/almog/spotifytablet/lyrics/model/TrackRhythmContext;FLandroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+HSPLcom/almog/spotifytablet/lyrics/viewmodel/LyricsViewModel;->setPlaybackAnchor(JZF)V
+HSPLcom/almog/spotifytablet/MainActivity;->onCreate(Landroid/os/Bundle;)V
+HSPLcom/almog/spotifytablet/MainActivity;->updateProgress()V
+HSPLcom/almog/spotifytablet/MainActivity;->updateProgressDisplay(I)V

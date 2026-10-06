@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="220dp"
+    android:layout_height="400dp"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="@drawable/glass_card_small"
+    android:foreground="?attr/selectableItemBackgroundBorderless"
+    android:layout_margin="12dp"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/dayDate"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@android:color/white"
+        android:textSize="26sp"
+        android:textAlignment="center"
+        android:textStyle="bold" />
+
+    <ImageView
+        android:id="@+id/dayIcon"
+        android:layout_width="140dp"
+        android:layout_height="140dp"
+        android:scaleType="fitCenter"
+        android:layout_marginTop="24dp" />
+
+    <TextView
+        android:id="@+id/dayCondition"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#B0FFFFFF"
+        android:textAllCaps="true"
+        android:letterSpacing="0.1"
+        android:textSize="18sp"
+        android:layout_marginTop="16dp" />
+
+    <TextView
+        android:id="@+id/dayTemp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#FFFFFFFF"
+        android:textSize="24sp"
+        android:layout_marginTop="16dp" />
+</LinearLayout>

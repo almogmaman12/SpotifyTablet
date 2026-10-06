@@ -1,0 +1,31 @@
+*.iml
+.gradle
+.kotlin/
+/local.properties
+local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+
+# Build outputs
+app/build/
+build/
+
+# Scratch & temp files
+scratch/
+curl_out.json
+spicy.html
+*.html
+
+# Keystore files (signing keys — never commit)
+*.jks
+*.keystore
+key.properties

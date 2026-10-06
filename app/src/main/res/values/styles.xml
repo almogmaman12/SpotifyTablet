@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Rounded image corners -->
+    <style name="RoundedImageStyle" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">12dp</item>
+    </style>
+
+    <!-- Day Detail Title -->
+    <style name="DayDetailTitle" parent="@android:style/TextAppearance.Material">
+        <item name="android:fontFamily">sans-serif-light</item>
+        <item name="android:textSize">24sp</item>
+        <item name="android:textColor">@android:color/white</item>
+        <item name="android:letterSpacing">0.05</item>
+    </style>
+
+    <!-- Day Detail Subtitle -->
+    <style name="DayDetailSubtitle" parent="@android:style/TextAppearance.Material">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@android:color/white</item>
+        <item name="android:letterSpacing">0.1</item>
+    </style>
+
+    <!-- Day Detail Temperature -->
+    <style name="DayDetailTemp" parent="@android:style/TextAppearance.Material">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">32sp</item>
+        <item name="android:textColor">@android:color/white</item>
+        <item name="android:letterSpacing">0.02</item>
+    </style>
+</resources>

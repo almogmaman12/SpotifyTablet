@@ -1,0 +1,385 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0A0A0A"
+    tools:context=".ProjectModeActivity">
+
+    <!-- Top Left: Media Control Hub -->
+    <LinearLayout
+        android:id="@+id/pmMediaHub"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="24dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/pmAlbumArt"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:scaleType="centerCrop"
+            app:shapeAppearanceOverlay="@style/RoundedImageStyle"
+            android:background="#333" />
+
+        <LinearLayout
+            android:layout_width="120dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/pmSongTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="marquee"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:singleLine="true"
+                android:text="Song Title"
+                android:textColor="@color/white"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textDirection="firstStrongLtr" />
+
+            <TextView
+                android:id="@+id/pmArtistName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="marquee"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:singleLine="true"
+                android:text="Artist"
+                android:textColor="#AAAAAA"
+                android:textSize="14sp"
+                android:textDirection="firstStrongLtr" />
+        </LinearLayout>
+
+        <!-- Media Controls -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/pmBtnVolDown"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="-"
+            android:textColor="#555555"
+            android:textSize="20sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/pmBtnPrev"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="◄◄"
+            android:textColor="#555555"
+            android:textSize="16sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/pmBtnPlayPause"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:text="► / II"
+            android:textColor="#555555"
+            android:textSize="18sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/pmBtnNext"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="►►"
+            android:textColor="#555555"
+            android:textSize="16sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/pmBtnVolUp"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="+"
+            android:textColor="#555555"
+            android:textSize="20sp" />
+    </LinearLayout>
+
+    <!-- Top Right: Time & Date Hub -->
+    <LinearLayout
+        android:id="@+id/pmTimeHub"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="24dp"
+        android:gravity="end"
+        android:orientation="vertical"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/pmClockTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text="12:34"
+            android:textColor="@color/white"
+            android:textSize="48sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/pmClockDate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-medium"
+            android:text="Thursday, April 30"
+            android:textColor="#AAAAAA"
+            android:textSize="18sp" />
+    </LinearLayout>
+
+    <!-- Center Top: Google Calendar "Red Event" Countdown -->
+    <LinearLayout
+        android:id="@+id/pmEventsContainer"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/pmMediaHub">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="UPCOMING FOCUS EVENTS"
+            android:textColor="#555555"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/pmEventsRecyclerView"
+            android:layout_width="500dp"
+            android:layout_height="120dp"
+            android:clipToPadding="false"
+            android:overScrollMode="never" />
+    </LinearLayout>
+
+    <!-- Center Bottom: Focus Timer -->
+    <LinearLayout
+        android:id="@+id/pmTimerHub"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="48dp"
+        android:gravity="center"
+        android:orientation="vertical"
+        app:layout_constraintBottom_toTopOf="@id/pmProgressBar"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/pmEventsContainer">
+
+        <TextView
+            android:id="@+id/pmTimerDisplay"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text="25:00"
+            android:textColor="@color/white"
+            android:textSize="100sp"
+            android:textStyle="bold" />
+
+        <!-- Presets and Adjustments -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pmBtnMinus5"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="-5m"
+                android:textColor="@color/white"
+                app:strokeColor="#555" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pmBtnPreset25"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="25m"
+                android:textColor="#AAAAAA" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pmBtnPreset45"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="45m"
+                android:textColor="#AAAAAA" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pmBtnPreset60"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="60m"
+                android:textColor="#AAAAAA" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pmBtnPlus5"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="+5m"
+                android:textColor="@color/white"
+                app:strokeColor="#555" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="140dp"
+            android:layout_height="140dp"
+            android:layout_marginTop="24dp">
+
+            <com.google.android.material.progressindicator.CircularProgressIndicator
+                android:id="@+id/pmTimerRing"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:rotation="-90"
+                app:indicatorSize="130dp"
+                app:trackThickness="3dp"
+                app:indicatorColor="@color/white"
+                app:trackColor="#222222"
+                android:max="1000"
+                android:progress="1000" />
+
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pmBtnStartStopTimer"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                android:layout_width="100dp"
+                android:layout_height="100dp"
+                android:layout_gravity="center"
+                android:text="START"
+                android:textColor="#000000"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                app:backgroundTint="#FFFFFF"
+                app:cornerRadius="50dp" />
+
+        </FrameLayout>
+
+
+    </LinearLayout>
+
+    <!-- Bottom Bar: Progress Status -->
+    <ProgressBar
+        android:id="@+id/pmProgressBar"
+        style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:indeterminate="false"
+        android:max="1000"
+        android:progress="0"
+        android:progressTint="#555555"
+        android:progressBackgroundTint="#222222"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- Flash Overlay for Timer Finish -->
+    <View
+        android:id="@+id/pmFlashOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#FFFFFF"
+        android:visibility="gone"
+        android:alpha="0"
+        android:elevation="10dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Light Button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/pmBtnLight"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginBottom="16dp"
+        android:text="💡"
+        android:textSize="24sp"
+        app:layout_constraintBottom_toTopOf="@id/pmProgressBar"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- Media Source Button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/pmBtnMediaSource"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginBottom="16dp"
+        android:text="🟢"
+        android:textSize="24sp"
+        app:layout_constraintBottom_toTopOf="@id/pmProgressBar"
+        app:layout_constraintStart_toEndOf="@id/pmBtnLight" />
+
+    <!-- Exit Button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/pmBtnExit"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:text="✖"
+        android:textColor="#AAAAAA"
+        android:textSize="24sp"
+        app:layout_constraintBottom_toTopOf="@id/pmProgressBar"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Toggle Animation Button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/pmBtnToggleAnimation"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="16dp"
+        android:text="✨"
+        android:textSize="24sp"
+        android:textColor="#1DB954"
+        android:alpha="1.0"
+        app:layout_constraintBottom_toTopOf="@id/pmProgressBar"
+        app:layout_constraintEnd_toStartOf="@id/pmBtnToggleUpdates" />
+
+    <!-- Toggle Updates Button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/pmBtnToggleUpdates"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:text="📡"
+        android:textSize="24sp"
+        android:textColor="#1DB954"
+        android:alpha="0.3"
+        app:layout_constraintBottom_toTopOf="@id/pmProgressBar"
+        app:layout_constraintEnd_toStartOf="@id/pmBtnExit" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

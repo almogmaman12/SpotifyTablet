@@ -1,0 +1,1117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    tools:context=".MainActivity">
+
+    <ImageView
+        android:id="@+id/backgroundBlur"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:alpha="0.6"
+        android:scaleType="centerCrop"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/shabbatTimeText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="8dp"
+        android:fontFamily="sans-serif"
+        android:textColor="#FFFFFFFF"
+        android:textSize="20sp"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="כניסת שבת: 19:05" />
+
+    <!-- ========================================================================= -->
+    <!-- MODERN / NEW DASHBOARD LAYOUT (Split Screen with Full Lyrics Box on Right) -->
+    <!-- ========================================================================= -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/newMainContent"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="visible"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- ABSOLUTE BOTTOM-LEFT CORNER CONTROLS (Settings & Updates) -->
+        <LinearLayout
+            android:id="@+id/newBottomLeftControls"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginBottom="16dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/newBtnSettings"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                app:backgroundTint="@android:color/transparent"
+                app:cornerRadius="22dp"
+                app:icon="@drawable/ic_settings"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="28dp"
+                app:iconTint="@color/white"
+                app:rippleColor="#4DFFFFFF" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/newBtnToggleUpdates"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:alpha="0.3"
+                android:text="📡"
+                android:textColor="#1DB954"
+                android:textSize="20sp" />
+        </LinearLayout>
+
+        <!-- LEFT SIDEBAR: Pinned exactly to the top and bottom edges of the Album Art -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/newLeftSidebar"
+            android:layout_width="104dp"
+            android:layout_height="340dp"
+            android:layout_marginStart="16dp"
+            app:layout_constraintBottom_toBottomOf="@id/newCenterMediaColumn"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="@id/newCenterMediaColumn"
+            app:layout_constraintVertical_bias="0.250">
+
+            <!-- Top Sidebar Container: Vertical Clock (HH : MM) - Pinned to TOP -->
+            <LinearLayout
+                android:id="@+id/newVerticalClock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/glass_translucent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingVertical="15dp"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <TextView
+                    android:id="@+id/newClockHour"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:includeFontPadding="false"
+                    android:shadowColor="#CC000000"
+                    android:shadowDx="0"
+                    android:shadowDy="2"
+                    android:shadowRadius="6"
+                    android:text="12"
+                    android:textColor="@color/white"
+                    android:textSize="50sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:paddingVertical="4dp">
+
+                    <View
+                        android:layout_width="10dp"
+                        android:layout_height="10dp"
+                        android:background="@drawable/dot_circle" />
+
+                    <View
+                        android:layout_width="10dp"
+                        android:layout_height="10dp"
+                        android:layout_marginStart="10dp"
+                        android:background="@drawable/dot_circle" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/newClockMinute"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:includeFontPadding="false"
+                    android:shadowColor="#CC000000"
+                    android:shadowDx="0"
+                    android:shadowDy="2"
+                    android:shadowRadius="6"
+                    android:text="34"
+                    android:textColor="@color/white"
+                    android:textSize="50sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Bottom Sidebar Container: Light & Project Mode Buttons - Pinned to BOTTOM -->
+            <LinearLayout
+                android:id="@+id/newSidebarTopGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/glass_translucent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingVertical="8dp"
+                app:layout_constraintBottom_toBottomOf="parent">
+
+                <!-- Light Button -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/newBtnLight"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                    android:layout_width="80dp"
+                    android:layout_height="70dp"
+                    android:layout_marginTop="4dp"
+                    android:insetLeft="0dp"
+                    android:insetTop="0dp"
+                    android:insetRight="0dp"
+                    android:insetBottom="0dp"
+                    android:text="💡"
+                    android:textSize="40sp"
+                    app:backgroundTint="@android:color/transparent"
+                    app:cornerRadius="20dp"
+                    app:rippleColor="#4DFFFFFF" />
+
+                <!-- Project Mode Button -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/newBtnProjectMode"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                    android:layout_width="80dp"
+                    android:layout_height="70dp"
+                    android:layout_marginTop="4dp"
+                    android:insetLeft="0dp"
+                    android:insetTop="0dp"
+                    android:insetRight="0dp"
+                    android:insetBottom="0dp"
+                    android:text="🎯"
+                    android:textSize="40sp"
+                    app:backgroundTint="@android:color/transparent"
+                    app:cornerRadius="20dp"
+                    app:rippleColor="#4DFFFFFF" />
+            </LinearLayout>
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- Top Header Bar: Greeting & Weather (Dynamic width: at least album width 340dp, expands left towards screen edge as content grows) -->
+        <LinearLayout
+            android:id="@+id/newHeaderContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:minWidth="340dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/glass_translucent"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackgroundBorderless"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingHorizontal="14dp"
+            app:layout_constrainedWidth="true"
+            app:layout_constraintHorizontal_bias="1.0"
+            app:layout_constraintEnd_toEndOf="@id/newCenterMediaColumn"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <TextView
+                android:id="@+id/newGreetingText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-light"
+                android:maxLines="1"
+                android:text="Good morning"
+                android:textColor="@color/white"
+                android:textDirection="firstStrongLtr"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="18dp"
+                android:layout_marginHorizontal="8dp"
+                android:background="#4DFFFFFF" />
+
+            <TextView
+                android:id="@+id/newWeatherText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:text="--°C"
+                android:textColor="@color/white"
+                android:textSize="16sp" />
+
+            <ImageView
+                android:id="@+id/newWeatherIcon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_marginStart="4dp" />
+        </LinearLayout>
+
+        <!-- CENTER COLUMN: Media Player, Header, Album Art, Song Info & Controls -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/newCenterMediaColumn"
+            android:layout_width="360dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="8dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toEndOf="@id/newLeftSidebar"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <!-- Album Art Frame -->
+            <FrameLayout
+                android:id="@+id/newAlbumFrame"
+                android:layout_width="340dp"
+                android:layout_height="340dp"
+                android:layout_marginTop="58dp"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/newAlbumArt"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_gravity="center"
+                    android:contentDescription="Album Art"
+                    android:scaleType="centerCrop"
+                    app:shapeAppearanceOverlay="@style/RoundedImageStyle" />
+            </FrameLayout>
+
+            <!-- Linear Seek Bar & Time Duration Display Row -->
+            <LinearLayout
+                android:id="@+id/newTimeProgressRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="8dp"
+                app:layout_constraintTop_toBottomOf="@id/newAlbumFrame">
+
+                <TextView
+                    android:id="@+id/newTimeDisplayStart"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="0:00"
+                    android:textColor="#CCCCCC"
+                    android:textSize="14sp" />
+
+                <ProgressBar
+                    android:id="@+id/newLinearProgressBar"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="0dp"
+                    android:layout_height="6dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:layout_weight="1"
+                    android:indeterminate="false"
+                    android:max="1000"
+                    android:progress="0"
+                    android:progressBackgroundTint="#333333"
+                    android:progressTint="#1DB954" />
+
+                <TextView
+                    android:id="@+id/newTimeDisplayEnd"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="4:41"
+                    android:textColor="#CCCCCC"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <!-- Playback & Volume Control Bar (Previous, Play/Pause, Next, Vol-, Vol+) -->
+            <LinearLayout
+                android:id="@+id/newPlaybackControls"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:orientation="horizontal"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/newTimeProgressRow">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/newBtnVolDown"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:layout_margin="3dp"
+                    android:elevation="2dp"
+                    android:insetLeft="0dp"
+                    android:insetTop="0dp"
+                    android:insetRight="0dp"
+                    android:insetBottom="0dp"
+                    app:backgroundTint="#1F000000"
+                    app:cornerRadius="26dp"
+                    app:icon="@drawable/ic_volume_down"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconSize="22dp"
+                    app:iconTint="@color/white"
+                    app:strokeColor="#26FFFFFF"
+                    app:strokeWidth="1dp"
+                    tools:ignore="SpeakableTextPresentCheck" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/newBtnPrev"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:layout_margin="3dp"
+                    android:elevation="2dp"
+                    android:text="⏮"
+                    android:textColor="@color/white"
+                    android:textSize="20sp"
+                    app:backgroundTint="#1F000000"
+                    app:cornerRadius="26dp"
+                    app:strokeColor="#26FFFFFF"
+                    app:strokeWidth="1dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/newBtnPlayPause"
+                    android:layout_width="58dp"
+                    android:layout_height="58dp"
+                    android:layout_margin="3dp"
+                    android:elevation="3dp"
+                    android:text="⏯"
+                    android:textColor="@color/white"
+                    android:textSize="22sp"
+                    app:backgroundTint="#26000000"
+                    app:cornerRadius="29dp"
+                    app:strokeColor="#33FFFFFF"
+                    app:strokeWidth="1.5dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/newBtnNext"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:layout_margin="3dp"
+                    android:elevation="2dp"
+                    android:text="⏭"
+                    android:textColor="@color/white"
+                    android:textSize="20sp"
+                    app:backgroundTint="#1F000000"
+                    app:cornerRadius="26dp"
+                    app:strokeColor="#26FFFFFF"
+                    app:strokeWidth="1dp" />
+
+
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/newBtnVolUp"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:layout_margin="3dp"
+                    android:elevation="2dp"
+                    android:insetLeft="0dp"
+                    android:insetTop="0dp"
+                    android:insetRight="0dp"
+                    android:insetBottom="0dp"
+                    app:backgroundTint="#1F000000"
+                    app:cornerRadius="26dp"
+                    app:icon="@drawable/ic_volume_up"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconSize="22dp"
+                    app:iconTint="@color/white"
+                    app:strokeColor="#26FFFFFF"
+                    app:strokeWidth="1dp"
+                    tools:ignore="SpeakableTextPresentCheck" />
+
+                <TextView
+                    android:id="@+id/newVolumeText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/glass_translucent"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:minWidth="46dp"
+                    android:paddingHorizontal="8dp"
+                    android:text="50%"
+                    android:textColor="@color/white"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Song Title & Artist Name Row -->
+            <LinearLayout
+                android:id="@+id/newSongInfoContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center"
+                android:orientation="vertical"
+                app:layout_constraintTop_toBottomOf="@id/newPlaybackControls">
+
+                <TextView
+                    android:id="@+id/newSongTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:duplicateParentState="false"
+                    android:ellipsize="marquee"
+                    android:focusable="true"
+                    android:focusableInTouchMode="true"
+                    android:freezesText="true"
+                    android:gravity="center"
+                    android:marqueeRepeatLimit="2"
+                    android:maxWidth="400dp"
+                    android:scrollHorizontally="true"
+                    android:singleLine="true"
+                    android:text="TV"
+                    android:textColor="@color/white"
+                    android:textDirection="firstStrongLtr"
+                    android:textSize="24sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/newArtistName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:clickable="true"
+                    android:ellipsize="marquee"
+                    android:focusable="true"
+                    android:focusableInTouchMode="true"
+                    android:gravity="center"
+                    android:marqueeRepeatLimit="2"
+                    android:maxWidth="400dp"
+                    android:scrollHorizontally="true"
+                    android:singleLine="true"
+                    android:text="Billie Eilish"
+                    android:textColor="#CCCCCC"
+                    android:textDirection="firstStrongLtr"
+                    android:textSize="18sp"
+                    tools:ignore="TouchTargetSizeCheck" />
+            </LinearLayout>
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- RIGHT SIDE: Seamless Full Height Live Lyrics Area -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/newLyricsContainer"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="24dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="16dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/newCenterMediaColumn"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <androidx.compose.ui.platform.ComposeView
+                android:id="@+id/newLyricsComposeView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- ========================================================================= -->
+    <!-- ORIGINAL / OLD DASHBOARD LAYOUT (Centered Layout Preserved) -->
+    <!-- ========================================================================= -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/oldMainContent"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:paddingStart="24dp"
+        android:paddingTop="0dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="2dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:id="@+id/headerContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/vclock"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackgroundBorderless"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <TextView
+                android:id="@+id/greetingText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-light"
+                android:text="Good morning"
+                android:textColor="@color/white"
+                android:textDirection="firstStrongLtr"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="20dp"
+                android:layout_marginHorizontal="12dp"
+                android:background="#4DFFFFFF" />
+
+            <TextView
+                android:id="@+id/weatherText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:text="--°C"
+                android:textColor="@color/white"
+                android:textSize="20sp" />
+
+            <ImageView
+                android:id="@+id/weatherIcon"
+                android:layout_width="32dp"
+                android:layout_height="32dp" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:id="@+id/albumFrame"
+            android:layout_width="360dp"
+            android:layout_height="360dp"
+            android:layout_marginTop="10dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/headerContainer">
+
+            <ProgressBar
+                android:id="@+id/progressFrameBar"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:indeterminate="false"
+                android:max="1000"
+                android:progress="0"
+                android:progressDrawable="@drawable/progress_bar_frame" />
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/albumArt"
+                android:layout_width="355dp"
+                android:layout_height="355dp"
+                android:layout_gravity="center"
+                android:contentDescription="Album Art"
+                android:scaleType="centerCrop"
+                app:shapeAppearanceOverlay="@style/RoundedImageStyle" />
+        </FrameLayout>
+
+        <androidx.compose.ui.platform.ComposeView
+            android:id="@+id/lyricsComposeView"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toTopOf="@id/songInfoRow"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/albumFrame" />
+
+        <LinearLayout
+            android:id="@+id/lightControlContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/vclock"
+            android:orientation="vertical"
+            android:padding="-10dp"
+            app:layout_constraintBottom_toTopOf="@+id/verticalClock"
+            app:layout_constraintEnd_toEndOf="@+id/verticalClock"
+            app:layout_constraintStart_toStartOf="@+id/verticalClock">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSettings"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                android:layout_width="105dp"
+                android:layout_height="80dp"
+                android:insetLeft="0dp"
+                android:insetTop="0dp"
+                android:insetRight="0dp"
+                android:insetBottom="0dp"
+                app:backgroundTint="@android:color/transparent"
+                app:cornerRadius="28dp"
+                app:icon="@drawable/ic_settings"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="36dp"
+                app:iconTint="@color/white"
+                app:rippleColor="#4DFFFFFF" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnProjectMode"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                android:layout_width="105dp"
+                android:layout_height="80dp"
+                android:layout_marginBottom="0dp"
+                android:insetLeft="0dp"
+                android:insetTop="0dp"
+                android:insetRight="0dp"
+                android:insetBottom="0dp"
+                android:text="🎯"
+                android:textSize="36sp"
+                app:backgroundTint="@android:color/transparent"
+                app:cornerRadius="28dp"
+                app:rippleColor="#4DFFFFFF" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnLight"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                android:layout_width="105dp"
+                android:layout_height="80dp"
+                android:insetLeft="0dp"
+                android:insetTop="0dp"
+                android:insetRight="0dp"
+                android:insetBottom="0dp"
+                android:text="💡"
+                android:textSize="36sp"
+                app:backgroundTint="@android:color/transparent"
+                app:cornerRadius="28dp"
+                app:rippleColor="#4DFFFFFF" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/verticalClock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="90dp"
+            android:background="@drawable/vclock"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:orientation="vertical"
+            android:paddingLeft="11dp"
+            android:paddingTop="10dp"
+            android:paddingRight="11dp"
+            app:layout_constraintBottom_toTopOf="@+id/songInfoRow"
+            app:layout_constraintEnd_toEndOf="parent"
+            tools:ignore="MissingConstraints">
+
+            <TextView
+                android:id="@+id/clockHour"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:includeFontPadding="false"
+                android:text="12"
+                android:textColor="@color/white"
+                android:textSize="70sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:paddingTop="5dp"
+                android:paddingBottom="5dp">
+
+                <View
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:background="@drawable/dot_circle" />
+
+                <View
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_marginStart="20dp"
+                    android:background="@drawable/dot_circle" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/clockMinute"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:includeFontPadding="false"
+                android:text="34"
+                android:textColor="@color/white"
+                android:textSize="70sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/songInfoRow"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/vclock"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            app:layout_constraintBottom_toTopOf="@+id/playbackControls"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_goneMarginTop="20dp">
+
+            <TextView
+                android:id="@+id/songTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:duplicateParentState="false"
+                android:ellipsize="marquee"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:freezesText="true"
+                android:marqueeRepeatLimit="2"
+                android:scrollHorizontally="true"
+                android:singleLine="true"
+                android:text="Title"
+                android:textColor="@color/white"
+                android:textDirection="firstStrongLtr"
+                android:textSize="24sp" />
+
+            <TextView
+                android:id="@+id/timeDisplay"
+                android:layout_width="180dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:fontFamily="monospace"
+                android:paddingHorizontal="8dp"
+                android:text="0:00/0:00"
+                android:textColor="@color/white"
+                android:textSize="18sp" />
+
+            <TextView
+                android:id="@+id/artistName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:clickable="true"
+                android:ellipsize="marquee"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:marqueeRepeatLimit="2"
+                android:scrollHorizontally="true"
+                android:singleLine="true"
+                android:text="Artist"
+                android:textColor="@color/white"
+                android:textDirection="firstStrongLtr"
+                android:textSize="22sp"
+                android:textStyle="italic"
+                tools:ignore="TouchTargetSizeCheck" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/playbackControls"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnVolDown"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_margin="4dp"
+                android:elevation="6dp"
+                android:insetLeft="0dp"
+                android:insetTop="0dp"
+                android:insetRight="0dp"
+                android:insetBottom="0dp"
+                app:backgroundTint="#333333"
+                app:cornerRadius="32dp"
+                app:icon="@drawable/ic_volume_down"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="28dp"
+                app:iconTint="#1DB954"
+                tools:ignore="SpeakableTextPresentCheck" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPrev"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_margin="4dp"
+                android:elevation="6dp"
+                android:text="⏮"
+                android:textColor="#1DB954"
+                android:textSize="24sp"
+                app:backgroundTint="#333333"
+                app:cornerRadius="32dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPlayPause"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_margin="4dp"
+                android:elevation="6dp"
+                android:text="⏯&#xFE0E;"
+                android:textColor="#1DB954"
+                android:textSize="24sp"
+                app:backgroundTint="#333333"
+                app:cornerRadius="32dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnNext"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_margin="4dp"
+                android:elevation="6dp"
+                android:text="⏭"
+                android:textColor="#1DB954"
+                android:textSize="24sp"
+                app:backgroundTint="#333333"
+                app:cornerRadius="32dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnVolUp"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_margin="4dp"
+                android:elevation="6dp"
+                android:insetLeft="0dp"
+                android:insetTop="0dp"
+                android:insetRight="0dp"
+                android:insetBottom="0dp"
+                app:backgroundTint="#333333"
+                app:cornerRadius="32dp"
+                app:icon="@drawable/ic_volume_up"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="28dp"
+                app:iconTint="#1DB954"
+                tools:ignore="SpeakableTextPresentCheck" />
+
+            <TextView
+                android:id="@+id/volumeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="20dp"
+                android:background="@drawable/vclock"
+                android:fontFamily="monospace"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="8dp"
+                android:text="50%"
+                android:textColor="@color/white"
+                android:textSize="25sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnToggleUpdates"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="8dp"
+            android:layout_marginBottom="8dp"
+            android:alpha="0.3"
+            android:text="📡"
+            android:textColor="#1DB954"
+            android:textSize="24sp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- ========================================================================= -->
+    <!-- ALWAYS ON DISPLAY (AOD) CLOCK OVERLAY (Preserved) -->
+    <!-- ========================================================================= -->
+    <RelativeLayout
+        android:id="@+id/clockOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:visibility="visible"
+        tools:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/clockContent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/clockShabbatTimeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="-10dp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="#B3FFFFFF"
+                android:textSize="18sp"
+                android:visibility="gone"
+                tools:text="כניסת שבת: 19:05" />
+
+            <LinearLayout
+                android:id="@+id/headerClockRow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackgroundBorderless"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingBottom="0dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSettingsAOD"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:layout_marginEnd="8dp"
+                    android:alpha="0.85"
+                    android:insetLeft="0dp"
+                    android:insetTop="0dp"
+                    android:insetRight="0dp"
+                    android:insetBottom="0dp"
+                    app:backgroundTint="@android:color/transparent"
+                    app:cornerRadius="26dp"
+                    app:icon="@drawable/ic_settings"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconSize="32dp"
+                    app:iconTint="@color/white"
+                    app:rippleColor="#4DFFFFFF" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnTargetAOD"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:layout_marginEnd="4dp"
+                    android:alpha="0.8"
+                    android:insetLeft="0dp"
+                    android:insetTop="0dp"
+                    android:insetRight="0dp"
+                    android:insetBottom="0dp"
+                    android:text="🎯"
+                    android:textSize="32sp"
+                    app:rippleColor="#4DFFFFFF" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnLightAOD"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:layout_marginEnd="4dp"
+                    android:alpha="0.8"
+                    android:insetLeft="0dp"
+                    android:insetTop="0dp"
+                    android:insetRight="0dp"
+                    android:insetBottom="0dp"
+                    android:text="💡"
+                    android:textSize="32sp"
+                    app:rippleColor="#4DFFFFFF" />
+
+                <TextView
+                    android:id="@+id/clockGreetingText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-light"
+                    android:text="Good morning"
+                    android:textColor="@color/white"
+                    android:textSize="22sp"
+                    android:textStyle="italic" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="20dp"
+                    android:layout_marginHorizontal="12dp"
+                    android:background="#4DFFFFFF" />
+
+                <TextView
+                    android:id="@+id/clockWeatherText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="--°C"
+                    android:textColor="@color/white"
+                    android:textSize="20sp" />
+
+                <ImageView
+                    android:id="@+id/clockWeatherIcon"
+                    android:layout_width="50dp"
+                    android:layout_height="50dp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/clockQuoteText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="0dp"
+                android:layout_marginBottom="0dp"
+                android:alpha="0.7"
+                android:fontFamily="sans-serif-light"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxWidth="600dp"
+                android:paddingHorizontal="40dp"
+                android:text=""
+                android:textColor="@color/white"
+                android:textSize="18sp"
+                android:textStyle="italic" />
+
+            <TextView
+                android:id="@+id/clockText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="-20dp"
+                android:fontFamily="monospace"
+                android:includeFontPadding="false"
+                android:text="00:00"
+                android:textColor="@color/white"
+                android:textSize="180sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/clockSongText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:textColor="#CCCCCC"
+                android:textSize="22sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnToggleUpdatesAOD"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_alignParentEnd="true"
+            android:layout_alignParentBottom="true"
+            android:layout_marginEnd="8dp"
+            android:layout_marginBottom="8dp"
+            android:alpha="0.2"
+            android:text="📡"
+            android:textColor="#1DB954"
+            android:textSize="24sp" />
+    </RelativeLayout>
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guideline"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintGuide_begin="416dp"
+        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintStart_toStartOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

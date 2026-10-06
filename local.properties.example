@@ -1,0 +1,33 @@
+# ── local.properties.example ──────────────────────────────────────────────────
+# Copy this file to local.properties and fill in your actual values.
+# local.properties is gitignored and should NEVER be committed.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Android SDK location (auto-filled by Android Studio)
+sdk.dir=/path/to/your/Android/Sdk
+
+# ── Spotify Developer App ──────────────────────────────────────────────────────
+# Get these from https://developer.spotify.com/dashboard
+SPOTIFY_CLIENT_ID=your_spotify_client_id_here
+SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here
+
+# ── WeatherAPI.com ─────────────────────────────────────────────────────────────
+# Get a free key from https://www.weatherapi.com/
+WEATHER_API_KEY=your_weatherapi_key_here
+
+# ── Your Jellyfin server ───────────────────────────────────────────────────────
+DEFAULT_JELLYFIN_URL=http://192.168.x.x:8096
+DEFAULT_JELLYFIN_API_KEY=your_jellyfin_api_key_here
+DEFAULT_JELLYFIN_TARGET_USER=your_username
+
+# ── Home Assistant ─────────────────────────────────────────────────────────────
+DEFAULT_HA_URL=http://192.168.x.x:8123
+DEFAULT_LIGHT_WEBHOOK_URL=http://192.168.x.x:8123/api/webhook/your_webhook_id
+DEFAULT_HA_PROJECT_WEBHOOK_URL=http://192.168.x.x:8123/api/webhook/your_webhook_id
+
+# ── MacroDroid ─────────────────────────────────────────────────────────────────
+DEFAULT_MACRODROID_WEBHOOK_URL=https://trigger.macrodroid.com/your-uuid/your-trigger
+
+# ── Location for weather ───────────────────────────────────────────────────────
+# GPS coordinates as "latitude,longitude"
+DEFAULT_WEATHER_CITY=31.7256,35.2225

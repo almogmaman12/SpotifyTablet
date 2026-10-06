@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="SpotifyTablet"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SpotifyTablet"
+        android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.SpotifyTablet">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- OAuth redirect handler -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="yourapp"
+                    android:host="callback" />
+            </intent-filter>
+
+        </activity>
+
+        <!-- REMOVE THIS ENTIRE ACTIVITY -->
+        <!-- The RedirectUriReceiverActivity was conflicting with your manual OAuth handling -->
+
+        <activity
+            android:name=".DayDetailActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SpotifyTablet" />
+
+
+        <activity
+            android:name=".ProjectModeActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SpotifyTablet" />
+
+        <activity
+            android:name=".WeatherActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SpotifyTablet" />
+
+        <activity
+            android:name=".DaysActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SpotifyTablet" />
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SpotifyTablet" />
+
+
+
+
+    </application>
+</manifest>

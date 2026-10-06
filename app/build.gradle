@@ -1,0 +1,111 @@
+import java.util.Properties
+
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+}
+
+// Load secrets from local.properties (never committed to git)
+def localProps = new Properties()
+def localPropsFile = rootProject.file("local.properties")
+if (localPropsFile.exists()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+
+android {
+    namespace 'com.almog.spotifytablet'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.almog.spotifytablet"
+        minSdk 29
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // Inject secrets as BuildConfig fields — values come from local.properties, never from source
+        buildConfigField "String", "SPOTIFY_CLIENT_ID",             "\"${localProps['SPOTIFY_CLIENT_ID'] ?: ''}\""
+        buildConfigField "String", "SPOTIFY_CLIENT_SECRET",         "\"${localProps['SPOTIFY_CLIENT_SECRET'] ?: ''}\""
+        buildConfigField "String", "WEATHER_API_KEY",               "\"${localProps['WEATHER_API_KEY'] ?: ''}\""
+        buildConfigField "String", "DEFAULT_JELLYFIN_API_KEY",      "\"${localProps['DEFAULT_JELLYFIN_API_KEY'] ?: ''}\""
+        buildConfigField "String", "DEFAULT_JELLYFIN_URL",          "\"${localProps['DEFAULT_JELLYFIN_URL'] ?: 'http://localhost:8096'}\""
+        buildConfigField "String", "DEFAULT_HA_URL",                "\"${localProps['DEFAULT_HA_URL'] ?: 'http://localhost:8123'}\""
+        buildConfigField "String", "DEFAULT_LIGHT_WEBHOOK_URL",     "\"${localProps['DEFAULT_LIGHT_WEBHOOK_URL'] ?: ''}\""
+        buildConfigField "String", "DEFAULT_MACRODROID_WEBHOOK_URL","\"${localProps['DEFAULT_MACRODROID_WEBHOOK_URL'] ?: ''}\""
+        buildConfigField "String", "DEFAULT_HA_PROJECT_WEBHOOK_URL","\"${localProps['DEFAULT_HA_PROJECT_WEBHOOK_URL'] ?: ''}\""
+        buildConfigField "String", "DEFAULT_WEATHER_CITY",          "\"${localProps['DEFAULT_WEATHER_CITY'] ?: ''}\""
+        buildConfigField "String", "DEFAULT_JELLYFIN_TARGET_USER",  "\"${localProps['DEFAULT_JELLYFIN_TARGET_USER'] ?: ''}\""
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = "11"
+    }
+
+    buildFeatures {
+        viewBinding false
+        compose true
+        buildConfig true  // required to generate BuildConfig fields
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+dependencies {
+    // UI & Layout
+    implementation libs.androidx.appcompat
+    implementation libs.androidx.constraintlayout
+    implementation libs.material
+    implementation libs.androidx.recyclerview
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+
+    // Kotlin & Coroutines
+    implementation libs.androidx.core.ktx
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+
+    // Jetpack Compose
+    implementation platform(libs.androidx.compose.bom)
+    implementation libs.androidx.ui
+    implementation libs.androidx.ui.graphics
+    implementation libs.androidx.ui.tooling.preview
+    implementation libs.androidx.material3
+    implementation 'androidx.compose.foundation:foundation'
+    implementation libs.androidx.activity.compose
+    implementation libs.androidx.lifecycle.runtime.ktx
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.8.7'
+    debugImplementation libs.androidx.ui.tooling
+
+    // Image & Blur
+    implementation libs.blurry
+    implementation 'androidx.palette:palette:1.0.0'
+
+    // Networking
+    implementation libs.okhttp
+
+    // Google Auth & Calendar
+    implementation 'com.google.android.gms:play-services-auth:21.0.0'
+
+    // Testing
+    testImplementation libs.junit
+    testImplementation 'org.json:json:20240303'
+    testImplementation 'net.sf.kxml:kxml2:2.3.0'
+    androidTestImplementation libs.androidx.junit
+    androidTestImplementation libs.androidx.espresso.core
+}
