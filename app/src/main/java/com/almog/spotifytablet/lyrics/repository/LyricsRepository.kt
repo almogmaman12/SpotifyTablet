@@ -30,13 +30,50 @@ class LyricsRepository(
     companion object {
         private const val TAG = "LyricsRepository"
         private const val CIRCUIT_BREAKER_TIMEOUT_MS = 300_000L // 5 minutes
+        private const val MAX_CACHE_AGE_MS = 30L * 24L * 60L * 60L * 1000L // 30 days maximum per API Terms
+        /** Subdirectory name used for disk cache — must match getDiskCacheFile(). */
+        const val DISK_CACHE_SUBDIR = "lyrics_cache"
 
         @Volatile
         @JvmStatic
         var defaultDiskCacheDir: File? = null
+
+        /**
+         * Wipes every file in the lyrics disk-cache directory.
+         * Call this from SettingsActivity (or anywhere) to honour a user-initiated clear.
+         * Also evicts [globalMemoryCache] so stale in-memory entries don't survive.
+         */
+        @JvmStatic
+        fun clearAllCache() {
+            // 1. Disk cache
+            val baseDir = defaultDiskCacheDir
+            if (baseDir != null) {
+                val subDir = File(baseDir, DISK_CACHE_SUBDIR)
+                val deleted = mutableListOf<String>()
+                val failed  = mutableListOf<String>()
+                subDir.listFiles { f -> f.isFile }?.forEach { f ->
+                    if (f.delete()) deleted.add(f.name) else failed.add(f.name)
+                }
+                DebugLog.i(TAG, "clearAllCache: deleted ${deleted.size} disk-cache files" +
+                        if (failed.isNotEmpty()) ", ${failed.size} could not be deleted" else "")
+            } else {
+                DebugLog.w(TAG, "clearAllCache: defaultDiskCacheDir is null — no disk cache to clear")
+            }
+            // 2. In-memory LRU cache (shared via companion so all ViewModel instances are affected)
+            globalMemoryCache.evictAll()
+            DebugLog.i(TAG, "clearAllCache: in-memory LRU cache evicted")
+        }
+
+        /**
+         * Shared LRU cache across all LyricsRepository instances (ViewModel survives
+         * config changes, so a per-instance cache is fine too, but sharing means the
+         * Settings 'Clear cache' button can evict it without holding a reference).
+         */
+        private val globalMemoryCache = LruCache<String, LyricTrack>(60)
     }
 
-    private val trackCache = LruCache<String, LyricTrack>(60)
+    // Per-instance alias — reads/writes go to the shared companion cache.
+    private val trackCache: LruCache<String, LyricTrack> get() = globalMemoryCache
     // Circuit breaker registry: provider -> bypassUntilMs
     private val circuitBreakers = ConcurrentHashMap<String, Long>()
 
@@ -74,14 +111,24 @@ class LyricsRepository(
         try {
             val maxSizeBytes = 50L * 1024L * 1024L // 50 MB
             val maxFiles = 1000
+            val now = System.currentTimeMillis()
             val files = subDir.listFiles { f -> f.isFile && f.extension == "json" } ?: return
-            if (files.size <= maxFiles) {
-                val totalSize = files.sumOf { it.length() }
+
+            // 1. Enforce strict 30-day max cache TTL
+            for (f in files) {
+                if (now - f.lastModified() > MAX_CACHE_AGE_MS) {
+                    f.delete()
+                }
+            }
+
+            val remainingFiles = subDir.listFiles { f -> f.isFile && f.extension == "json" } ?: return
+            if (remainingFiles.size <= maxFiles) {
+                val totalSize = remainingFiles.sumOf { it.length() }
                 if (totalSize <= maxSizeBytes) return
             }
 
             // Prune oldest accessed/modified files first
-            val sortedFiles = files.sortedBy { it.lastModified() }
+            val sortedFiles = remainingFiles.sortedBy { it.lastModified() }
             var currentSize = sortedFiles.sumOf { it.length() }
             var currentCount = sortedFiles.size
 
@@ -105,6 +152,24 @@ class LyricsRepository(
             root.put("isWordSynced", track.isWordSynced)
             root.put("source", track.source)
             if (track.bpm != null) root.put("bpm", track.bpm.toDouble())
+
+            track.attribution?.let { attr ->
+                val attrObj = JSONObject()
+                attrObj.put("provider", attr.provider)
+                attr.uploader?.let { u ->
+                    val uObj = JSONObject()
+                    uObj.put("username", u.username)
+                    if (u.url != null) uObj.put("url", u.url)
+                    attrObj.put("uploader", uObj)
+                }
+                attr.maker?.let { m ->
+                    val mObj = JSONObject()
+                    mObj.put("username", m.username)
+                    if (m.url != null) mObj.put("url", m.url)
+                    attrObj.put("maker", mObj)
+                }
+                root.put("attribution", attrObj)
+            }
 
             val linesArray = JSONArray()
             for (line in track.lines) {
@@ -132,7 +197,7 @@ class LyricsRepository(
             root.put("lines", linesArray)
             file.writeText(root.toString())
 
-            // Trigger LRU pruning check in background
+            // Trigger LRU pruning & 30-day eviction check in background
             file.parentFile?.let { pruneDiskCacheIfNeeded(it) }
         } catch (e: Exception) {
             DebugLog.e(TAG, "Failed saving track to disk cache: ${e.message}")
@@ -143,12 +208,37 @@ class LyricsRepository(
         return try {
             val file = getDiskCacheFile(cacheKey) ?: return null
             if (!file.exists()) return null
+            // Check 30-day expiration limit
+            if (System.currentTimeMillis() - file.lastModified() > MAX_CACHE_AGE_MS) {
+                file.delete()
+                return null
+            }
             file.setLastModified(System.currentTimeMillis())
             val content = file.readText()
             val root = JSONObject(content)
             val isWordSynced = root.optBoolean("isWordSynced", false)
             val source = root.optString("source", "Disk Cache")
             val bpm = if (root.has("bpm")) root.getDouble("bpm").toFloat() else null
+
+            val attrObj = root.optJSONObject("attribution")
+            val attribution = if (attrObj != null) {
+                val provider = attrObj.optString("provider", "")
+                val uObj = attrObj.optJSONObject("uploader")
+                val uploader = if (uObj != null) com.almog.spotifytablet.lyrics.model.LyricContributor(
+                    username = uObj.optString("username", ""),
+                    url = if (uObj.has("url")) uObj.optString("url") else null
+                ) else null
+                val mObj = attrObj.optJSONObject("maker")
+                val maker = if (mObj != null) com.almog.spotifytablet.lyrics.model.LyricContributor(
+                    username = mObj.optString("username", ""),
+                    url = if (mObj.has("url")) mObj.optString("url") else null
+                ) else null
+                com.almog.spotifytablet.lyrics.model.LyricAttribution(
+                    provider = provider,
+                    uploader = uploader,
+                    maker = maker
+                )
+            } else null
 
             val linesArray = root.optJSONArray("lines") ?: return null
             val lines = mutableListOf<LyricLine>()
@@ -182,7 +272,7 @@ class LyricsRepository(
                     )
                 )
             }
-            val loadedTrack = LyricTrack(isWordSynced = isWordSynced, lines = lines, source = source, bpm = bpm)
+            val loadedTrack = LyricTrack(isWordSynced = isWordSynced, lines = lines, source = source, bpm = bpm, attribution = attribution)
             if (expectedDurationMs > 0) {
                 val validation = LyricsMatchVerifier.validateLyricTrackTimeline(loadedTrack, expectedDurationMs)
                 if (validation is LyricsMatchVerifier.LyricValidationResult.Rejected) {
@@ -246,57 +336,345 @@ class LyricsRepository(
             return@withContext diskTrack
         }
 
-        // 1. Lrcmux Word-Sync Mirror (Native Word Timestamps)
-        if (!isCircuitOpen("lrcmux")) {
-            DebugLog.d(TAG, "[1/3] Trying Lrcmux Word-Sync Mirror")
-            fetchFromLrcmux(artist, title, album, isrc, durationMs, requireWordSync = true)?.let { track ->
+        // 1. Spicy Lyrics Official API (Top priority — word-sync only)
+        var spicyLineFallbackTrack: LyricTrack? = null
+        if (trackId.isNotEmpty() && !isCircuitOpen("spicylyrics")) {
+            DebugLog.i(TAG, "━━━ [Tier 1] Trying Spicy Lyrics API for trackId='$trackId'")
+            fetchFromSpicyLyrics(trackId, durationMs)?.let { track ->
                 if (track.isWordSynced) {
-                    DebugLog.d(TAG, "✓ LRCMUX (WordSync): ${track.lines.size} lines, source=${track.source}")
+                    DebugLog.i(TAG, "✅ [Tier 1 WIN] SPICY LYRICS word-synced: ${track.lines.size} lines (source=${track.source})")
                     trackCache.put(cacheKey, track)
                     saveTrackToDisk(cacheKey, track)
                     return@withContext track
+                } else {
+                    DebugLog.i(TAG, "⚠️ [Tier 1 SKIP] Spicy Lyrics has NO word-sync (type=${track.source}, ${track.lines.size} lines). Moving to Tier 2 — stashing for last-resort fallback.")
+                    spicyLineFallbackTrack = track
                 }
-            }
+            } ?: DebugLog.i(TAG, "⚠️ [Tier 1 MISS] Spicy Lyrics returned nothing for trackId='$trackId'")
+        } else {
+            if (trackId.isEmpty()) DebugLog.i(TAG, "⏭️ [Tier 1 SKIP] No Spotify trackId — cannot use Spicy Lyrics")
         }
 
-        // ── FALLBACK TIERS (Line-level synced lyrics + single synthesized pass) ──
+        // 2. Lrcmux Word-Sync Mirror (Native Word Timestamps)
+        if (!isCircuitOpen("lrcmux")) {
+            DebugLog.i(TAG, "━━━ [Tier 2] Trying Lrcmux Word-Sync Mirror")
+            fetchFromLrcmux(artist, title, album, isrc, durationMs, requireWordSync = true)?.let { track ->
+                if (track.isWordSynced) {
+                    DebugLog.i(TAG, "✅ [Tier 2 WIN] LRCMUX word-synced: ${track.lines.size} lines (source=${track.source})")
+                    trackCache.put(cacheKey, track)
+                    saveTrackToDisk(cacheKey, track)
+                    return@withContext track
+                } else {
+                    DebugLog.i(TAG, "⚠️ [Tier 2 SKIP] Lrcmux returned non-word-synced data — moving on")
+                }
+            } ?: DebugLog.i(TAG, "⚠️ [Tier 2 MISS] Lrcmux returned nothing")
+        }
 
-        // 2. LRCLIB (Accurate metadata and synced community lyrics)
-        DebugLog.d(TAG, "[2/3] Trying LRCLIB Fallback (https://lrclib.net/api/get?artist_name=${Uri.encode(artist)}&track_name=${Uri.encode(cleanTitle)})")
+        // ── FALLBACK TIERS (Line-level synced lyrics + synthesized word timing) ──
+
+        // 3. LRCLIB
+        DebugLog.i(TAG, "━━━ [Tier 3] Trying LRCLIB for '$cleanTitle' by '$artist'")
         fetchFromLrclib(artist, title, album, durationMs)?.let { track ->
             val synthesized = track.synthesizeWordsIfMissing()
-            DebugLog.d(TAG, "✓ LRCLIB: ${synthesized.lines.size} lines, wordSynced=${synthesized.isWordSynced}")
+            DebugLog.i(TAG, "✅ [Tier 3 WIN] LRCLIB: ${synthesized.lines.size} lines, wordSynced=${synthesized.isWordSynced}")
+            trackCache.put(cacheKey, synthesized)
+            saveTrackToDisk(cacheKey, synthesized)
+            return@withContext synthesized
+        } ?: DebugLog.i(TAG, "⚠️ [Tier 3 MISS] LRCLIB returned nothing")
+
+        // 4. Jellyfin Local Storage
+        if (mediaSource == "jellyfin" && trackId.isNotEmpty() && jellyfinUrl.isNotEmpty()) {
+            DebugLog.i(TAG, "━━━ [Tier 4] Trying Jellyfin Local for trackId='$trackId'")
+            fetchJellyfinLyrics(trackId, jellyfinUrl, jellyfinApiKey)?.let { track ->
+                val synthesized = track.synthesizeWordsIfMissing()
+                DebugLog.i(TAG, "✅ [Tier 4 WIN] JELLYFIN: ${synthesized.lines.size} lines, wordSynced=${synthesized.isWordSynced}")
+                trackCache.put(cacheKey, synthesized)
+                saveTrackToDisk(cacheKey, synthesized)
+                return@withContext synthesized
+            } ?: DebugLog.i(TAG, "⚠️ [Tier 4 MISS] Jellyfin returned nothing")
+        } else {
+            DebugLog.d(TAG, "⏭️ [Tier 4 SKIP] Not a Jellyfin source or no URL configured")
+        }
+
+        // 5. Lrcmux Line-Level Fallback
+        if (!isCircuitOpen("lrcmux")) {
+            DebugLog.i(TAG, "━━━ [Tier 5] Trying Lrcmux Line-Level Fallback")
+            fetchFromLrcmux(artist, title, album, isrc, durationMs, requireWordSync = false)?.let { lineTrack ->
+                val synthesized = lineTrack.synthesizeWordsIfMissing()
+                DebugLog.i(TAG, "✅ [Tier 5 WIN] LRCMUX line-level: ${synthesized.lines.size} lines, wordSynced=${synthesized.isWordSynced} (source=${lineTrack.source})")
+                trackCache.put(cacheKey, synthesized)
+                saveTrackToDisk(cacheKey, synthesized)
+                return@withContext synthesized
+            } ?: DebugLog.i(TAG, "⚠️ [Tier 5 MISS] Lrcmux line-level returned nothing")
+        }
+
+        // 6. Spicy Lyrics Line-Level Fallback (stashed from Tier 1 if it had no word-sync)
+        spicyLineFallbackTrack?.let { lineTrack ->
+            val synthesized = lineTrack.synthesizeWordsIfMissing()
+            DebugLog.i(TAG, "✅ [Tier 6 WIN] SPICY LYRICS line-level fallback: ${synthesized.lines.size} lines, wordSynced=${synthesized.isWordSynced}")
             trackCache.put(cacheKey, synthesized)
             saveTrackToDisk(cacheKey, synthesized)
             return@withContext synthesized
         }
 
-        // 3. Jellyfin Local Storage
-        if (mediaSource == "jellyfin" && trackId.isNotEmpty() && jellyfinUrl.isNotEmpty()) {
-            DebugLog.d(TAG, "[3/3] Trying Jellyfin Local")
-            fetchJellyfinLyrics(trackId, jellyfinUrl, jellyfinApiKey)?.let { track ->
-                val synthesized = track.synthesizeWordsIfMissing()
-                DebugLog.d(TAG, "✓ JELLYFIN: ${synthesized.lines.size} lines, wordSynced=${synthesized.isWordSynced}")
-                trackCache.put(cacheKey, synthesized)
-                saveTrackToDisk(cacheKey, synthesized)
-                return@withContext synthesized
-            }
-        }
-
-        // 4. Lrcmux Line-Level Fallback
-        if (!isCircuitOpen("lrcmux")) {
-            DebugLog.d(TAG, "Trying Lrcmux Line-Level Fallback")
-            fetchFromLrcmux(artist, title, album, isrc, durationMs, requireWordSync = false)?.let { lineTrack ->
-                val synthesized = lineTrack.synthesizeWordsIfMissing()
-                DebugLog.d(TAG, "✓ LRCMUX LINE FALLBACK (${lineTrack.source}): ${synthesized.lines.size} lines, wordSynced=${synthesized.isWordSynced}")
-                trackCache.put(cacheKey, synthesized)
-                saveTrackToDisk(cacheKey, synthesized)
-                return@withContext synthesized
-            }
-        }
-
-        DebugLog.w(TAG, "=== ALL PROVIDERS FAILED for '$cleanTitle' by '$artist' ===")
+        DebugLog.w(TAG, "❌ [ALL TIERS FAILED] No lyrics found for '$cleanTitle' by '$artist'")
         null
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Spicy Lyrics Official API (https://developers.spicylyrics.org)
+    // ──────────────────────────────────────────────────────────────────────
+    private fun fetchFromSpicyLyrics(spotifyTrackId: String, durationMs: Int): LyricTrack? {
+        val apiKey = com.almog.spotifytablet.Constants.SPICY_LYRICS_API_KEY
+        if (apiKey.isBlank()) {
+            DebugLog.w(TAG, "SPICY_LYRICS_API_KEY is not set in local.properties. Skipping SpicyLyrics provider.")
+            return null
+        }
+
+        // Only valid 22-char base62 Spotify track IDs are accepted by the endpoint
+        if (!spotifyTrackId.matches(Regex("^[A-Za-z0-9]{22}$"))) {
+            DebugLog.d(TAG, "Track ID '$spotifyTrackId' is not a 22-character Spotify track ID. Skipping SpicyLyrics.")
+            return null
+        }
+
+        val url = "https://api.spicylyrics.org/v1/lyrics/$spotifyTrackId"
+        DebugLog.d(TAG, "SpicyLyrics Request URL: $url")
+
+        val req = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $apiKey")
+            .header("Accept", "application/json")
+            .header("User-Agent", "SpotifyTablet/1.0 (Android)")
+            .build()
+
+        return try {
+            httpClient.newCall(req).execute().use { resp ->
+                DebugLog.i(TAG, "SpicyLyrics HTTP Status: ${resp.code} for trackId='$spotifyTrackId'")
+                when {
+                    resp.code == 401 -> {
+                        val body = runCatching { resp.body?.string() }.getOrNull() ?: ""
+                        DebugLog.e(TAG, "🔑 SPICY LYRICS 401 UNAUTHORIZED — API key is missing or invalid!\n" +
+                                "  ▶ Add SPICY_LYRICS_API_KEY=<your_key> to local.properties\n" +
+                                "  ▶ Response body: $body")
+                        return@use null
+                    }
+                    resp.code == 404 -> {
+                        DebugLog.i(TAG, "⚠️ SPICY LYRICS 404 — track '$spotifyTrackId' not in Spicy Lyrics catalog")
+                        return@use null
+                    }
+                    resp.code == 429 || resp.code in 500..599 -> {
+                        DebugLog.w(TAG, "⚠️ SPICY LYRICS ${resp.code} — server error, tripping circuit breaker for 5 min")
+                        tripCircuit("spicylyrics")
+                        return@use null
+                    }
+                    !resp.isSuccessful -> {
+                        val body = runCatching { resp.body?.string() }.getOrNull() ?: ""
+                        DebugLog.w(TAG, "⚠️ SPICY LYRICS ${resp.code} unexpected error — body: $body")
+                        return@use null
+                    }
+                }
+
+                val bodyStr = resp.body?.string() ?: return@use null
+                parseSpicyLyricsResponse(bodyStr, durationMs)
+            }
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "SpicyLyrics Exception: ${e.message}")
+            null
+        }
+    }
+
+    private fun parseSpicyLyricsResponse(jsonStr: String, expectedDurationMs: Int): LyricTrack? {
+        return try {
+            val root = JSONObject(jsonStr)
+            val body = root.optJSONObject("Body") ?: return null
+            val syncType = body.optString("Type", "Line")
+            val source = body.optString("source", "unknown")
+
+            // Parse Attribution (mandatory compliance with section 6 Terms)
+            val uploadAttr = body.optJSONObject("UploadAttribution")
+            val uploader = uploadAttr?.optJSONObject("Uploader")?.let { u ->
+                com.almog.spotifytablet.lyrics.model.LyricContributor(
+                    username = u.optString("username", ""),
+                    url = if (u.has("url")) u.optString("url") else null
+                )
+            }
+            val maker = uploadAttr?.optJSONObject("Maker")?.let { m ->
+                com.almog.spotifytablet.lyrics.model.LyricContributor(
+                    username = m.optString("username", ""),
+                    url = if (m.has("url")) m.optString("url") else null
+                )
+            }
+
+            val providerName = when (source) {
+                "spicy_lyrics" -> "Spicy Lyrics"
+                "apple_music" -> "Apple Music"
+                "spotify" -> "Spotify"
+                else -> source
+            }
+
+            val attribution = com.almog.spotifytablet.lyrics.model.LyricAttribution(
+                provider = providerName,
+                uploader = uploader,
+                maker = maker
+            )
+
+            val lines = mutableListOf<LyricLine>()
+
+            if (syncType.equals("Syllable", ignoreCase = true)) {
+                // Syllable (Word-level sync)
+                val contentArray = body.optJSONArray("Content") ?: return null
+                for (i in 0 until contentArray.length()) {
+                    val lineObj = contentArray.getJSONObject(i)
+                    val leadObj = lineObj.optJSONObject("Lead") ?: continue
+                    val syllablesArray = leadObj.optJSONArray("Syllables") ?: continue
+
+                    val lineStartMs = (leadObj.optDouble("StartTime", 0.0) * 1000).toLong()
+                    val lineEndMs = (leadObj.optDouble("EndTime", 0.0) * 1000).toLong()
+                    val lineTrans = leadObj.optString("TransliteratedText", "")
+                    val isOpposite = lineObj.optBoolean("OppositeAligned", false)
+
+                    val words = mutableListOf<WordSync>()
+                    val rawTextBuilder = StringBuilder()
+
+                    for (j in 0 until syllablesArray.length()) {
+                        val sylObj = syllablesArray.getJSONObject(j)
+                        val text = sylObj.optString("Text", "")
+                        val sStart = (sylObj.optDouble("StartTime", 0.0) * 1000).toLong()
+                        val sEnd = (sylObj.optDouble("EndTime", 0.0) * 1000).toLong()
+                        val isPartOfWord = sylObj.optBoolean("IsPartOfWord", false)
+
+                        rawTextBuilder.append(text)
+                        if (!isPartOfWord && j < syllablesArray.length() - 1) {
+                            rawTextBuilder.append(" ")
+                        }
+
+                        words.add(
+                            WordSync(
+                                text = text,
+                                startTimeMs = sStart,
+                                endTimeMs = sEnd,
+                                trailingSpace = !isPartOfWord
+                            )
+                        )
+                    }
+
+                    // Background vocals if present
+                    val bgArray = lineObj.optJSONArray("Background")
+                    var bgLine: LyricLine? = null
+                    if (bgArray != null && bgArray.length() > 0) {
+                        val bgObj = bgArray.getJSONObject(0)
+                        val bgSyllables = bgObj.optJSONArray("Syllables")
+                        if (bgSyllables != null && bgSyllables.length() > 0) {
+                            val bgStartMs = (bgObj.optDouble("StartTime", 0.0) * 1000).toLong()
+                            val bgEndMs = (bgObj.optDouble("EndTime", 0.0) * 1000).toLong()
+                            val bgWords = mutableListOf<WordSync>()
+                            val bgRawBuilder = StringBuilder()
+
+                            for (k in 0 until bgSyllables.length()) {
+                                val sObj = bgSyllables.getJSONObject(k)
+                                val bText = sObj.optString("Text", "")
+                                val bsStart = (sObj.optDouble("StartTime", 0.0) * 1000).toLong()
+                                val bsEnd = (sObj.optDouble("EndTime", 0.0) * 1000).toLong()
+                                val bPartOfWord = sObj.optBoolean("IsPartOfWord", false)
+
+                                bgRawBuilder.append(bText)
+                                if (!bPartOfWord && k < bgSyllables.length() - 1) {
+                                    bgRawBuilder.append(" ")
+                                }
+
+                                bgWords.add(
+                                    WordSync(
+                                        text = bText,
+                                        startTimeMs = bsStart,
+                                        endTimeMs = bsEnd,
+                                        trailingSpace = !bPartOfWord
+                                    )
+                                )
+                            }
+                            bgLine = LyricLine(
+                                startTimeMs = bgStartMs,
+                                endTimeMs = bgEndMs,
+                                words = bgWords.clampWordOverlaps(bgEndMs),
+                                rawText = bgRawBuilder.toString().trim(),
+                                isBackground = true,
+                                agentId = "bg"
+                            )
+                        }
+                    }
+
+                    val mainLine = LyricLine(
+                        startTimeMs = lineStartMs,
+                        endTimeMs = lineEndMs,
+                        words = words.clampWordOverlaps(lineEndMs),
+                        rawText = rawTextBuilder.toString().trim(),
+                        agentId = if (isOpposite) "v2" else null,
+                        translation = if (lineTrans.isNotEmpty()) lineTrans else null
+                    )
+                    lines.add(mainLine)
+                    if (bgLine != null) {
+                        lines.add(bgLine)
+                    }
+                }
+            } else if (syncType.equals("Line", ignoreCase = true)) {
+                // Line-level sync
+                val contentArray = body.optJSONArray("Content") ?: return null
+                for (i in 0 until contentArray.length()) {
+                    val lineObj = contentArray.getJSONObject(i)
+                    val lineStartMs = (lineObj.optDouble("StartTime", 0.0) * 1000).toLong()
+                    val lineEndMs = (lineObj.optDouble("EndTime", 0.0) * 1000).toLong()
+                    val text = lineObj.optString("Text", "")
+                    val isOpposite = lineObj.optBoolean("OppositeAligned", false)
+                    val trans = lineObj.optString("TransliteratedText", "")
+
+                    lines.add(
+                        LyricLine(
+                            startTimeMs = lineStartMs,
+                            endTimeMs = lineEndMs,
+                            rawText = text.trim(),
+                            agentId = if (isOpposite) "v2" else null,
+                            translation = if (trans.isNotEmpty()) trans else null
+                        )
+                    )
+                }
+            } else {
+                // Static lyrics
+                val linesArray = body.optJSONArray("Lines") ?: return null
+                for (i in 0 until linesArray.length()) {
+                    val lObj = linesArray.getJSONObject(i)
+                    val text = lObj.optString("Text", "")
+                    lines.add(
+                        LyricLine(
+                            startTimeMs = 0L,
+                            endTimeMs = 0L,
+                            rawText = text.trim()
+                        )
+                    )
+                }
+            }
+
+            if (lines.isEmpty()) return null
+
+            val isWordSynced = syncType.equals("Syllable", ignoreCase = true)
+            val track = LyricTrack(
+                isWordSynced = isWordSynced,
+                lines = lines.sortedBy { it.startTimeMs },
+                source = "Spicy Lyrics ($providerName)",
+                attribution = attribution
+            )
+
+            if (expectedDurationMs > 0) {
+                val validation = LyricsMatchVerifier.validateLyricTrackTimeline(track, expectedDurationMs)
+                if (!validation.isValid) {
+                    DebugLog.w(TAG, "SpicyLyrics timeline validation rejected: ${(validation as LyricsMatchVerifier.LyricValidationResult.Rejected).reason}")
+                    return null
+                }
+            }
+
+            track
+        } catch (e: Exception) {
+            DebugLog.e(TAG, "Failed parsing SpicyLyrics JSON: ${e.message}")
+            null
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────────

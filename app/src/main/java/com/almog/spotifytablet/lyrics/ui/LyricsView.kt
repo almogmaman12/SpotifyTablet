@@ -63,6 +63,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -507,6 +508,67 @@ fun LyricsContent(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Attribution Badge (Required by Spicy Lyrics & Provider Terms of Service)
+        track.attribution?.let { attr ->
+            val context = LocalContext.current
+            val openUrl = { url: String? ->
+                if (!url.isNullOrBlank()) {
+                    try {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 12.dp, start = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "Lyrics from ${attr.provider}",
+                    color = Color.White.copy(alpha = 0.45f),
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.SansSerif
+                )
+                if (attr.uploader != null) {
+                    Text(
+                        text = "· uploaded by",
+                        color = Color.White.copy(alpha = 0.45f),
+                        fontSize = 11.sp
+                    )
+                    Text(
+                        text = attr.uploader.username,
+                        color = Color.White.copy(alpha = 0.75f),
+                        fontSize = 11.sp,
+                        textDecoration = if (attr.uploader.url != null) TextDecoration.Underline else TextDecoration.None,
+                        modifier = Modifier.clickable(enabled = attr.uploader.url != null) {
+                            openUrl(attr.uploader.url)
+                        }
+                    )
+                }
+                if (attr.maker != null) {
+                    Text(
+                        text = "· made by",
+                        color = Color.White.copy(alpha = 0.45f),
+                        fontSize = 11.sp
+                    )
+                    Text(
+                        text = attr.maker.username,
+                        color = Color.White.copy(alpha = 0.75f),
+                        fontSize = 11.sp,
+                        textDecoration = if (attr.maker.url != null) TextDecoration.Underline else TextDecoration.None,
+                        modifier = Modifier.clickable(enabled = attr.maker.url != null) {
+                            openUrl(attr.maker.url)
+                        }
+                    )
                 }
             }
         }

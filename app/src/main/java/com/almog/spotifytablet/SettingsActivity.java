@@ -344,16 +344,18 @@ SettingsActivity extends AppCompatActivity {
         // 7. ACCOUNT & CACHE
         // ===================================================================
         btnClearLyricsCache = findViewById(R.id.btnClearLyricsCache);
-        btnClearLyricsCache.setOnClickListener(v -> {
-            try {
-                java.io.File cacheDir = new java.io.File(getCacheDir(), "lyrics");
-                if (cacheDir.exists() && cacheDir.isDirectory()) {
-                    java.io.File[] files = cacheDir.listFiles();
-                    if (files != null) for (java.io.File f : files) f.delete();
-                }
-            } catch (Exception ignored) {}
-            Toast.makeText(this, "Lyrics cache cleared", Toast.LENGTH_SHORT).show();
-        });
+        btnClearLyricsCache.setOnClickListener(v ->
+                new AlertDialog.Builder(this)
+                        .setTitle("Clear Lyrics Cache?")
+                        .setMessage("This will delete all cached lyrics from disk and memory. They will be re-fetched from the network next time each song plays.")
+                        .setPositiveButton("Clear", (d, w) -> {
+                            // Clears both disk cache (lyrics_cache/) and in-memory LruCache
+                            com.almog.spotifytablet.lyrics.repository.LyricsRepository.clearAllCache();
+                            Toast.makeText(this, "Lyrics cache cleared", Toast.LENGTH_SHORT).show();
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show()
+        );
 
         btnResetSettings = findViewById(R.id.btnResetSettings);
         btnResetSettings.setOnClickListener(v ->

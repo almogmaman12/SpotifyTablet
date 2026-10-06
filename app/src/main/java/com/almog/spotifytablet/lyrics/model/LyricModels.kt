@@ -88,6 +88,17 @@ data class LyricLine(
         get() = words.isNotEmpty() && !isSynthesized
 }
 
+data class LyricContributor(
+    val username: String,
+    val url: String? = null
+)
+
+data class LyricAttribution(
+    val provider: String,
+    val uploader: LyricContributor? = null,
+    val maker: LyricContributor? = null
+)
+
 /**
  * Represents a complete lyric track.
  *
@@ -95,12 +106,14 @@ data class LyricLine(
  * @property lines The sorted sequence of lyric lines.
  * @property source Optional descriptor of the provider source (e.g., "Apple TTML", "LRCLIB", "Musixmatch").
  * @property bpm Optional tempo in beats per minute if detected/supplied.
+ * @property attribution Optional legal attribution information (provider, uploader, maker).
  */
 data class LyricTrack(
     val isWordSynced: Boolean,
     val lines: List<LyricLine>,
     val source: String = "",
-    val bpm: Float? = null
+    val bpm: Float? = null,
+    val attribution: LyricAttribution? = null
 )
 
 /**

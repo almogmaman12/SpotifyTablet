@@ -21,6 +21,7 @@ public final class Constants {
     public static final String SPOTIFY_SCOPES = "user-read-playback-state user-read-currently-playing user-modify-playback-state"; // Permissions requested from Spotify
     public static final String SPOTIFY_DJ_PLAYLIST_URI = "spotify:playlist:37i9dQZF1EYkqdzj48dyYq"; // Spotify AI DJ Playlist URI identifier
     public static final String SPOTIFY_DJ_CONTEXT_KEY = "context_uri"; // JSON payload parameter key for starting Spotify DJ playlist
+    public static final String SPICY_LYRICS_API_KEY = BuildConfig.SPICY_LYRICS_API_KEY; // Injected from local.properties
 
     // Full Spotify Auth Web Page Intent URL
     public static final String SPOTIFY_AUTH_URI = SPOTIFY_AUTH_BASE_URL +

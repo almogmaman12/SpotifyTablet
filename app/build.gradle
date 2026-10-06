@@ -38,6 +38,7 @@ android {
         buildConfigField "String", "DEFAULT_HA_PROJECT_WEBHOOK_URL","\"${localProps['DEFAULT_HA_PROJECT_WEBHOOK_URL'] ?: ''}\""
         buildConfigField "String", "DEFAULT_WEATHER_CITY",          "\"${localProps['DEFAULT_WEATHER_CITY'] ?: ''}\""
         buildConfigField "String", "DEFAULT_JELLYFIN_TARGET_USER",  "\"${localProps['DEFAULT_JELLYFIN_TARGET_USER'] ?: ''}\""
+        buildConfigField "String", "SPICY_LYRICS_API_KEY",          "\"${localProps['SPICY_LYRICS_API_KEY'] ?: ''}\""
     }
 
     buildTypes {

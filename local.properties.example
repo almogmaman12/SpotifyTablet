@@ -11,6 +11,10 @@ sdk.dir=/path/to/your/Android/Sdk
 SPOTIFY_CLIENT_ID=your_spotify_client_id_here
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here
 
+# ── Spicy Lyrics API ───────────────────────────────────────────────────────────
+# Get your API key from https://developers.spicylyrics.org/dashboard
+SPICY_LYRICS_API_KEY=sl_sk_your_spicy_lyrics_key_here
+
 # ── WeatherAPI.com ─────────────────────────────────────────────────────────────
 # Get a free key from https://www.weatherapi.com/
 WEATHER_API_KEY=your_weatherapi_key_here
