@@ -45,13 +45,16 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.Shader
+import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
@@ -97,90 +100,51 @@ private const val SPICY_BLUR_MULTIPLIER = 1.25f
  * when the active word's progress changes, never for every word on every frame.
  */
 /**
- * Stable brush for one lyric word or letter. It samples playback during draw, not composition.
- * Only the current time-active glyph reads the playback clock; upcoming/completed glyphs paint
- * a flat color and do not wake up for every frame.
+ * A stable ShaderBrush for a single glyph. A small gradient shader is created once per size;
+ * only its matrix changes during draw, moving the 20% feather from -20% to 100%.
  */
 private class SpicyPlaybackBrush(
-    private val positionProvider: () -> Long,
-    private val startTimeMs: Long,
-    private val endTimeMs: Long,
     private val isRtl: Boolean,
     private val litAlpha: Float,
     private val dimAlpha: Float
-) : Brush() {
-    var isActive: Boolean = false
-    var isCompleted: Boolean = false
-
-    override fun applyTo(size: Size, p: Paint, alpha: Float) {
-        if (!isActive || size.width <= 0f || size.height <= 0f) {
-            p.shader = null
-            p.color = Color.White.copy(alpha = if (isCompleted) litAlpha else dimAlpha)
-            p.alpha = alpha
-            return
-        }
-
-        // Reading SnapshotState here invalidates this glyph's draw, not its composition.
-        val position = positionProvider() + PRE_ROLL_OFFSET_MS
-        val duration = (endTimeMs - startTimeMs).coerceAtLeast(1L)
-        val progress = ((position - startTimeMs).toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-        val glow = when {
-            progress < 0.15f -> (progress / 0.15f).coerceIn(0f, 1f)
-            progress <= 0.60f -> 1f
-            else -> ((1f - progress) / 0.40f).coerceIn(0f, 1f)
-        }
-        val activeLitAlpha = (litAlpha + glow * 0.10f).coerceAtMost(1f)
-        val rawStart = -0.20f + 1.20f * progress
-        val rawEnd = rawStart + SPICY_SWEEP_FEATHER
-
-        if (rawEnd <= 0f) {
-            p.shader = null
-            p.color = Color.White.copy(alpha = dimAlpha)
-            p.alpha = alpha
-            return
-        }
-        if (rawStart >= 1f) {
-            p.shader = null
-            p.color = Color.White.copy(alpha = litAlpha)
-            p.alpha = alpha
-            return
-        }
-
-        fun alphaAt(t: Float): Float = when {
-            t <= rawStart -> activeLitAlpha
-            t >= rawEnd -> dimAlpha
-            else -> activeLitAlpha + (dimAlpha - activeLitAlpha) *
-                ((t - rawStart) / (rawEnd - rawStart)).coerceIn(0f, 1f)
-        }
-
-        val stops = if (isRtl) {
-            listOf(
-                0f,
-                (1f - rawEnd).coerceIn(0f, 1f),
-                (1f - rawStart).coerceIn(0f, 1f),
-                1f
-            ).distinct().sorted()
-        } else {
-            buildList {
-                add(0f)
-                if (rawStart in 0f..1f) add(rawStart)
-                if (rawEnd in 0f..1f) add(rawEnd)
-                add(1f)
-            }.distinct().sorted()
-        }
-
-        val colorStops = stops.map { t ->
-            val progressAxis = if (isRtl) 1f - t else t
-            t to Color.White.copy(alpha = alphaAt(progressAxis))
-        }.toTypedArray()
-
+) : ShaderBrush() {
+    override fun createShader(size: Size): Shader {
+        val stops = arrayOf(
+            0f to Color.White.copy(alpha = litAlpha),
+            SPICY_SWEEP_FEATHER to Color.White.copy(alpha = dimAlpha),
+            1f to Color.White.copy(alpha = dimAlpha)
+        )
         val gradient = if (isRtl) {
-            Brush.horizontalGradient(colorStops = colorStops)
+            Brush.horizontalGradient(
+                colorStops = stops,
+                startX = size.width,
+                endX = 0f
+            )
         } else {
-            // Mixed.css uses 180deg for LTR, which is a top-to-bottom sweep.
-            Brush.verticalGradient(colorStops = colorStops)
+            Brush.verticalGradient(
+                colorStops = stops,
+                startY = 0f,
+                endY = size.height
+            )
         }
-        gradient.applyTo(size, p, alpha)
+        return (gradient as ShaderBrush).createShader(size)
+    }
+
+    /**
+     * The shader is drawn once per active glyph. Moving it by rawStart places the feather
+     * at (-20% + 120% progress), just like Spicy's CSS gradient-position animation.
+     */
+    fun updateProgress(progress: Float, size: Size) {
+        val rawStart = -0.20f + 1.20f * progress.coerceIn(0f, 1f)
+        val matrix = Matrix()
+        if (isRtl) {
+            matrix.translate(-rawStart * size.width, 0f)
+        } else {
+            matrix.translate(0f, rawStart * size.height)
+        }
+        // Compose 1.7.x exposes ShaderBrush.transform(matrix); it updates the cached
+        // transform shader without creating a new Paint shader or a new TextStyle.
+        transform(matrix)
     }
 }
 
@@ -1215,19 +1179,36 @@ private fun SpicyAnimatedTextUnit(
     }
     val sweepBrush = remember(startTimeMs, endTimeMs, isSubduedBackground, text) {
         SpicyPlaybackBrush(
-            positionProvider = positionProvider,
-            startTimeMs = startTimeMs,
-            endTimeMs = endTimeMs,
             isRtl = isRtlText(text),
             litAlpha = litAlpha,
             dimAlpha = dimAlpha
         )
     }
-    // This value changes only at timing boundaries because it is derived to the discrete state.
-    sweepBrush.isActive = isAnimationEnabled &&
-        isActiveLine &&
-        playbackState == SpicyWordPlaybackState.Active
-    sweepBrush.isCompleted = playbackState == SpicyWordPlaybackState.Completed
+    val glowStage by remember(startTimeMs, endTimeMs, isActiveLine, isAnimationEnabled) {
+        derivedStateOf {
+            if (!isAnimationEnabled || !isActiveLine) {
+                0
+            } else {
+                val p = ((positionProvider() + PRE_ROLL_OFFSET_MS - startTimeMs).toFloat() /
+                    duration.toFloat()).coerceIn(0f, 1f)
+                when {
+                    p < 0.05f -> 0
+                    p < 0.15f -> 1
+                    p < 0.60f -> 2
+                    p < 0.80f -> 3
+                    p < 0.96f -> 4
+                    else -> 5
+                }
+            }
+        }
+    }
+    val glowStrength = when (glowStage) {
+        1 -> 0.45f
+        2 -> 1f
+        3 -> 0.68f
+        4 -> 0.28f
+        else -> 0f
+    }
 
     val staticStyle = remember(
         fontSize,
@@ -1250,7 +1231,7 @@ private fun SpicyAnimatedTextUnit(
             shadow = inactiveLineShadow
         )
     }
-    val animatedStyle = remember(fontSize, lineHeight, isSubduedBackground, sweepBrush, glowColor, isLetter) {
+    val animatedStyle = remember(fontSize, lineHeight, isSubduedBackground, sweepBrush, glowColor, isLetter, glowStrength) {
         TextStyle(
             brush = sweepBrush,
             fontSize = fontSize,
@@ -1259,12 +1240,11 @@ private fun SpicyAnimatedTextUnit(
             fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal,
             fontFamily = FontFamily.SansSerif,
             letterSpacing = 0.sp,
-            // The fill itself brightens during the word sweep. Keep one modest text shadow instead
-            // of rebuilding TextStyle/shader on every frame.
+            // Glow changes at a few timing boundaries, not every frame.
             shadow = Shadow(
-                color = glowColor.copy(alpha = if (isSubduedBackground) 0.35f else 0.48f),
+                color = glowColor.copy(alpha = glowStrength * if (isLetter) 1f else 0.90f),
                 offset = Offset.Zero,
-                blurRadius = if (isLetter) 10f else 7f
+                blurRadius = if (isLetter) 4f + 12f * glowStrength else 4f + 6f * glowStrength
             )
         )
     }
@@ -1297,13 +1277,22 @@ private fun SpicyAnimatedTextUnit(
         modifier = wordModifier,
         contentAlignment = Alignment.CenterStart
     ) {
-        if (isAnimationEnabled && isActiveLine) {
+        if (isAnimationEnabled &&
+            isActiveLine &&
+            playbackState == SpicyWordPlaybackState.Active
+        ) {
             Text(
                 text = text,
                 style = animatedStyle,
-                // The brush changes only while this word is active. There is no duplicate Text,
-                // offscreen mask, or graphics layer on static words.
-                modifier = Modifier
+                // Only this active glyph reads playback state during draw. The draw phase updates
+                // the shader matrix and does not rebuild the TextStyle/gradient every frame.
+                modifier = Modifier.drawWithContent {
+                    val position = positionProvider() + PRE_ROLL_OFFSET_MS
+                    val progress = ((position - startTimeMs).toFloat() / duration.toFloat())
+                        .coerceIn(0f, 1f)
+                    sweepBrush.updateProgress(progress, size)
+                    drawContent()
+                }
             )
         } else {
             Text(text = text, style = staticStyle)
