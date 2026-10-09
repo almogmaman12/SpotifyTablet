@@ -244,9 +244,7 @@ private fun isLetterCapableDuration(durationMs: Long, word: WordSync): Boolean =
     durationMs >= 1400L && word.graphemes.size in 2..12 && canSplitIntoLetters(word.text)
 
 private val LineTransformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
-private val ShadowOffsetBase = Offset(0f, 2f)
 private val ShadowOffsetGlow = Offset(0f, 0f)
-private val ShadowOffsetSubtle = Offset(0f, 1f)
 
 @Composable
 fun LyricsView(
@@ -1189,14 +1187,6 @@ private fun RhythmSingleSyllableSweepText(
     val litColor = Color.White.copy(alpha = litAlpha)
     val dimColor = Color.White.copy(alpha = dimAlpha)
 
-    val baseShadow = remember {
-        Shadow(
-            color = Color(0x99000000),
-            offset = ShadowOffsetBase,
-            blurRadius = 6f
-        )
-    }
-
     val completedStyle = remember(litColor, fontSize, lineHeight, fontStyle) {
         TextStyle(
             color = litColor,
@@ -1206,7 +1196,6 @@ private fun RhythmSingleSyllableSweepText(
             fontFamily = FontFamily.SansSerif,
             letterSpacing = 0.sp,
             lineHeight = lineHeight,
-            shadow = baseShadow
         )
     }
 
@@ -1219,7 +1208,6 @@ private fun RhythmSingleSyllableSweepText(
             fontFamily = FontFamily.SansSerif,
             letterSpacing = 0.sp,
             lineHeight = lineHeight,
-            shadow = baseShadow
         )
     }
 
@@ -1247,7 +1235,7 @@ private fun RhythmSingleSyllableSweepText(
                 shadow = Shadow(
                     color = glowColor.copy(alpha = glowStrength * if (isSubduedBackground) 0.45f else 0.72f),
                     offset = ShadowOffsetGlow,
-                    blurRadius = if (isSubduedBackground) 7f else 12f
+                    blurRadius = 4f
                 )
             )
         }
@@ -1280,14 +1268,6 @@ private fun RhythmLetterGroupSweepText(
     val litColor = Color.White.copy(alpha = litAlpha)
     val dimColor = Color.White.copy(alpha = dimAlpha)
 
-    val baseShadow = remember {
-        Shadow(
-            color = Color(0x99000000),
-            offset = ShadowOffsetBase,
-            blurRadius = 6f
-        )
-    }
-
     val completedLetterStyle = remember(litColor, fontSize, lineHeight, fontStyle) {
         TextStyle(
             color = litColor,
@@ -1297,7 +1277,6 @@ private fun RhythmLetterGroupSweepText(
             fontFamily = FontFamily.SansSerif,
             letterSpacing = 0.sp,
             lineHeight = lineHeight,
-            shadow = baseShadow
         )
     }
 
@@ -1310,7 +1289,6 @@ private fun RhythmLetterGroupSweepText(
             fontFamily = FontFamily.SansSerif,
             letterSpacing = 0.sp,
             lineHeight = lineHeight,
-            shadow = baseShadow
         )
     }
 
