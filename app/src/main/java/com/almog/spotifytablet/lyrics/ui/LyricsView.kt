@@ -389,7 +389,6 @@ fun LyricsContent(
                 .fillMaxSize()
                 .graphicsLayer {
                     alpha = stageAlpha
-                    translationY = -focalShiftPx
                     compositingStrategy = CompositingStrategy.Offscreen
                 }
                 .drawWithContent {
@@ -479,7 +478,7 @@ fun LyricsContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .graphicsLayer {
-                            translationY = -48f * density.density
+                            translationY = -48f * density.density - focalShiftPx
                             alpha = pauseAlpha
                         },
                     contentAlignment = Alignment.CenterStart
@@ -513,7 +512,7 @@ fun LyricsContent(
                     // FlowRows mean they never recompose per frame.
                     val renderAsActive = isActive || Math.abs(offset) <= 1
 
-                    val targetYPx = targetYOffsetsPx[offset] ?: (offset * (fallbackLineHeightPx + interLineGapPx))
+                    val targetYPx = (targetYOffsetsPx[offset] ?: (offset * (fallbackLineHeightPx + interLineGapPx))) - focalShiftPx
 
                     val animatedYOffsetPx by animateFloatAsState(
                         targetValue = targetYPx,
@@ -1146,36 +1145,93 @@ private fun SpicyAnimatedTextUnit(
                         val position = positionProvider() + PRE_ROLL_OFFSET_MS
                         val progress = ((position - startTimeMs).toFloat() / duration.toFloat())
                             .coerceIn(0f, 1f)
-                        val sweepEnd = (-0.20f + 1.20f * progress).coerceIn(0f, 1f)
+                        val rawSweepPosition = -0.20f + 1.20f * progress
                         val feather = SPICY_SWEEP_FEATHER
+                        val transitionEnd = rawSweepPosition + feather
                         val rtl = isRtlText(text)
                         val mask = if (rtl) {
-                            val fadeStart = (1f - sweepEnd).coerceIn(0f, 1f)
-                            val litStart = (fadeStart + feather).coerceIn(fadeStart, 1f)
-                            Brush.horizontalGradient(
-                                colorStops = arrayOf(
-                                    0f to Color.Transparent,
-                                    fadeStart to Color.Transparent,
-                                    litStart to Color.White,
-                                    1f to Color.White
-                                ),
-                                startX = 0f,
-                                endX = size.width
-                            )
+                            when {
+                                transitionEnd <= 0f -> Brush.horizontalGradient(
+                                    colors = listOf(Color.Transparent, Color.Transparent),
+                                    startX = 0f,
+                                    endX = size.width
+                                )
+                                rawSweepPosition >= 1f -> Brush.horizontalGradient(
+                                    colors = listOf(Color.White, Color.White),
+                                    startX = 0f,
+                                    endX = size.width
+                                )
+                                rawSweepPosition < 0f -> {
+                                    // Stop positions begin off the right edge; preserve the
+                                    // partially revealed edge instead of snapping at 0%.
+                                    val edgeAlpha = (transitionEnd / feather).coerceIn(0f, 1f)
+                                    val fadeStart = (1f - transitionEnd).coerceIn(0f, 1f)
+                                    Brush.horizontalGradient(
+                                        colorStops = arrayOf(
+                                            0f to Color.Transparent,
+                                            fadeStart to Color.Transparent,
+                                            1f to Color.White.copy(alpha = edgeAlpha)
+                                        ),
+                                        startX = 0f,
+                                        endX = size.width
+                                    )
+                                }
+                                else -> {
+                                    val fadeStart = (1f - transitionEnd).coerceIn(0f, 1f)
+                                    val litStart = (1f - rawSweepPosition).coerceIn(0f, 1f)
+                                    Brush.horizontalGradient(
+                                        colorStops = arrayOf(
+                                            0f to Color.Transparent,
+                                            fadeStart to Color.Transparent,
+                                            litStart to Color.White,
+                                            1f to Color.White
+                                        ),
+                                        startX = 0f,
+                                        endX = size.width
+                                    )
+                                }
+                            }
                         } else {
-                            // Spicy's default --gradient-degrees is 180deg, so LTR fill
-                            // progresses vertically over each word/letter rather than horizontally.
-                            val fadeStart = (sweepEnd - feather).coerceIn(0f, 1f)
-                            Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0f to Color.White,
-                                    fadeStart to Color.White,
-                                    sweepEnd to Color.Transparent,
-                                    1f to Color.Transparent
-                                ),
-                                startY = 0f,
-                                endY = size.height
-                            )
+                            when {
+                                transitionEnd <= 0f -> Brush.verticalGradient(
+                                    colors = listOf(Color.Transparent, Color.Transparent),
+                                    startY = 0f,
+                                    endY = size.height
+                                )
+                                rawSweepPosition >= 1f -> Brush.verticalGradient(
+                                    colors = listOf(Color.White, Color.White),
+                                    startY = 0f,
+                                    endY = size.height
+                                )
+                                rawSweepPosition < 0f -> {
+                                    // The CSS gradient starts at -20%, so the top edge begins
+                                    // partially dim and becomes progressively lit before 0%.
+                                    val edgeAlpha = (transitionEnd / feather).coerceIn(0f, 1f)
+                                    val fadeEnd = transitionEnd.coerceIn(0f, 1f)
+                                    Brush.verticalGradient(
+                                        colorStops = arrayOf(
+                                            0f to Color.White.copy(alpha = edgeAlpha),
+                                            fadeEnd to Color.Transparent,
+                                            1f to Color.Transparent
+                                        ),
+                                        startY = 0f,
+                                        endY = size.height
+                                    )
+                                }
+                                else -> {
+                                    val fadeEnd = transitionEnd.coerceIn(0f, 1f)
+                                    Brush.verticalGradient(
+                                        colorStops = arrayOf(
+                                            0f to Color.White,
+                                            rawSweepPosition to Color.White,
+                                            fadeEnd to Color.Transparent,
+                                            1f to Color.Transparent
+                                        ),
+                                        startY = 0f,
+                                        endY = size.height
+                                    )
+                                }
+                            }
                         }
                         drawRect(brush = mask, blendMode = BlendMode.DstIn)
                     }
