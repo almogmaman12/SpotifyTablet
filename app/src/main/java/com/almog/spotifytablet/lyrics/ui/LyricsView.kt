@@ -976,9 +976,13 @@ fun RhythmWordHighlightText(
     val baseAlpha = if (isSubduedBackground) 0.55f else 1f
     val dimColor = Color(0x66FFFFFF).copy(alpha = baseAlpha * 0.6f)
     val litColor = Color.White.copy(alpha = baseAlpha)
-    val textStyle = remember(fontSize, lineHeight, isSubduedBackground, dimColor) {
+    val baseTextColor = if (
+        playbackState == SpicyWordPlaybackState.Completed ||
+        (!isAnimationEnabled && playbackState == SpicyWordPlaybackState.Active)
+    ) litColor else dimColor
+    val textStyle = remember(fontSize, lineHeight, isSubduedBackground, baseTextColor) {
         TextStyle(
-            color = dimColor,
+            color = baseTextColor,
             fontSize = fontSize,
             lineHeight = lineHeight,
             fontWeight = FontWeight.Bold,
