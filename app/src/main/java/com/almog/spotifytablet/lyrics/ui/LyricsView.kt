@@ -827,7 +827,7 @@ fun RhythmWordHighlightText(
     isAnimationEnabled: Boolean = true,
     isActiveLine: Boolean = true,
     isSubduedBackground: Boolean = false,
-    glowColor: Color = if (isSubduedBackground) Color(0xFF00E676) else Color(0xFF1DB954),
+    glowColor: Color = Color.White,
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
     modifier: Modifier = Modifier
 ) {
@@ -865,8 +865,9 @@ fun RhythmWordHighlightText(
     }
 
     val isLetterCapable = isAnimationEnabled &&
-        (duration >= 1400L) &&
-        word.text.length in 2..10
+        duration >= 1400L &&
+        word.graphemes.size in 2..12 &&
+        word.text.none { it.code in 0x0600..0x0DFF }
 
     Box(
         modifier = modifier
