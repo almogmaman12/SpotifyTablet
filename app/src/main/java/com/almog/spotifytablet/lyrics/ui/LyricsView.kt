@@ -740,16 +740,23 @@ fun SpicyPauseDots(
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
     modifier: Modifier = Modifier
 ) {
-    val currentPositionMs = positionProvider()
     val totalTime = (nextStartMs - pauseStartMs).coerceAtLeast(1000L)
     val baseDotTime = totalTime / 3
 
     val dot1End = pauseStartMs + baseDotTime
     val dot2End = pauseStartMs + (baseDotTime * 2)
 
-    val dot1Active = currentPositionMs >= pauseStartMs
-    val dot2Active = currentPositionMs >= dot1End
-    val dot3Active = currentPositionMs >= dot2End
+    // These derived states depend on playback time, but only invalidate composition when
+    // a dot crosses its threshold, rather than on every playback-clock update.
+    val dot1Active by remember(pauseStartMs, nextStartMs) {
+        derivedStateOf { positionProvider() >= pauseStartMs }
+    }
+    val dot2Active by remember(pauseStartMs, nextStartMs) {
+        derivedStateOf { positionProvider() >= dot1End }
+    }
+    val dot3Active by remember(pauseStartMs, nextStartMs) {
+        derivedStateOf { positionProvider() >= dot2End }
+    }
 
     val dotSpring = rhythm.calculateRhythmSpringSpec<Float>(baseStiffness = 380f, baseDamping = 0.65f)
 
