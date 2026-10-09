@@ -925,7 +925,7 @@ fun SingleLyricLineRow(
     modifier: Modifier = Modifier
 ) {
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
-    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
+    val lineHeight = (fontSize.value * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
     val baseAlpha = when {
         isSubduedBackground && (isActiveLine || isPastLine) -> 0.60f
@@ -1173,7 +1173,7 @@ private fun RhythmSingleSyllableSweepText(
         if (word.trailingSpace) "${word.text} " else word.text
     }
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
-    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
+    val lineHeight = (fontSize.value * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
     val litAlpha = if (isSubduedBackground) 0.60f else 0.85f
     val dimAlpha = if (isSubduedBackground) 0.30f else 0.35f
@@ -1262,7 +1262,7 @@ private fun RhythmLetterGroupSweepText(
 ) {
     val totalDuration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
-    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
+    val lineHeight = (fontSize.value * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
     val litAlpha = if (isSubduedBackground) 0.60f else 0.85f
     val dimAlpha = if (isSubduedBackground) 0.30f else 0.35f
