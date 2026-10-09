@@ -1123,8 +1123,7 @@ private fun RhythmSingleSyllableSweepText(
         isWordCompleted -> completedStyle
         !isWordActive -> unstartedStyle
         else -> {
-            val sweepProgress = calculateWordProgressEasing(rawProgress, durationMs, rhythm)
-            val p = sweepProgress.coerceIn(0f, 1f)
+            val p = rawProgress.coerceIn(0f, 1f)
             val textBrush = SpicySweepBrush(
                 progress = p,
                 isRtl = isRtlText(displayString),
@@ -1236,8 +1235,7 @@ private fun RhythmLetterGroupSweepText(
                 isLetterDone || isWordCompleted -> completedLetterStyle
                 !isLetterActive -> unstartedLetterStyle
                 else -> {
-                    val letterProgress = calculateWordProgressEasing(rawLetterProgress, letterDuration, rhythm)
-                    val p = letterProgress.coerceIn(0f, 1f)
+                    val p = rawLetterProgress.coerceIn(0f, 1f)
                     val textBrush = SpicySweepBrush(
                         progress = p,
                         isRtl = isRtlText(graphemeCluster),
