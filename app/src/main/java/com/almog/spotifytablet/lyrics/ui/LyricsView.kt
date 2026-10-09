@@ -594,7 +594,6 @@ fun LyricsContent(
                             SingleLyricLineRow(
                                 line = line,
                                 positionProvider = positionProvider,
-                                mode = mode,
                                 isAnimationEnabled = isAnimationEnabled,
                                 isActiveLine = isActive,
                                 forceFlowRow = renderAsActive,
@@ -730,12 +729,13 @@ private fun getPauseInfo(lines: List<LyricLine>, activeLineIndex: Int, currentPo
 
 @Composable
 fun SpicyPauseDots(
-    currentPositionMs: Long,
+    positionProvider: () -> Long,
     pauseStartMs: Long,
     nextStartMs: Long,
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
     modifier: Modifier = Modifier
 ) {
+    val currentPositionMs = positionProvider()
     val totalTime = (nextStartMs - pauseStartMs).coerceAtLeast(1000L)
     val baseDotTime = totalTime / 3
 
@@ -798,7 +798,7 @@ private fun PauseDot(
 @Composable
 fun SingleLyricLineRow(
     line: LyricLine,
-    currentPositionMs: Long,
+    positionProvider: () -> Long,
     isAnimationEnabled: Boolean = true,
     isActiveLine: Boolean = true,
     forceFlowRow: Boolean = false,
@@ -807,6 +807,7 @@ fun SingleLyricLineRow(
     activeFontSizeSp: Float = 32f,
     modifier: Modifier = Modifier
 ) {
+    val currentPositionMs = positionProvider()
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
@@ -884,7 +885,7 @@ fun SingleLyricLineRow(
                                 syllables.forEach { word ->
                                     RhythmWordHighlightText(
                                         word = word,
-                                        currentPositionMs = currentPositionMs,
+                                        positionProvider = positionProvider,
                                         isAnimationEnabled = isAnimationEnabled,
                                         isActiveLine = isActiveLine,
                                         isSubduedBackground = isSubduedBackground,
@@ -932,7 +933,7 @@ fun SingleLyricLineRow(
 @Composable
 fun RhythmWordHighlightText(
     word: WordSync,
-    currentPositionMs: Long,
+    positionProvider: () -> Long,
     isAnimationEnabled: Boolean = true,
     isActiveLine: Boolean = true,
     isSubduedBackground: Boolean = false,
@@ -940,6 +941,7 @@ fun RhythmWordHighlightText(
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
     modifier: Modifier = Modifier
 ) {
+    val currentPositionMs = positionProvider()
     val duration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
 
     // Predictive Pre-Roll (starts anticipation 45ms before timestamp)
