@@ -947,78 +947,124 @@ fun RhythmWordHighlightText(
     activeFontSizeSp: Float = 32f,
     modifier: Modifier = Modifier
 ) {
-    val currentPositionMs = positionProvider()
     val duration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
-
-    // Predictive Pre-Roll (starts anticipation 45ms before timestamp)
-    val rawWordProgress = if (isActiveLine) {
-        val elapsed = currentPositionMs + PRE_ROLL_OFFSET_MS - word.startTimeMs
-        when {
-            elapsed < 0L -> 0f
-            elapsed >= duration -> 1f
-            else -> (elapsed.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+    val playbackState by remember(word.startTimeMs, word.endTimeMs, isActiveLine) {
+        derivedStateOf {
+            val position = positionProvider() + PRE_ROLL_OFFSET_MS
+            when {
+                !isActiveLine && position < word.endTimeMs -> SpicyWordPlaybackState.Upcoming
+                position < word.startTimeMs -> SpicyWordPlaybackState.Upcoming
+                position >= word.endTimeMs -> SpicyWordPlaybackState.Completed
+                else -> SpicyWordPlaybackState.Active
+            }
         }
-    } else {
-        if (currentPositionMs >= word.endTimeMs) 1f else 0f
     }
-
-    val isWordActive = rawWordProgress > 0f && rawWordProgress < 1f
-    val isWordCompleted = rawWordProgress >= 1f
-
-    val wordPeakScale = if (isLetterCapableDuration(duration, word)) 1.175f else 1.0505f
-    val wordScale = if (isWordActive) {
-        val scale = spicyScale(rawWordProgress, wordPeakScale)
-        if (isSubduedBackground) 1f + (scale - 1f) * 0.55f else scale
-    } else if (isWordCompleted) {
-        1f
-    } else {
-        0.95f
+    val animator = remember(word.startTimeMs, word.endTimeMs) {
+        SpicyLyricsAnimator(isLetter = false)
     }
-
-    val wordOffsetY = if (isWordActive) {
-        val lift = spicyYOffset(rawWordProgress) * activeFontSizeSp
-        if (isSubduedBackground) lift * 0.5f else lift
-    } else {
-        0f
+    val displayText = remember(word.text, word.trailingSpace) {
+        if (word.trailingSpace) "${word.text} " else word.text
     }
-
-    val isLetterCapable = isAnimationEnabled &&
-            duration >= 1400L &&
-            word.graphemes.size in 2..12 &&
-            canSplitIntoLetters(word.text)
+    val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
+    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
+    val baseAlpha = if (isSubduedBackground) 0.55f else 1f
+    val dimColor = Color(0x66FFFFFF).copy(alpha = baseAlpha * 0.6f)
+    val litColor = Color.White.copy(alpha = baseAlpha)
+    val textStyle = remember(fontSize, lineHeight, isSubduedBackground, dimColor) {
+        TextStyle(
+            color = dimColor,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            fontWeight = FontWeight.Bold,
+            fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal,
+            fontFamily = FontFamily.SansSerif,
+            letterSpacing = (-0.3).sp,
+            shadow = Shadow(
+                color = Color(0x99000000),
+                offset = ShadowOffsetBase,
+                blurRadius = 6f
+            )
+        )
+    }
 
     Box(
         modifier = modifier
-            .padding(horizontal = 0.dp, vertical = 0.dp)
             .graphicsLayer {
-                scaleX = wordScale
-                scaleY = wordScale
-                translationY = wordOffsetY * density
+                if (!isAnimationEnabled || playbackState != SpicyWordPlaybackState.Active) {
+                    val scale = if (playbackState == SpicyWordPlaybackState.Completed) 1f else 0.95f
+                    scaleX = scale
+                    scaleY = scale
+                    translationY = 0f
+                } else {
+                    // Reading the clock here invalidates the graphics layer, not composition.
+                    val position = positionProvider()
+                    val frame = animator.sample(
+                        positionMs = position,
+                        startTimeMs = word.startTimeMs,
+                        endTimeMs = word.endTimeMs,
+                        frameTimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
+                    )
+                    scaleX = frame.scale
+                    scaleY = frame.scale
+                    translationY = frame.yOffsetEm * activeFontSizeSp * density
+                }
             },
         contentAlignment = Alignment.CenterStart
     ) {
-        if (isLetterCapable && isActiveLine) {
-            RhythmLetterGroupSweepText(
-                word = word,
-                currentPositionMs = currentPositionMs,
-                isWordActive = isWordActive,
-                isWordCompleted = isWordCompleted,
-                isSubduedBackground = isSubduedBackground,
-                glowColor = glowColor,
-                rhythm = rhythm,
-                activeFontSizeSp = activeFontSizeSp
-            )
-        } else {
-            RhythmSingleSyllableSweepText(
-                word = word,
-                rawProgress = rawWordProgress,
-                durationMs = duration,
-                isWordActive = isWordActive,
-                isWordCompleted = isWordCompleted,
-                isSubduedBackground = isSubduedBackground,
-                glowColor = glowColor,
-                rhythm = rhythm,
-                activeFontSizeSp = activeFontSizeSp
+        Text(text = displayText, style = textStyle)
+
+        if (isAnimationEnabled && isActiveLine && playbackState == SpicyWordPlaybackState.Active) {
+            Text(
+                text = displayText,
+                style = textStyle.copy(color = litColor, shadow = Shadow(
+                    color = glowColor.copy(alpha = if (isSubduedBackground) 0.25f else 0.4f),
+                    offset = ShadowOffsetGlow,
+                    blurRadius = if (isSubduedBackground) 5f else 8f
+                )),
+                modifier = Modifier
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
+                    .drawWithContent {
+                        drawContent()
+                        // Playback is sampled in the draw phase, so the bright sweep doesn't
+                        // rebuild TextStyle/Brush or recompose the word on every frame.
+                        val position = positionProvider() + PRE_ROLL_OFFSET_MS
+                        val progress = ((position - word.startTimeMs).toFloat() / duration.toFloat())
+                            .coerceIn(0f, 1f)
+                        val feather = SPICY_SWEEP_FEATHER
+                        val sweepEnd = (-0.20f + 1.20f * progress).coerceIn(0f, 1f)
+                        val opaqueEnd = if (isRtlText(word.text)) 1f - sweepEnd else sweepEnd
+                        val featherEnd = if (isRtlText(word.text)) {
+                            (opaqueEnd + feather).coerceIn(0f, 1f)
+                        } else {
+                            (opaqueEnd - feather).coerceIn(0f, 1f)
+                        }
+                        val brush = if (isRtlText(word.text)) {
+                            Brush.horizontalGradient(
+                                colorStops = arrayOf(
+                                    0f to Color.Transparent,
+                                    featherEnd to Color.Transparent,
+                                    opaqueEnd to Color.White,
+                                    1f to Color.White
+                                ),
+                                startX = 0f,
+                                endX = size.width
+                            )
+                        } else {
+                            Brush.horizontalGradient(
+                                colorStops = arrayOf(
+                                    0f to Color.White,
+                                    featherEnd.coerceAtLeast(0f) to Color.White,
+                                    sweepEnd to Color.Transparent,
+                                    1f to Color.Transparent
+                                ),
+                                startX = 0f,
+                                endX = size.width
+                            )
+                        }
+                        drawRect(brush = brush, blendMode = BlendMode.DstIn)
+                    }
             )
         }
     }
