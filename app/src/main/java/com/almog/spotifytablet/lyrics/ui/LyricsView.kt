@@ -812,7 +812,6 @@ fun SingleLyricLineRow(
     activeFontSizeSp: Float = 32f,
     modifier: Modifier = Modifier
 ) {
-    val currentPositionMs = positionProvider()
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
@@ -1044,8 +1043,8 @@ fun RhythmWordHighlightText(
                             Brush.horizontalGradient(
                                 colorStops = arrayOf(
                                     0f to Color.Transparent,
-                                    featherEnd to Color.Transparent,
-                                    opaqueEnd to Color.White,
+                                    opaqueEnd to Color.Transparent,
+                                    featherEnd to Color.White,
                                     1f to Color.White
                                 ),
                                 startX = 0f,
