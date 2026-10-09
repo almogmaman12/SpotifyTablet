@@ -1192,34 +1192,40 @@ private fun SpicyAnimatedTextUnit(
         )
     }
 
+    // Promote only the time-active word/letter to its own layer. The previous implementation
+    // created a graphics layer for every word in the active line, even while those words were still
+    // upcoming or had already finished.
+    val wordModifier = if (
+        isAnimationEnabled &&
+        isActiveLine &&
+        playbackState == SpicyWordPlaybackState.Active
+    ) {
+        modifier.graphicsLayer {
+            val frame = animator.sample(
+                positionMs = positionProvider(),
+                startTimeMs = startTimeMs,
+                endTimeMs = endTimeMs,
+                frameTimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
+            )
+            scaleX = frame.scale
+            scaleY = frame.scale
+            translationY = frame.yOffsetEm * activeFontSizeSp * density *
+                if (isLetter) 2f else 1f
+        }
+    } else {
+        modifier
+    }
+
     Box(
-        modifier = modifier.graphicsLayer {
-            if (isAnimationEnabled && isActiveLine && playbackState == SpicyWordPlaybackState.Active) {
-                val frame = animator.sample(
-                    positionMs = positionProvider(),
-                    startTimeMs = startTimeMs,
-                    endTimeMs = endTimeMs,
-                    frameTimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
-                )
-                scaleX = frame.scale
-                scaleY = frame.scale
-                translationY = frame.yOffsetEm * activeFontSizeSp * density *
-                    if (isLetter) 2f else 1f
-            } else {
-                val scale = if (playbackState == SpicyWordPlaybackState.Completed) 1f else 0.95f
-                scaleX = scale
-                scaleY = scale
-                translationY = 0f
-            }
-        },
+        modifier = wordModifier,
         contentAlignment = Alignment.CenterStart
     ) {
         if (isAnimationEnabled && isActiveLine) {
             Text(
                 text = text,
                 style = animatedStyle,
-                // This snapshot read invalidates only this text's draw node, so the playback shader
-                // is sampled at frame cadence without a duplicate Text, mask layer, or recomposition.
+                // The brush changes only while this word is active. There is no duplicate Text,
+                // offscreen mask, or graphics layer on static words.
                 modifier = Modifier
             )
         } else {
