@@ -21,8 +21,7 @@ internal enum class SpicyWordPlaybackState {
 
 internal data class SpicyWordFrame(
     val scale: Float,
-    val yOffsetEm: Float,
-    val glow: Float
+    val yOffsetEm: Float
 )
 
 /**
@@ -200,12 +199,6 @@ internal class SpicyLyricsAnimator(private val isLetter: Boolean) {
         frequency = 1.45,
         dampingRatio = 0.4
     )
-    private val glowSpring = SpicySpring(
-        startPosition = 0.0,
-        frequency = 1.18,
-        dampingRatio = 0.56
-    )
-
     private var lastPositionMs = Long.MIN_VALUE
     private var lastFrameNanos = 0L
     private var cachedPositionMs = Long.MIN_VALUE
@@ -233,14 +226,10 @@ internal class SpicyLyricsAnimator(private val isLetter: Boolean) {
 
         val scaleTarget = if (isLetter) LetterScaleSpline.at(progress) else WordScaleSpline.at(progress)
         val yTarget = (if (isLetter) LetterYOffsetSpline else WordYOffsetSpline).at(progress)
-        val glowTarget = GlowSpline.at(progress)
-
         val isSeek = lastPositionMs != Long.MIN_VALUE &&
             abs(positionMs - lastPositionMs) > SEEK_SNAP_THRESHOLD_MS
         scaleSpring.setGoal(scaleTarget, replacePosition = isSeek)
         ySpring.setGoal(yTarget, replacePosition = isSeek)
-        glowSpring.setGoal(glowTarget, replacePosition = isSeek)
-
         val deltaSeconds = if (lastFrameNanos == 0L || frameTimeNanos <= lastFrameNanos) {
             0.0
         } else {
@@ -250,8 +239,7 @@ internal class SpicyLyricsAnimator(private val isLetter: Boolean) {
 
         val frame = SpicyWordFrame(
             scale = scaleSpring.step(deltaSeconds).toFloat(),
-            yOffsetEm = ySpring.step(deltaSeconds).toFloat(),
-            glow = glowSpring.step(deltaSeconds).toFloat().coerceIn(0f, 1f)
+            yOffsetEm = ySpring.step(deltaSeconds).toFloat()
         )
 
         lastPositionMs = positionMs
@@ -280,9 +268,6 @@ internal class SpicyLyricsAnimator(private val isLetter: Boolean) {
         )
         private val LetterYOffsetSpline = SpicySpline(
             listOf(0.0 to 0.01, 0.9 to -(1.0 / 56.0), 1.0 to 0.0)
-        )
-        private val GlowSpline = SpicySpline(
-            listOf(0.0 to 0.0, 0.15 to 1.0, 0.6 to 1.0, 1.0 to 0.0)
         )
     }
 }
