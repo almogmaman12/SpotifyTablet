@@ -104,6 +104,8 @@ private class SpicyPlaybackBrush(
     private val litAlpha: Float,
     private val dimAlpha: Float
 ) : ShaderBrush() {
+    private val transformMatrix = Matrix()
+
     override fun createShader(size: Size): Shader {
         val stops = arrayOf(
             0f to Color.White.copy(alpha = litAlpha),
@@ -132,15 +134,15 @@ private class SpicyPlaybackBrush(
      */
     fun updateProgress(progress: Float, size: Size) {
         val rawStart = -0.20f + 1.20f * progress.coerceIn(0f, 1f)
-        val matrix = Matrix()
+        transformMatrix.reset()
         if (isRtl) {
-            matrix.translate(-rawStart * size.width, 0f)
+            transformMatrix.translate(-rawStart * size.width, 0f)
         } else {
-            matrix.translate(0f, rawStart * size.height)
+            transformMatrix.translate(0f, rawStart * size.height)
         }
-        // Compose 1.7.x exposes ShaderBrush.transform(matrix); it updates the cached
-        // transform shader without creating a new Paint shader or a new TextStyle.
-        transform(matrix)
+        // Reuse the same matrix. Compose updates its cached transform shader without creating
+        // a new Paint shader, Matrix, or TextStyle every frame.
+        transform(transformMatrix)
     }
 }
 
@@ -825,16 +827,12 @@ private fun PauseDot(
                 val pulse = pauseDotPulse(elapsed, index)
                 val radius = size.minDimension * 0.49f
                 drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.40f * pulse),
-                            Color.White.copy(alpha = 0.12f * pulse),
-                            Color.Transparent
-                        ),
-                        center = Offset(size.width / 2f, size.height / 2f),
-                        radius = radius
-                    ),
+                    color = Color.White.copy(alpha = 0.12f * pulse),
                     radius = radius
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.20f * pulse),
+                    radius = radius * 0.62f
                 )
             }
             .graphicsLayer {
