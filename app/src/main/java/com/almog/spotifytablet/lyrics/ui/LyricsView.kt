@@ -49,10 +49,13 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.LinearGradientShader
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -91,6 +94,95 @@ import kotlinx.coroutines.delay
 private const val PRE_ROLL_OFFSET_MS = 45L
 private const val SPICY_SWEEP_FEATHER = 0.20f
 private const val SPICY_BLUR_MULTIPLIER = 1.25f
+
+/**
+ * Draw-phase karaoke gradient. The brush is intentionally not a ShaderBrush: ShaderBrush caches
+ * its shader by size, but this shader also changes with playback time. Creating the shader in
+ * applyTo lets Compose redraw a single Text without a second offscreen text layer.
+ */
+private class SpicyPlaybackBrush(
+    private val positionProvider: () -> Long,
+    private val startTimeMs: Long,
+    private val endTimeMs: Long,
+    private val isRtl: Boolean,
+    private val litAlpha: Float,
+    private val dimAlpha: Float
+) : androidx.compose.ui.graphics.Brush() {
+    override fun applyTo(size: Size, p: Paint, alpha: Float) {
+        val position = positionProvider() + PRE_ROLL_OFFSET_MS
+        val duration = (endTimeMs - startTimeMs).coerceAtLeast(1L)
+        val baseColor = Color.White.copy(alpha = if (position >= endTimeMs) litAlpha else dimAlpha)
+
+        if (position < startTimeMs || position >= endTimeMs || size.width <= 0f || size.height <= 0f) {
+            p.shader = null
+            p.color = baseColor
+            p.alpha = alpha
+            return
+        }
+
+        val progress = ((position - startTimeMs).toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+        val rawStart = -0.20f + 1.20f * progress
+        val rawEnd = rawStart + SPICY_SWEEP_FEATHER
+
+        if (rawEnd <= 0f) {
+            p.shader = null
+            p.color = Color.White.copy(alpha = dimAlpha)
+            p.alpha = alpha
+            return
+        }
+        if (rawStart >= 1f) {
+            p.shader = null
+            p.color = Color.White.copy(alpha = litAlpha)
+            p.alpha = alpha
+            return
+        }
+
+        fun alphaAt(position: Float): Float = when {
+            position <= rawStart -> litAlpha
+            position >= rawEnd -> dimAlpha
+            else -> litAlpha + (dimAlpha - litAlpha) *
+                ((position - rawStart) / (rawEnd - rawStart)).coerceIn(0f, 1f)
+        }
+
+        val stopPositions = buildList {
+            add(0f)
+            if (rawStart > 0f && rawStart < 1f) add(rawStart)
+            if (rawEnd > 0f && rawEnd < 1f) add(rawEnd)
+            add(1f)
+        }.distinct().sorted()
+        val colors = stopPositions.map { stop ->
+            Color.White.copy(alpha = alphaAt(stop))
+        }
+
+        val from = if (isRtl) Offset(size.width, 0f) else Offset(0f, 0f)
+        val to = if (isRtl) Offset(0f, 0f) else Offset(0f, size.height)
+        p.shader = LinearGradientShader(
+            colors = colors,
+            from = from,
+            to = to,
+            colorStops = stopPositions,
+            tileMode = TileMode.Clamp
+        )
+        p.alpha = alpha
+    }
+}
+
+/** Edge fade matching Spicy's transparent 16px edge and full-opacity 64px content. */
+private fun lyricEdgeFade(centerY: Float, height: Float, edgeStartPx: Float, edgeEndPx: Float): Float {
+    if (height <= 0f || edgeEndPx <= edgeStartPx) return 1f
+    val top = ((centerY - edgeStartPx) / (edgeEndPx - edgeStartPx)).coerceIn(0f, 1f)
+    val bottom = ((height - centerY - edgeStartPx) / (edgeEndPx - edgeStartPx)).coerceIn(0f, 1f)
+    return minOf(top, bottom)
+}
+
+/** An eased, staggered pulse: the three music dots keep moving for the full interlude. */
+private fun pauseDotPulse(elapsedMs: Long, index: Int): Float {
+    val cycleMs = 1080L
+    val phaseMs = ((elapsedMs.coerceAtLeast(0L) + index * 235L) % cycleMs).toFloat()
+    val phase = phaseMs / cycleMs.toFloat()
+    val wave = (0.5 + 0.5 * kotlin.math.cos(phase * (2.0 * Math.PI))).toFloat()
+    return wave * wave * wave
+}
 
 private fun isRtlText(text: String): Boolean {
     for (character in text) {
