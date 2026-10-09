@@ -277,15 +277,8 @@ fun LyricsContent(
 
         val firstStart = displayLines.firstOrNull()?.startTimeMs ?: Long.MAX_VALUE
         val powerManager = context.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
-        var minFrameNanos = 16_666_666L
-        var lastFrameNanos = 0L
-        var frameCounter = 0
 
         while (true) {
-            if (frameCounter++ % 120 == 0) {
-                minFrameNanos = if (powerManager?.isPowerSaveMode == true) 33_333_333L else 16_666_666L
-            }
-
             if (isIdleState.value) {
                 // No lyrics or dots are animating: update slowly instead of requesting every vsync.
                 val elapsedMs = android.os.SystemClock.elapsedRealtime() - anchor.anchorRealtimeMs
@@ -297,9 +290,13 @@ fun LyricsContent(
                 continue
             }
 
-            withFrameNanos { frameNanos ->
-                if (frameNanos - lastFrameNanos < minFrameNanos) return@withFrameNanos
-                lastFrameNanos = frameNanos
+            // Real throttling: sleep before requesting the next frame in power-save mode.
+            // Merely skipping state writes inside withFrameNanos still wakes up on every vsync.
+            if (powerManager?.isPowerSaveMode == true) {
+                delay(16L)
+            }
+
+            withFrameNanos {
                 val elapsedMs = android.os.SystemClock.elapsedRealtime() - anchor.anchorRealtimeMs
                 val newPos = anchor.positionMs + (elapsedMs * anchor.speed).toLong()
                 currentPositionMs = newPos
