@@ -909,7 +909,8 @@ fun SingleLyricLineRow(
                                         isSubduedBackground = isSubduedBackground,
                                         glowColor = Color.White,
                                         rhythm = rhythm,
-                                        activeFontSizeSp = activeFontSizeSp
+                                        activeFontSizeSp = activeFontSizeSp,
+                                        lineDistance = lineDistance
                                     )
                                 }
                             }
