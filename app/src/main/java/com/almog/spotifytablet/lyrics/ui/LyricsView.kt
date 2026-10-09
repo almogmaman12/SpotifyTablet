@@ -1349,7 +1349,7 @@ private fun RhythmLetterGroupSweepText(
                         shadow = Shadow(
                             color = glowColor.copy(alpha = letterGlow * if (isSubduedBackground) 0.45f else 0.72f),
                             offset = ShadowOffsetGlow,
-                            blurRadius = if (isSubduedBackground) 7f else 12f
+                            blurRadius = 4f
                         )
                     )
                 }
