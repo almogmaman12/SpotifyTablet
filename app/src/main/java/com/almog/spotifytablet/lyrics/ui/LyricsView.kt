@@ -56,6 +56,8 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Shader
 import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.LinearGradientShader
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -122,11 +124,12 @@ private class SpicySweepBrush(
         } else {
             Offset(size.width * 0.5f, size.height * rawEnd)
         }
-        return (Brush.linearGradient(
+        return LinearGradientShader(
+            from = start,
+            to = end,
             colors = listOf(litColor, dimColor),
-            start = start,
-            end = end
-        ) as ShaderBrush).createShader(size)
+            tileMode = TileMode.Clamp
+        )
     }
 }
 
