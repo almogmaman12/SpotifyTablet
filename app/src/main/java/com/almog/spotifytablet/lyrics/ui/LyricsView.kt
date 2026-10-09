@@ -1035,37 +1035,75 @@ fun RhythmWordHighlightText(
         canSplitIntoLetters(word.text)
 
     if (isLetterCapable) {
-        val letterDuration = (duration / word.graphemes.size.coerceAtLeast(1)).coerceAtLeast(1L)
-        Row(verticalAlignment = Alignment.Bottom, modifier = modifier) {
-            word.graphemes.forEachIndexed { index, grapheme ->
-                val letterStart = word.startTimeMs + index * letterDuration
-                val letterEnd = if (index == word.graphemes.lastIndex) {
-                    word.endTimeMs
-                } else {
-                    (letterStart + letterDuration).coerceAtMost(word.endTimeMs)
+        val wordPlaybackState by remember(word.startTimeMs, word.endTimeMs, isActiveLine) {
+            derivedStateOf {
+                val position = positionProvider() + PRE_ROLL_OFFSET_MS
+                when {
+                    position < word.startTimeMs -> SpicyWordPlaybackState.Upcoming
+                    position >= word.endTimeMs -> SpicyWordPlaybackState.Completed
+                    !isActiveLine -> SpicyWordPlaybackState.Upcoming
+                    else -> SpicyWordPlaybackState.Active
                 }
-                SpicyAnimatedTextUnit(
-                    text = grapheme,
-                    startTimeMs = letterStart,
-                    endTimeMs = letterEnd,
-                    positionProvider = positionProvider,
-                    isAnimationEnabled = true,
-                    isActiveLine = true,
-                    isSubduedBackground = isSubduedBackground,
-                    glowColor = glowColor,
-                    activeFontSizeSp = activeFontSizeSp,
-                    isLetter = true,
-                    lineDistance = lineDistance
-                )
             }
-            if (word.trailingSpace) {
-                Text(
-                    text = " ",
-                    style = TextStyle(
-                        fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp,
-                        lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
-                    )
+        }
+        val wordAnimator = remember(word.startTimeMs, word.endTimeMs) {
+            SpicyLyricsAnimator(isLetter = false)
+        }
+        // Spicy animates the word/letter-group and the individual letters separately.
+        // Only the active group gets a graphics layer; the currently sung letter gets its own too.
+        val wordModifier = if (
+            isAnimationEnabled &&
+            isActiveLine &&
+            wordPlaybackState == SpicyWordPlaybackState.Active
+        ) {
+            modifier.graphicsLayer {
+                val frame = wordAnimator.sample(
+                    positionMs = positionProvider(),
+                    startTimeMs = word.startTimeMs,
+                    endTimeMs = word.endTimeMs,
+                    frameTimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
                 )
+                scaleX = frame.scale
+                scaleY = frame.scale
+                translationY = frame.yOffsetEm * activeFontSizeSp * density
+            }
+        } else {
+            modifier
+        }
+
+        val letterDuration = (duration / word.graphemes.size.coerceAtLeast(1)).coerceAtLeast(1L)
+        Box(modifier = wordModifier, contentAlignment = Alignment.CenterStart) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                word.graphemes.forEachIndexed { index, grapheme ->
+                    val letterStart = word.startTimeMs + index * letterDuration
+                    val letterEnd = if (index == word.graphemes.lastIndex) {
+                        word.endTimeMs
+                    } else {
+                        (letterStart + letterDuration).coerceAtMost(word.endTimeMs)
+                    }
+                    SpicyAnimatedTextUnit(
+                        text = grapheme,
+                        startTimeMs = letterStart,
+                        endTimeMs = letterEnd,
+                        positionProvider = positionProvider,
+                        isAnimationEnabled = true,
+                        isActiveLine = true,
+                        isSubduedBackground = isSubduedBackground,
+                        glowColor = glowColor,
+                        activeFontSizeSp = activeFontSizeSp,
+                        isLetter = true,
+                        lineDistance = lineDistance
+                    )
+                }
+                if (word.trailingSpace) {
+                    Text(
+                        text = " ",
+                        style = TextStyle(
+                            fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp,
+                            lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
+                        )
+                    )
+                }
             }
         }
     } else {
