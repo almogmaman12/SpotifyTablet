@@ -79,9 +79,6 @@ import com.almog.spotifytablet.lyrics.model.LyricTrack
 import com.almog.spotifytablet.lyrics.model.TrackRhythmContext
 import com.almog.spotifytablet.lyrics.model.WordSync
 import com.almog.spotifytablet.lyrics.model.calculateRhythmSpringSpec
-import com.almog.spotifytablet.lyrics.model.calculateRhythmWordScale
-import com.almog.spotifytablet.lyrics.model.calculateRhythmWordYOffset
-import com.almog.spotifytablet.lyrics.model.calculateWordProgressEasing
 import com.almog.spotifytablet.lyrics.viewmodel.LyricsUiState
 import com.almog.spotifytablet.lyrics.viewmodel.LyricsViewModel
 import com.almog.spotifytablet.lyrics.viewmodel.findActiveLineIndex
@@ -93,41 +90,6 @@ import kotlinx.coroutines.delay
  */
 private const val PRE_ROLL_OFFSET_MS = 45L
 private const val SPICY_SWEEP_FEATHER = 0.20f
-
-private fun smoothStep(value: Float): Float {
-    val x = value.coerceIn(0f, 1f)
-    return x * x * (3f - 2f * x)
-}
-
-/** Spicy Lyrics' word scale profile: 0.95 at attack, a small peak at 70%, then settles to 1. */
-private fun spicyScale(progress: Float, peakScale: Float): Float {
-    val p = progress.coerceIn(0f, 1f)
-    return if (p <= 0.7f) {
-        0.95f + (peakScale - 0.95f) * smoothStep(p / 0.7f)
-    } else {
-        peakScale + (1f - peakScale) * smoothStep((p - 0.7f) / 0.3f)
-    }
-}
-
-/** The subtle lift used by Spicy Lyrics, expressed as a fraction of the lyric font size. */
-private fun spicyYOffset(progress: Float): Float {
-    val p = progress.coerceIn(0f, 1f)
-    return if (p <= 0.9f) {
-        0.01f + ((-1f / 60f) - 0.01f) * smoothStep(p / 0.9f)
-    } else {
-        (-1f / 60f) * (1f - smoothStep((p - 0.9f) / 0.1f))
-    }
-}
-
-/** Brief attack glow: rise by 15%, hold to 60%, then fade away. */
-private fun spicyGlow(progress: Float): Float {
-    val p = progress.coerceIn(0f, 1f)
-    return when {
-        p < 0.15f -> smoothStep(p / 0.15f)
-        p <= 0.6f -> 1f
-        else -> 1f - smoothStep((p - 0.6f) / 0.4f)
-    }
-}
 
 private fun isRtlText(text: String): Boolean {
     for (character in text) {
@@ -145,14 +107,7 @@ private fun isRtlText(text: String): Boolean {
 private fun canSplitIntoLetters(text: String): Boolean =
     !isRtlText(text) && text.none { it.code in 0x0590..0x0DFF }
 
-private fun isLetterCapableDuration(durationMs: Long, word: WordSync): Boolean =
-    durationMs >= 1400L && word.graphemes.size in 2..12 && canSplitIntoLetters(word.text)
-
 private val LineTransformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
-private val ShadowOffsetBase = Offset(0f, 2f)
-private val ShadowOffsetGlow = Offset(0f, 0f)
-private val ShadowOffsetSubtle = Offset(0f, 1f)
-
 @Composable
 fun LyricsView(
     viewModel: LyricsViewModel,
@@ -1189,7 +1144,7 @@ private fun SpicyAnimatedTextUnit(
                         val progress = ((position - startTimeMs).toFloat() / duration.toFloat())
                             .coerceIn(0f, 1f)
                         val sweepEnd = (-0.20f + 1.20f * progress).coerceIn(0f, 1f)
-                        val feather = 0.20f
+                        val feather = SPICY_SWEEP_FEATHER
                         val rtl = isRtlText(text)
                         val mask = if (rtl) {
                             val fadeStart = (1f - sweepEnd).coerceIn(0f, 1f)
@@ -1224,230 +1179,3 @@ private fun SpicyAnimatedTextUnit(
     }
 }
 
-@Composable
-private fun RhythmSingleSyllableSweepText(
-    word: WordSync,
-    rawProgress: Float,
-    durationMs: Long,
-    isWordActive: Boolean,
-    isWordCompleted: Boolean,
-    isSubduedBackground: Boolean,
-    glowColor: Color,
-    rhythm: TrackRhythmContext,
-    activeFontSizeSp: Float
-) {
-    val displayString = remember(word.text, word.trailingSpace) {
-        if (word.trailingSpace) "${word.text} " else word.text
-    }
-    val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
-    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
-    val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
-    val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
-
-    val litColor = Color.White.copy(alpha = baseAlpha)
-    val dimColor = Color(0x66FFFFFF).copy(alpha = baseAlpha * 0.6f)
-
-    val baseShadow = remember {
-        Shadow(
-            color = Color(0x99000000),
-            offset = ShadowOffsetBase,
-            blurRadius = 6f
-        )
-    }
-
-    val completedStyle = remember(litColor, fontSize, lineHeight, fontStyle) {
-        TextStyle(
-            color = litColor,
-            fontSize = fontSize,
-            fontWeight = FontWeight.Bold,
-            fontStyle = fontStyle,
-            fontFamily = FontFamily.SansSerif,
-            letterSpacing = (-0.3).sp,
-            lineHeight = lineHeight,
-            shadow = baseShadow
-        )
-    }
-
-    val unstartedStyle = remember(dimColor, fontSize, lineHeight, fontStyle) {
-        TextStyle(
-            color = dimColor,
-            fontSize = fontSize,
-            fontWeight = FontWeight.Bold,
-            fontStyle = fontStyle,
-            fontFamily = FontFamily.SansSerif,
-            letterSpacing = (-0.3).sp,
-            lineHeight = lineHeight,
-            shadow = baseShadow
-        )
-    }
-
-    // Gradient brush only needed when the word is actively sweeping across (0f < rawProgress < 1f).
-    // Pre-computed solid styles eliminate shader construction & Skia Paint shader pipeline for inactive words.
-    val textStyle = when {
-        isWordCompleted -> completedStyle
-        !isWordActive -> unstartedStyle
-        else -> {
-            val sweepProgress = calculateWordProgressEasing(rawProgress, durationMs, rhythm)
-            val p = sweepProgress.coerceIn(0f, 1f)
-            val featherFrac = SPICY_SWEEP_FEATHER
-            val sweepEnd = (-0.20f + 1.20f * p).coerceIn(0f, 1f)
-            val textBrush = Brush.horizontalGradient(
-                0f to litColor,
-                (sweepEnd - featherFrac).coerceIn(0f, 1f) to litColor,
-                sweepEnd to dimColor,
-                1f to dimColor
-            )
-            TextStyle(
-                brush = textBrush,
-                fontSize = fontSize,
-                fontWeight = FontWeight.Black,
-                fontStyle = fontStyle,
-                fontFamily = FontFamily.SansSerif,
-                letterSpacing = (-0.3).sp,
-                lineHeight = lineHeight,
-                shadow = Shadow(
-                    color = glowColor.copy(alpha = spicyGlow(rawProgress) * if (isSubduedBackground) 0.45f else 0.72f),
-                    offset = ShadowOffsetGlow,
-                    blurRadius = if (isSubduedBackground) 7f else 12f
-                )
-            )
-        }
-    }
-
-    Text(
-        text = displayString,
-        style = textStyle
-    )
-}
-
-@Composable
-private fun RhythmLetterGroupSweepText(
-    word: WordSync,
-    currentPositionMs: Long,
-    isWordActive: Boolean,
-    isWordCompleted: Boolean,
-    isSubduedBackground: Boolean,
-    glowColor: Color,
-    rhythm: TrackRhythmContext,
-    activeFontSizeSp: Float
-) {
-    val totalDuration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
-    val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
-    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
-    val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
-    val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
-
-    val litColor = Color.White.copy(alpha = baseAlpha)
-    val dimColor = Color(0x66FFFFFF).copy(alpha = baseAlpha * 0.6f)
-
-    val baseShadow = remember {
-        Shadow(
-            color = Color(0x99000000),
-            offset = ShadowOffsetBase,
-            blurRadius = 6f
-        )
-    }
-
-    val completedLetterStyle = remember(litColor, fontSize, lineHeight, fontStyle) {
-        TextStyle(
-            color = litColor,
-            fontSize = fontSize,
-            fontWeight = FontWeight.Bold,
-            fontStyle = fontStyle,
-            fontFamily = FontFamily.SansSerif,
-            letterSpacing = (-0.2).sp,
-            lineHeight = lineHeight,
-            shadow = baseShadow
-        )
-    }
-
-    val unstartedLetterStyle = remember(dimColor, fontSize, lineHeight, fontStyle) {
-        TextStyle(
-            color = dimColor,
-            fontSize = fontSize,
-            fontWeight = FontWeight.Bold,
-            fontStyle = fontStyle,
-            fontFamily = FontFamily.SansSerif,
-            letterSpacing = (-0.2).sp,
-            lineHeight = lineHeight,
-            shadow = baseShadow
-        )
-    }
-
-    val spaceStyle = remember(fontSize, lineHeight) {
-        TextStyle(fontSize = fontSize, lineHeight = lineHeight)
-    }
-
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        val graphemes = word.graphemes
-        val count = graphemes.size.coerceAtLeast(1)
-        val letterDuration = (totalDuration / count).coerceAtLeast(1L)
-
-        graphemes.forEachIndexed { index, graphemeCluster ->
-            val letterStart = word.startTimeMs + (index * letterDuration)
-            val rawLetterProgress = ((currentPositionMs + PRE_ROLL_OFFSET_MS - letterStart).toFloat() / letterDuration.toFloat()).coerceIn(0f, 1f)
-
-            val isLetterActive = rawLetterProgress > 0f && rawLetterProgress < 1f
-            val isLetterDone = rawLetterProgress >= 1f
-
-            val letterScale = if (isLetterActive) {
-                spicyScale(rawLetterProgress, 1.175f)
-            } else if (isLetterDone || isWordCompleted) {
-                1f
-            } else {
-                0.95f
-            }
-
-            val letterStyle = when {
-                isLetterDone || isWordCompleted -> completedLetterStyle
-                !isLetterActive -> unstartedLetterStyle
-                else -> {
-                    val letterProgress = calculateWordProgressEasing(rawLetterProgress, letterDuration, rhythm)
-                    val p = letterProgress.coerceIn(0f, 1f)
-                    val featherFrac = SPICY_SWEEP_FEATHER
-                    val sweepEnd = (-0.20f + 1.20f * p).coerceIn(0f, 1f)
-                    val textBrush = Brush.horizontalGradient(
-                        0f to litColor,
-                        (sweepEnd - featherFrac).coerceIn(0f, 1f) to litColor,
-                        sweepEnd to dimColor,
-                        1f to dimColor
-                    )
-                    TextStyle(
-                        brush = textBrush,
-                        fontSize = fontSize,
-                        fontWeight = FontWeight.Black,
-                        fontStyle = fontStyle,
-                        fontFamily = FontFamily.SansSerif,
-                        letterSpacing = (-0.2).sp,
-                        lineHeight = lineHeight,
-                        shadow = Shadow(
-                            color = glowColor.copy(alpha = spicyGlow(rawLetterProgress) * if (isSubduedBackground) 0.45f else 0.72f),
-                            offset = ShadowOffsetGlow,
-                            blurRadius = if (isSubduedBackground) 7f else 12f
-                        )
-                    )
-                }
-            }
-
-            Box(
-                modifier = Modifier.graphicsLayer {
-                    scaleX = letterScale
-                    scaleY = letterScale
-                },
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Text(
-                    text = graphemeCluster,
-                    style = letterStyle
-                )
-            }
-        }
-
-        if (word.trailingSpace) {
-            Text(
-                text = " ",
-                style = spaceStyle
-            )
-        }
-    }
-}
