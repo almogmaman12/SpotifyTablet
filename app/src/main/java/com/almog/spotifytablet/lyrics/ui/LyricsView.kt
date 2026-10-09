@@ -50,6 +50,9 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -69,6 +72,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -77,11 +81,10 @@ import com.almog.spotifytablet.SettingsActivity
 import com.almog.spotifytablet.lyrics.model.LyricLine
 import com.almog.spotifytablet.lyrics.model.LyricTrack
 import com.almog.spotifytablet.lyrics.model.TrackRhythmContext
+import com.almog.spotifytablet.lyrics.model.SpicyMotion
 import com.almog.spotifytablet.lyrics.model.WordSync
 import com.almog.spotifytablet.lyrics.model.calculateRhythmSpringSpec
-import com.almog.spotifytablet.lyrics.model.calculateRhythmWordScale
 import com.almog.spotifytablet.lyrics.model.calculateRhythmWordYOffset
-import com.almog.spotifytablet.lyrics.model.calculateWordProgressEasing
 import com.almog.spotifytablet.lyrics.viewmodel.LyricsUiState
 import com.almog.spotifytablet.lyrics.viewmodel.LyricsViewModel
 import com.almog.spotifytablet.lyrics.viewmodel.findActiveLineIndex
@@ -94,39 +97,29 @@ import kotlinx.coroutines.delay
 private const val PRE_ROLL_OFFSET_MS = 45L
 private const val SPICY_SWEEP_FEATHER = 0.20f
 
-private fun smoothStep(value: Float): Float {
-    val x = value.coerceIn(0f, 1f)
-    return x * x * (3f - 2f * x)
-}
+private const val MAX_LETTERS_PER_WORD = 20
 
-/** Spicy Lyrics' word scale profile: 0.95 at attack, a small peak at 70%, then settles to 1. */
-private fun spicyScale(progress: Float, peakScale: Float): Float {
-    val p = progress.coerceIn(0f, 1f)
-    return if (p <= 0.7f) {
-        0.95f + (peakScale - 0.95f) * smoothStep(p / 0.7f)
-    } else {
-        peakScale + (1f - peakScale) * smoothStep((p - 0.7f) / 0.3f)
-    }
-}
+private fun easeSinOut(value: Float): Float =
+    kotlin.math.sin(value.coerceIn(0f, 1f) * (Math.PI.toFloat() / 2f))
 
-/** The subtle lift used by Spicy Lyrics, expressed as a fraction of the lyric font size. */
-private fun spicyYOffset(progress: Float): Float {
-    val p = progress.coerceIn(0f, 1f)
-    return if (p <= 0.9f) {
-        0.01f + ((-1f / 60f) - 0.01f) * smoothStep(p / 0.9f)
-    } else {
-        (-1f / 60f) * (1f - smoothStep((p - 0.9f) / 0.1f))
+/**
+ * Spicy's sweep: a linear gradient that is [lit] up to [position] and fades to [dim] over the next
+ * [SPICY_SWEEP_FEATHER]. CSS lets the stops run past the box (position -20%..100%), so the colours
+ * at the box edges are interpolated rather than clamped.
+ */
+private fun spicySweepBrush(position: Float, lit: Color, dim: Color): Brush {
+    val end = position + SPICY_SWEEP_FEATHER
+    fun colorAt(x: Float): Color = when {
+        x <= position -> lit
+        x >= end -> dim
+        else -> lerp(lit, dim, (x - position) / SPICY_SWEEP_FEATHER)
     }
-}
-
-/** Brief attack glow: rise by 15%, hold to 60%, then fade away. */
-private fun spicyGlow(progress: Float): Float {
-    val p = progress.coerceIn(0f, 1f)
-    return when {
-        p < 0.15f -> smoothStep(p / 0.15f)
-        p <= 0.6f -> 1f
-        else -> 1f - smoothStep((p - 0.6f) / 0.4f)
-    }
+    val stops = ArrayList<Pair<Float, Color>>(4)
+    stops += 0f to colorAt(0f)
+    if (position > 0f && position < 1f) stops += position to lit
+    if (end > 0f && end < 1f) stops += end to dim
+    stops += 1f to colorAt(1f)
+    return Brush.horizontalGradient(*stops.toTypedArray())
 }
 
 private fun isRtlText(text: String): Boolean {
@@ -146,12 +139,14 @@ private fun canSplitIntoLetters(text: String): Boolean =
     !isRtlText(text) && text.none { it.code in 0x0590..0x0DFF }
 
 private fun isLetterCapableDuration(durationMs: Long, word: WordSync): Boolean =
-    durationMs >= 1400L && word.graphemes.size in 2..12 && canSplitIntoLetters(word.text)
+    durationMs >= SpicyMotion.LetterMinDurationMs &&
+            word.graphemes.size in 1..MAX_LETTERS_PER_WORD &&
+            canSplitIntoLetters(word.text)
+
+/** Spicy aligns the second singer of a duet to the opposite side of the screen. */
+private fun isOppositeAligned(line: LyricLine): Boolean = line.agentId == "v2"
 
 private val LineTransformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
-private val ShadowOffsetBase = Offset(0f, 2f)
-private val ShadowOffsetGlow = Offset(0f, 0f)
-private val ShadowOffsetSubtle = Offset(0f, 1f)
 
 @Composable
 fun LyricsView(
@@ -505,6 +500,7 @@ fun LyricsContent(
                         pauseStartMs = pauseInfo.pauseStartMs,
                         nextStartMs = pauseInfo.nextStartMs,
                         rhythm = rhythmContext,
+                        fontSizeSp = lyricsFontSizeSp,
                         modifier = Modifier.padding(start = 4.dp)
                     )
                 }
@@ -557,6 +553,23 @@ fun LyricsContent(
                         label = "lineScale_${line.startTimeMs}"
                     )
 
+                    // Spicy blurs each line by its distance from the active line (1.25px per line, capped),
+                    // so the lyrics you are not at yet melt into the background. The CSS value is a
+                    // text-shadow blur radius, i.e. twice the Gaussian sigma that a render effect takes.
+                    val isBrowsing = isUserInteracting || manualScrollOffsetLines != 0
+                    val targetBlurSigma = if (isActive || isBrowsing || activeLineIndex < 0) {
+                        0f
+                    } else {
+                        val distance = Math.abs(targetIndex - activeLineIndex)
+                        minOf(SpicyMotion.BlurPerLinePx * distance, SpicyMotion.BlurMaxPx) / 2f
+                    }
+                    val blurSigmaState = animateFloatAsState(
+                        targetValue = targetBlurSigma,
+                        animationSpec = propAnimSpec,
+                        label = "lineBlur_${line.startTimeMs}"
+                    )
+                    val isOpposite = isOppositeAligned(line)
+
                     // Active: live position (smoothed via displayPositionMs to prevent sweep jumps on drift correction).
                     // Departing (renderAsActive): completed state (stable).
                     // Upcoming inactive: not-started state (stable, no per-frame recomposition).
@@ -581,6 +594,13 @@ fun LyricsContent(
                                 scaleX = animatedScale
                                 scaleY = animatedScale
                                 transformOrigin = LineTransformOrigin
+                                // `density` here is the Density captured above, hence `.density` for the scale.
+                                val blurPx = blurSigmaState.value * density.density
+                                renderEffect = if (blurPx > 0.05f) {
+                                    BlurEffect(blurPx, blurPx, TileMode.Decal)
+                                } else {
+                                    null
+                                }
                             }
                             .then(
                                 if (onLineClicked != null) {
@@ -592,7 +612,7 @@ fun LyricsContent(
                         contentAlignment = Alignment.CenterStart
                     ) {
                         Column(
-                            horizontalAlignment = Alignment.Start,
+                            horizontalAlignment = if (isOpposite) Alignment.End else Alignment.Start,
                             verticalArrangement = Arrangement.Center,
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -604,7 +624,9 @@ fun LyricsContent(
                                 forceFlowRow = renderAsActive,
                                 isSubduedBackground = line.isBackground,
                                 rhythm = rhythmContext,
-                                activeFontSizeSp = lyricsFontSizeSp
+                                activeFontSizeSp = lyricsFontSizeSp,
+                                isSung = targetIndex < activeLineIndex,
+                                isOppositeAligned = isOpposite
                             )
 
                             if (isActive && companionBgLine != null && line != companionBgLine) {
@@ -616,7 +638,12 @@ fun LyricsContent(
                                     isSubduedBackground = true,
                                     rhythm = rhythmContext,
                                     activeFontSizeSp = lyricsFontSizeSp,
-                                    modifier = Modifier.padding(top = 4.dp, start = 16.dp)
+                                    isOppositeAligned = isOpposite,
+                                    modifier = Modifier.padding(
+                                        top = 4.dp,
+                                        start = if (isOpposite) 0.dp else 16.dp,
+                                        end = if (isOpposite) 16.dp else 0.dp
+                                    )
                                 )
                             }
 
@@ -627,6 +654,7 @@ fun LyricsContent(
                                     pauseStartMs = pauseInfo.pauseStartMs,
                                     nextStartMs = pauseInfo.nextStartMs,
                                     rhythm = rhythmContext,
+                                    fontSizeSp = lyricsFontSizeSp,
                                     modifier = Modifier
                                         .graphicsLayer { alpha = pauseAlpha }
                                         .padding(top = 8.dp, start = 4.dp)
@@ -738,65 +766,129 @@ fun SpicyPauseDots(
     pauseStartMs: Long,
     nextStartMs: Long,
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
+    fontSizeSp: Float = 32f,
     modifier: Modifier = Modifier
 ) {
     val currentPositionMs = positionProvider()
     val totalTime = (nextStartMs - pauseStartMs).coerceAtLeast(1000L)
-    val baseDotTime = totalTime / 3
+    val dotTime = (totalTime / 3f).coerceAtLeast(1f)
 
-    val dot1End = pauseStartMs + baseDotTime
-    val dot2End = pauseStartMs + (baseDotTime * 2)
-
-    val dot1Active = currentPositionMs >= pauseStartMs
-    val dot2Active = currentPositionMs >= dot1End
-    val dot3Active = currentPositionMs >= dot2End
-
-    val dotSpring = rhythm.calculateRhythmSpringSpec<Float>(baseStiffness = 380f, baseDamping = 0.65f)
-
-    val d1Scale by animateFloatAsState(
-        targetValue = if (dot1Active) 1.35f else 0.85f,
-        animationSpec = dotSpring,
-        label = "dot1Scale"
-    )
-    val d2Scale by animateFloatAsState(
-        targetValue = if (dot2Active) 1.35f else 0.85f,
-        animationSpec = dotSpring,
-        label = "dot2Scale"
-    )
-    val d3Scale by animateFloatAsState(
-        targetValue = if (dot3Active) 1.35f else 0.85f,
-        animationSpec = dotSpring,
-        label = "dot3Scale"
-    )
+    // Each dot runs its own 0..1 progress across a third of the interlude, exactly like a word.
+    fun dotProgress(index: Int): Float =
+        ((currentPositionMs - (pauseStartMs + index * dotTime)) / dotTime).coerceIn(0f, 1f)
 
     Row(
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalArrangement = Arrangement.spacedBy((fontSizeSp * 0.5625f).dp),
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier.padding(vertical = 14.dp)
     ) {
-        PauseDot(isActive = dot1Active, scale = d1Scale)
-        PauseDot(isActive = dot2Active, scale = d2Scale)
-        PauseDot(isActive = dot3Active, scale = d3Scale)
+        for (index in 0..2) {
+            SpicyPauseDot(progress = dotProgress(index), fontSizeSp = fontSizeSp)
+        }
     }
 }
 
+/**
+ * One interlude dot. Spicy drives these with the same spline + spring pipeline as words, but with
+ * its own curves: they grow from 0.75x to 1.05x, lift by 12% of the font size, and fade from 35%
+ * to full opacity as the dot is "sung".
+ */
 @Composable
-private fun PauseDot(
-    isActive: Boolean,
-    scale: Float
+private fun SpicyPauseDot(
+    progress: Float,
+    fontSizeSp: Float
 ) {
+    val scale = animateFloatAsState(
+        targetValue = SpicyMotion.DotScale.at(progress),
+        animationSpec = SpicyMotion.DotScaleSpring,
+        label = "dotScale"
+    )
+    val lift = animateFloatAsState(
+        targetValue = SpicyMotion.DotLift.at(progress),
+        animationSpec = SpicyMotion.DotLiftSpring,
+        label = "dotLift"
+    )
+    val opacity = animateFloatAsState(
+        targetValue = SpicyMotion.DotOpacity.at(progress),
+        animationSpec = SpicyMotion.DotFadeSpring,
+        label = "dotOpacity"
+    )
+    val glow = animateFloatAsState(
+        targetValue = SpicyMotion.DotGlow.at(progress),
+        animationSpec = SpicyMotion.DotFadeSpring,
+        label = "dotGlow"
+    )
+
     Box(
         modifier = Modifier
-            .size(16.dp)
+            .size((fontSizeSp * 0.5f).dp)
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
+                scaleX = scale.value
+                scaleY = scale.value
+                translationY = lift.value * fontSizeSp.sp.toPx()
+                alpha = opacity.value.coerceIn(0f, 1f)
             }
-            .background(
-                color = if (isActive) Color.White else Color(0x55FFFFFF),
-                shape = CircleShape
-            )
+            .drawBehind {
+                val glowAmount = glow.value.coerceIn(0f, 1f)
+                if (glowAmount > 0.01f) {
+                    val glowRadius = size.minDimension * 1.1f
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.35f * glowAmount),
+                                Color.Transparent
+                            ),
+                            center = center,
+                            radius = glowRadius
+                        ),
+                        radius = glowRadius,
+                        center = center
+                    )
+                }
+                drawCircle(color = Color.White)
+            }
     )
+}
+
+private fun spicyTextStyle(
+    color: Color,
+    brush: Brush?,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+    fontStyle: FontStyle,
+    shadow: Shadow?
+): TextStyle =
+    // Spicy keeps every lyric at weight 700 and zero letter-spacing in all states; changing either
+    // while a word is sung would make the line reflow.
+    if (brush != null) {
+        TextStyle(
+            brush = brush,
+            fontSize = fontSize,
+            fontWeight = FontWeight.Bold,
+            fontStyle = fontStyle,
+            fontFamily = FontFamily.SansSerif,
+            letterSpacing = 0.sp,
+            lineHeight = lineHeight,
+            shadow = shadow
+        )
+    } else {
+        TextStyle(
+            color = color,
+            fontSize = fontSize,
+            fontWeight = FontWeight.Bold,
+            fontStyle = fontStyle,
+            fontFamily = FontFamily.SansSerif,
+            letterSpacing = 0.sp,
+            lineHeight = lineHeight,
+            shadow = shadow
+        )
+    }
+
+/** Solid lit/dim fill at the ends of a sweep, the moving gradient in between. */
+private fun spicyFill(position: Float, lit: Color, dim: Color): Pair<Color, Brush?> = when {
+    position <= -SPICY_SWEEP_FEATHER -> dim to null
+    position >= 1f -> lit to null
+    else -> lit to spicySweepBrush(position, lit, dim)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -810,13 +902,15 @@ fun SingleLyricLineRow(
     isSubduedBackground: Boolean = false,
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
     activeFontSizeSp: Float = 32f,
+    isSung: Boolean = false,
+    isOppositeAligned: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val currentPositionMs = positionProvider()
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
-    val baseAlpha = if (isSubduedBackground) 0.60f else 1.0f
+    val litColor = Color.White.copy(alpha = if (isSubduedBackground) SpicyMotion.BgLitAlpha else SpicyMotion.LitAlpha)
+    val dimColor = Color.White.copy(alpha = if (isSubduedBackground) SpicyMotion.BgDimAlpha else SpicyMotion.DimAlpha)
     val rtl = remember(line.rawText) { isRtlText(line.rawText) }
 
     // Spicy uses white lyric fills; singer IDs must not tint the whole renderer green/cyan/orange.
@@ -824,22 +918,24 @@ fun SingleLyricLineRow(
         LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr
     ) {
         Column(
-            horizontalAlignment = Alignment.Start,
+            horizontalAlignment = if (isOppositeAligned) Alignment.End else Alignment.Start,
             verticalArrangement = Arrangement.Center,
             modifier = modifier.fillMaxWidth()
         ) {
             if (!isActiveLine && !forceFlowRow) {
-                // Spicy keeps the adjacent lines simple: the line itself controls its opacity.
+                // Spicy keeps the adjacent lines simple: sung lines are fully lit, upcoming ones dim,
+                // and the line itself controls its opacity.
                 Text(
                     text = line.rawText,
-                    style = TextStyle(
+                    textAlign = if (isOppositeAligned) TextAlign.End else TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = spicyTextStyle(
+                        color = if (isSung) litColor else dimColor,
+                        brush = null,
                         fontSize = fontSize,
                         lineHeight = lineHeight,
                         fontStyle = fontStyle,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.SansSerif,
-                        color = Color.White.copy(alpha = baseAlpha),
-                        letterSpacing = 0.sp
+                        shadow = null
                     )
                 )
             } else {
@@ -881,7 +977,7 @@ fun SingleLyricLineRow(
                     }
 
                     FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(0.dp),
+                        horizontalArrangement = if (isOppositeAligned) Arrangement.End else Arrangement.spacedBy(0.dp),
                         verticalArrangement = Arrangement.spacedBy(1.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -905,12 +1001,15 @@ fun SingleLyricLineRow(
                 } else {
                     Text(
                         text = line.rawText,
-                        style = TextStyle(
+                        textAlign = if (isOppositeAligned) TextAlign.End else TextAlign.Start,
+                        modifier = Modifier.fillMaxWidth(),
+                        style = spicyTextStyle(
+                            color = if (isActiveLine || isSung) litColor else dimColor,
+                            brush = null,
                             fontSize = fontSize,
                             lineHeight = lineHeight,
                             fontStyle = fontStyle,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = baseAlpha)
+                            shadow = null
                         )
                     )
                 }
@@ -925,16 +1024,26 @@ fun SingleLyricLineRow(
                         fontStyle = FontStyle.Normal,
                         fontWeight = FontWeight.Medium,
                         fontFamily = FontFamily.SansSerif,
-                        textAlign = TextAlign.Start,
+                        textAlign = if (isOppositeAligned) TextAlign.End else TextAlign.Start,
                         color = if (isActiveLine) Color.White.copy(alpha = 0.80f) else Color.White.copy(alpha = 0.50f)
                     ),
-                    modifier = Modifier.padding(top = 2.dp, bottom = 1.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp, bottom = 1.dp)
                 )
             }
         }
     }
 }
 
+/**
+ * A word (or syllable) in Spicy's style.
+ *
+ * Progress through the word is mapped to a scale, a lift and a glow with Spicy's spline curves, but
+ * the values the text actually shows are springs chasing those targets. That is what gives Spicy
+ * words their slightly loose, bouncy settle after the word is sung, instead of an exact playback
+ * of the curve.
+ */
 @Composable
 fun RhythmWordHighlightText(
     word: WordSync,
@@ -948,7 +1057,16 @@ fun RhythmWordHighlightText(
     modifier: Modifier = Modifier
 ) {
     val currentPositionMs = positionProvider()
-    val duration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
+    val fullDuration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
+
+    val isLetterCapable = isAnimationEnabled && isLetterCapableDuration(fullDuration, word)
+    // Words that are split into letters finish early, so the last letter has time to settle.
+    val animEndMs = if (isLetterCapable) {
+        maxOf(word.startTimeMs + 1L, word.endTimeMs - SpicyMotion.LetterTailMs)
+    } else {
+        word.endTimeMs
+    }
+    val duration = (animEndMs - word.startTimeMs).coerceAtLeast(1L)
 
     // Predictive Pre-Roll (starts anticipation 45ms before timestamp)
     val rawWordProgress = if (isActiveLine) {
@@ -959,65 +1077,66 @@ fun RhythmWordHighlightText(
             else -> (elapsed.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
         }
     } else {
-        if (currentPositionMs >= word.endTimeMs) 1f else 0f
+        if (currentPositionMs >= animEndMs) 1f else 0f
     }
 
     val isWordActive = rawWordProgress > 0f && rawWordProgress < 1f
     val isWordCompleted = rawWordProgress >= 1f
 
-    val wordPeakScale = if (isLetterCapableDuration(duration, word)) 1.175f else 1.0505f
-    val wordScale = if (isWordActive) {
-        val scale = spicyScale(rawWordProgress, wordPeakScale)
-        if (isSubduedBackground) 1f + (scale - 1f) * 0.55f else scale
-    } else if (isWordCompleted) {
-        1f
-    } else {
-        0.95f
-    }
+    // A word that is rendered whole (line not active) still has to sit where its letters would,
+    // otherwise the text jumps in size the moment its line becomes the active one.
+    val foldsLetterRest = isLetterCapable && !isActiveLine && !isWordCompleted
+    val targetScale = SpicyMotion.WordScale.at(rawWordProgress) *
+            (if (foldsLetterRest) SpicyMotion.LetterScale.at(0f) else 1f)
+    val targetLift = SpicyMotion.WordLift.at(rawWordProgress) +
+            (if (foldsLetterRest) 2f * SpicyMotion.LetterLift.at(0f) else 0f)
+    val targetGlow = SpicyMotion.Glow.at(rawWordProgress)
 
-    val wordOffsetY = if (isWordActive) {
-        val lift = spicyYOffset(rawWordProgress) * activeFontSizeSp
-        if (isSubduedBackground) lift * 0.5f else lift
-    } else {
-        0f
-    }
-
-    val isLetterCapable = isAnimationEnabled &&
-            duration >= 1400L &&
-            word.graphemes.size in 2..12 &&
-            canSplitIntoLetters(word.text)
+    val scaleState = animateFloatAsState(
+        targetValue = targetScale,
+        animationSpec = SpicyMotion.WordScaleSpring,
+        label = "wordScale"
+    )
+    val liftState = animateFloatAsState(
+        targetValue = targetLift,
+        animationSpec = SpicyMotion.WordLiftSpring,
+        label = "wordLift"
+    )
+    val glow = animateFloatAsState(
+        targetValue = targetGlow,
+        animationSpec = SpicyMotion.WordGlowSpring,
+        label = "wordGlow"
+    ).value
 
     Box(
-        modifier = modifier
-            .padding(horizontal = 0.dp, vertical = 0.dp)
-            .graphicsLayer {
-                scaleX = wordScale
-                scaleY = wordScale
-                translationY = wordOffsetY * density
-            },
+        modifier = modifier.graphicsLayer {
+            scaleX = scaleState.value
+            scaleY = scaleState.value
+            // Lift is a fraction of the (full-size) lyric font, as in Spicy's CSS.
+            translationY = liftState.value * activeFontSizeSp.sp.toPx()
+        },
         contentAlignment = Alignment.CenterStart
     ) {
         if (isLetterCapable && isActiveLine) {
-            RhythmLetterGroupSweepText(
+            SpicyLetterGroupText(
                 word = word,
                 currentPositionMs = currentPositionMs,
+                animEndMs = animEndMs,
                 isWordActive = isWordActive,
                 isWordCompleted = isWordCompleted,
                 isSubduedBackground = isSubduedBackground,
                 glowColor = glowColor,
-                rhythm = rhythm,
                 activeFontSizeSp = activeFontSizeSp
             )
         } else {
-            RhythmSingleSyllableSweepText(
+            SpicySyllableText(
                 word = word,
                 rawProgress = rawWordProgress,
-                durationMs = duration,
                 isWordActive = isWordActive,
                 isWordCompleted = isWordCompleted,
+                glow = glow,
                 isSubduedBackground = isSubduedBackground,
                 glowColor = glowColor,
-                rhythm = rhythm,
                 activeFontSizeSp = activeFontSizeSp
             )
         }
@@ -1025,229 +1144,212 @@ fun RhythmWordHighlightText(
 }
 
 @Composable
-private fun RhythmSingleSyllableSweepText(
+private fun SpicySyllableText(
     word: WordSync,
     rawProgress: Float,
-    durationMs: Long,
     isWordActive: Boolean,
     isWordCompleted: Boolean,
+    glow: Float,
     isSubduedBackground: Boolean,
     glowColor: Color,
-    rhythm: TrackRhythmContext,
     activeFontSizeSp: Float
 ) {
+    val density = LocalDensity.current.density
     val displayString = remember(word.text, word.trailingSpace) {
         if (word.trailingSpace) "${word.text} " else word.text
     }
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
-    val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
 
-    val litColor = Color.White.copy(alpha = baseAlpha)
-    val dimColor = Color(0x66FFFFFF).copy(alpha = baseAlpha * 0.6f)
+    val litColor = Color.White.copy(alpha = if (isSubduedBackground) SpicyMotion.BgLitAlpha else SpicyMotion.LitAlpha)
+    val dimColor = Color.White.copy(alpha = if (isSubduedBackground) SpicyMotion.BgDimAlpha else SpicyMotion.DimAlpha)
 
-    val baseShadow = remember {
+    // Spicy: text-shadow blur 4 + 2 * glow px at (glow * 35)% opacity.
+    val shadow = if (glow > 0.01f) {
         Shadow(
-            color = Color(0x99000000),
-            offset = ShadowOffsetBase,
-            blurRadius = 6f
+            color = glowColor.copy(alpha = (glow * 0.35f).coerceIn(0f, 1f)),
+            offset = Offset.Zero,
+            blurRadius = (4f + 2f * glow) * density
         )
-    }
+    } else null
 
-    val completedStyle = remember(litColor, fontSize, lineHeight, fontStyle) {
-        TextStyle(
-            color = litColor,
-            fontSize = fontSize,
-            fontWeight = FontWeight.Bold,
-            fontStyle = fontStyle,
-            fontFamily = FontFamily.SansSerif,
-            letterSpacing = (-0.3).sp,
-            lineHeight = lineHeight,
-            shadow = baseShadow
-        )
+    // Sweep position: -20% at the start of the word to 100% at its end, linear in time.
+    val position = when {
+        isWordCompleted -> 1f
+        isWordActive -> -SPICY_SWEEP_FEATHER + 1.2f * rawProgress
+        else -> -SPICY_SWEEP_FEATHER
     }
-
-    val unstartedStyle = remember(dimColor, fontSize, lineHeight, fontStyle) {
-        TextStyle(
-            color = dimColor,
-            fontSize = fontSize,
-            fontWeight = FontWeight.Bold,
-            fontStyle = fontStyle,
-            fontFamily = FontFamily.SansSerif,
-            letterSpacing = (-0.3).sp,
-            lineHeight = lineHeight,
-            shadow = baseShadow
-        )
-    }
-
-    // Gradient brush only needed when the word is actively sweeping across (0f < rawProgress < 1f).
-    // Pre-computed solid styles eliminate shader construction & Skia Paint shader pipeline for inactive words.
-    val textStyle = when {
-        isWordCompleted -> completedStyle
-        !isWordActive -> unstartedStyle
-        else -> {
-            val sweepProgress = calculateWordProgressEasing(rawProgress, durationMs, rhythm)
-            val p = sweepProgress.coerceIn(0f, 1f)
-            val featherFrac = SPICY_SWEEP_FEATHER
-            val sweepEnd = (-0.20f + 1.20f * p).coerceIn(0f, 1f)
-            val textBrush = Brush.horizontalGradient(
-                0f to litColor,
-                (sweepEnd - featherFrac).coerceIn(0f, 1f) to litColor,
-                sweepEnd to dimColor,
-                1f to dimColor
-            )
-            TextStyle(
-                brush = textBrush,
-                fontSize = fontSize,
-                fontWeight = FontWeight.Black,
-                fontStyle = fontStyle,
-                fontFamily = FontFamily.SansSerif,
-                letterSpacing = (-0.3).sp,
-                lineHeight = lineHeight,
-                shadow = Shadow(
-                    color = glowColor.copy(alpha = spicyGlow(rawProgress) * if (isSubduedBackground) 0.45f else 0.72f),
-                    offset = ShadowOffsetGlow,
-                    blurRadius = if (isSubduedBackground) 7f else 12f
-                )
-            )
-        }
+    val (solid, brush) = spicyFill(position, litColor, dimColor)
+    val style = remember(solid, brush, fontSize, lineHeight, fontStyle, shadow) {
+        spicyTextStyle(solid, brush, fontSize, lineHeight, fontStyle, shadow)
     }
 
     Text(
         text = displayString,
-        style = textStyle
+        style = style
     )
 }
 
+/**
+ * Letter-by-letter rendering for long, held words. Spicy spreads the word's (shortened) duration
+ * evenly over its letters; the active letter gets the full spline treatment, and its neighbours
+ * pick up a share of it that falls off steeply with distance, which produces the travelling swell.
+ */
 @Composable
-private fun RhythmLetterGroupSweepText(
+private fun SpicyLetterGroupText(
     word: WordSync,
     currentPositionMs: Long,
+    animEndMs: Long,
     isWordActive: Boolean,
     isWordCompleted: Boolean,
     isSubduedBackground: Boolean,
     glowColor: Color,
-    rhythm: TrackRhythmContext,
     activeFontSizeSp: Float
 ) {
-    val totalDuration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
-    val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
 
-    val litColor = Color.White.copy(alpha = baseAlpha)
-    val dimColor = Color(0x66FFFFFF).copy(alpha = baseAlpha * 0.6f)
+    val litColor = Color.White.copy(alpha = if (isSubduedBackground) SpicyMotion.BgLitAlpha else SpicyMotion.LitAlpha)
+    val dimColor = Color.White.copy(alpha = if (isSubduedBackground) SpicyMotion.BgDimAlpha else SpicyMotion.DimAlpha)
 
-    val baseShadow = remember {
-        Shadow(
-            color = Color(0x99000000),
-            offset = ShadowOffsetBase,
-            blurRadius = 6f
-        )
-    }
+    val graphemes = word.graphemes
+    val count = graphemes.size.coerceAtLeast(1)
+    val letterDurationMs = ((animEndMs - word.startTimeMs).coerceAtLeast(1L)).toFloat() / count
+    val shiftedPositionMs = currentPositionMs + PRE_ROLL_OFFSET_MS
 
-    val completedLetterStyle = remember(litColor, fontSize, lineHeight, fontStyle) {
-        TextStyle(
-            color = litColor,
-            fontSize = fontSize,
-            fontWeight = FontWeight.Bold,
-            fontStyle = fontStyle,
-            fontFamily = FontFamily.SansSerif,
-            letterSpacing = (-0.2).sp,
-            lineHeight = lineHeight,
-            shadow = baseShadow
-        )
-    }
+    val restScale = SpicyMotion.LetterScale.at(0f)
+    val restLift = SpicyMotion.LetterLift.at(0f)
+    val restGlow = SpicyMotion.Glow.at(0f)
 
-    val unstartedLetterStyle = remember(dimColor, fontSize, lineHeight, fontStyle) {
-        TextStyle(
-            color = dimColor,
-            fontSize = fontSize,
-            fontWeight = FontWeight.Bold,
-            fontStyle = fontStyle,
-            fontFamily = FontFamily.SansSerif,
-            letterSpacing = (-0.2).sp,
-            lineHeight = lineHeight,
-            shadow = baseShadow
-        )
-    }
-
-    val spaceStyle = remember(fontSize, lineHeight) {
-        TextStyle(fontSize = fontSize, lineHeight = lineHeight)
+    // Which letter is being sung right now, and how far through it we are.
+    var activeLetterIndex = -1
+    var activeLetterProgress = 0f
+    if (isWordActive) {
+        val raw = (shiftedPositionMs - word.startTimeMs) / letterDurationMs
+        activeLetterIndex = kotlin.math.floor(raw).toInt().coerceIn(0, count - 1)
+        activeLetterProgress = (raw - activeLetterIndex).coerceIn(0f, 1f)
     }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        val graphemes = word.graphemes
-        val count = graphemes.size.coerceAtLeast(1)
-        val letterDuration = (totalDuration / count).coerceAtLeast(1L)
-
         graphemes.forEachIndexed { index, graphemeCluster ->
-            val letterStart = word.startTimeMs + (index * letterDuration)
-            val rawLetterProgress = ((currentPositionMs + PRE_ROLL_OFFSET_MS - letterStart).toFloat() / letterDuration.toFloat()).coerceIn(0f, 1f)
+            val letterStartMs = word.startTimeMs + index * letterDurationMs
+            val letterEndMs = letterStartMs + letterDurationMs
+            val isLetterSung = shiftedPositionMs >= letterEndMs
+            val isLetterNotSung = shiftedPositionMs < letterStartMs
+            val isLetterActive = !isLetterSung && !isLetterNotSung
 
-            val isLetterActive = rawLetterProgress > 0f && rawLetterProgress < 1f
-            val isLetterDone = rawLetterProgress >= 1f
+            var targetScale = restScale
+            var targetLift = restLift
+            var targetGlow = restGlow
 
-            val letterScale = if (isLetterActive) {
-                spicyScale(rawLetterProgress, 1.175f)
-            } else if (isLetterDone || isWordCompleted) {
-                1f
-            } else {
-                0.95f
+            if (isWordCompleted) {
+                targetScale = SpicyMotion.LetterScale.at(1f)
+                targetLift = SpicyMotion.LetterLift.at(1f)
+                targetGlow = SpicyMotion.Glow.at(1f)
+            } else if (isWordActive && activeLetterIndex != -1 && !isLetterNotSung) {
+                val distance = kotlin.math.abs(index - activeLetterIndex).toFloat()
+                val falloff = 1f / (1f + Math.pow(distance.toDouble(), 2.8).toFloat())
+                val glowFalloff = 1f / (1f + distance * 0.9f)
+                val baseScale = SpicyMotion.LetterScale.at(activeLetterProgress)
+                val baseLift = SpicyMotion.LetterLift.at(activeLetterProgress)
+                val baseGlow = SpicyMotion.Glow.at(activeLetterProgress)
+                targetScale = restScale + (baseScale - restScale) * falloff
+                targetLift = restLift + (baseLift - restLift) * falloff
+                targetGlow = restGlow + (baseGlow - restGlow) * glowFalloff
             }
 
-            val letterStyle = when {
-                isLetterDone || isWordCompleted -> completedLetterStyle
-                !isLetterActive -> unstartedLetterStyle
-                else -> {
-                    val letterProgress = calculateWordProgressEasing(rawLetterProgress, letterDuration, rhythm)
-                    val p = letterProgress.coerceIn(0f, 1f)
-                    val featherFrac = SPICY_SWEEP_FEATHER
-                    val sweepEnd = (-0.20f + 1.20f * p).coerceIn(0f, 1f)
-                    val textBrush = Brush.horizontalGradient(
-                        0f to litColor,
-                        (sweepEnd - featherFrac).coerceIn(0f, 1f) to litColor,
-                        sweepEnd to dimColor,
-                        1f to dimColor
-                    )
-                    TextStyle(
-                        brush = textBrush,
-                        fontSize = fontSize,
-                        fontWeight = FontWeight.Black,
-                        fontStyle = fontStyle,
-                        fontFamily = FontFamily.SansSerif,
-                        letterSpacing = (-0.2).sp,
-                        lineHeight = lineHeight,
-                        shadow = Shadow(
-                            color = glowColor.copy(alpha = spicyGlow(rawLetterProgress) * if (isSubduedBackground) 0.45f else 0.72f),
-                            offset = ShadowOffsetGlow,
-                            blurRadius = if (isSubduedBackground) 7f else 12f
-                        )
-                    )
-                }
+            val sweepPosition = when {
+                isWordCompleted || isLetterSung -> 1f
+                isLetterActive && index == activeLetterIndex ->
+                    -SPICY_SWEEP_FEATHER + 1.2f * easeSinOut(activeLetterProgress)
+                else -> -SPICY_SWEEP_FEATHER
             }
 
-            Box(
-                modifier = Modifier.graphicsLayer {
-                    scaleX = letterScale
-                    scaleY = letterScale
-                },
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Text(
-                    text = graphemeCluster,
-                    style = letterStyle
-                )
-            }
+            SpicyLetterText(
+                letter = graphemeCluster,
+                targetScale = targetScale,
+                targetLift = targetLift,
+                targetGlow = targetGlow,
+                sweepPosition = sweepPosition,
+                litColor = litColor,
+                dimColor = dimColor,
+                glowColor = glowColor,
+                fontSize = fontSize,
+                lineHeight = lineHeight,
+                fontStyle = fontStyle,
+                activeFontSizeSp = activeFontSizeSp
+            )
         }
 
         if (word.trailingSpace) {
             Text(
                 text = " ",
-                style = spaceStyle
+                style = TextStyle(fontSize = fontSize, lineHeight = lineHeight)
             )
         }
+    }
+}
+
+@Composable
+private fun SpicyLetterText(
+    letter: String,
+    targetScale: Float,
+    targetLift: Float,
+    targetGlow: Float,
+    sweepPosition: Float,
+    litColor: Color,
+    dimColor: Color,
+    glowColor: Color,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+    fontStyle: FontStyle,
+    activeFontSizeSp: Float
+) {
+    val density = LocalDensity.current.density
+    val scaleState = animateFloatAsState(
+        targetValue = targetScale,
+        animationSpec = SpicyMotion.WordScaleSpring,
+        label = "letterScale"
+    )
+    val liftState = animateFloatAsState(
+        targetValue = targetLift,
+        animationSpec = SpicyMotion.WordLiftSpring,
+        label = "letterLift"
+    )
+    val glow = animateFloatAsState(
+        targetValue = targetGlow,
+        animationSpec = SpicyMotion.WordGlowSpring,
+        label = "letterGlow"
+    ).value
+
+    // Spicy letters glow harder than whole words: blur 4 + 12 * glow px at up to 100% opacity.
+    val shadow = if (glow > 0.01f) {
+        Shadow(
+            color = glowColor.copy(alpha = (glow * 1.85f).coerceIn(0f, 1f)),
+            offset = Offset.Zero,
+            blurRadius = (4f + 12f * glow) * density
+        )
+    } else null
+
+    val (solid, brush) = spicyFill(sweepPosition, litColor, dimColor)
+    val style = remember(solid, brush, fontSize, lineHeight, fontStyle, shadow) {
+        spicyTextStyle(solid, brush, fontSize, lineHeight, fontStyle, shadow)
+    }
+
+    Box(
+        modifier = Modifier.graphicsLayer {
+            scaleX = scaleState.value
+            scaleY = scaleState.value
+            // Letters lift twice as far as the word-level curve, as in Spicy.
+            translationY = liftState.value * 2f * activeFontSizeSp.sp.toPx()
+        },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text = letter,
+            style = style
+        )
     }
 }
