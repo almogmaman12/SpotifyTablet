@@ -1217,7 +1217,7 @@ private fun SpicyAnimatedTextUnit(
             shadow = inactiveLineShadow
         )
     }
-    val animatedStyle = remember(fontSize, lineHeight, isSubduedBackground, sweepBrush, glowColor) {
+    val animatedStyle = remember(fontSize, lineHeight, isSubduedBackground, sweepBrush, glowColor, sweepGlow) {
         TextStyle(
             brush = sweepBrush,
             fontSize = fontSize,
@@ -1226,11 +1226,12 @@ private fun SpicyAnimatedTextUnit(
             fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal,
             fontFamily = FontFamily.SansSerif,
             letterSpacing = 0.sp,
-            // One shadow on the single glyph pass; the brush brightens it slightly during attack.
+            // Match the reference glow profile: word opacity peaks at 90%, while letter glow
+            // is stronger and blurred farther. The glow follows this word/letter's own progress.
             shadow = Shadow(
-                color = glowColor.copy(alpha = if (isSubduedBackground) 0.14f else 0.22f),
+                color = glowColor.copy(alpha = sweepGlow * if (isLetter) 1f else 0.90f),
                 offset = Offset.Zero,
-                blurRadius = if (isLetter) 9f else 6f
+                blurRadius = if (isLetter) 4f + 12f * sweepGlow else 4f + 6f * sweepGlow
             )
         )
     }
