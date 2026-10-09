@@ -701,6 +701,7 @@ fun LyricsContent(
                                 positionProvider = linePositionProvider,
                                 isAnimationEnabled = isAnimationEnabled,
                                 isActiveLine = isActive,
+                                isPastLine = isPastLine,
                                 forceFlowRow = renderAsActive,
                                 isSubduedBackground = line.isBackground,
                                 rhythm = rhythmContext,
@@ -918,6 +919,7 @@ fun SingleLyricLineRow(
     positionProvider: () -> Long,
     isAnimationEnabled: Boolean = true,
     isActiveLine: Boolean = true,
+    isPastLine: Boolean = false,
     forceFlowRow: Boolean = false,
     isSubduedBackground: Boolean = false,
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
@@ -927,7 +929,12 @@ fun SingleLyricLineRow(
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
-    val baseAlpha = if (isSubduedBackground) 0.60f else 1.0f
+    val baseAlpha = when {
+        isSubduedBackground && (isActiveLine || isPastLine) -> 0.60f
+        isSubduedBackground -> 0.30f
+        isActiveLine || isPastLine -> 0.85f
+        else -> 0.35f
+    }
     val rtl = remember(line.rawText) { isRtlText(line.rawText) }
 
     // Spicy uses white lyric fills; singer IDs must not tint the whole renderer green/cyan/orange.
@@ -1168,7 +1175,8 @@ private fun RhythmSingleSyllableSweepText(
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
-    val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
+    val litAlpha = if (isSubduedBackground) 0.60f else 0.85f
+    val dimAlpha = if (isSubduedBackground) 0.30f else 0.35f
     val glowSpring = remember(word.startTimeMs, isActiveLine) {
         SpicySpring(spicyGlow(rawProgress), frequency = 1.18f, damping = 0.56f)
     }
@@ -1178,8 +1186,8 @@ private fun RhythmSingleSyllableSweepText(
         0f
     }
 
-    val litColor = Color.White.copy(alpha = baseAlpha)
-    val dimColor = Color.White.copy(alpha = baseAlpha * 0.35f)
+    val litColor = Color.White.copy(alpha = litAlpha)
+    val dimColor = Color.White.copy(alpha = dimAlpha)
 
     val baseShadow = remember {
         Shadow(
@@ -1266,10 +1274,11 @@ private fun RhythmLetterGroupSweepText(
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
-    val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
+    val litAlpha = if (isSubduedBackground) 0.60f else 0.85f
+    val dimAlpha = if (isSubduedBackground) 0.30f else 0.35f
 
-    val litColor = Color.White.copy(alpha = baseAlpha)
-    val dimColor = Color.White.copy(alpha = baseAlpha * 0.35f)
+    val litColor = Color.White.copy(alpha = litAlpha)
+    val dimColor = Color.White.copy(alpha = dimAlpha)
 
     val baseShadow = remember {
         Shadow(
