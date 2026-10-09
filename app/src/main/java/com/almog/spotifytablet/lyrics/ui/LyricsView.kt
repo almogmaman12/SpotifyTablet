@@ -593,14 +593,19 @@ fun LyricsContent(
                         label = "lineScale_${line.startTimeMs}"
                     )
 
-                    // Active: live position (smoothed via displayPositionMs to prevent sweep jumps on drift correction).
-                    // Departing (renderAsActive): completed state (stable).
-                    // Upcoming inactive: not-started state (stable, no per-frame recomposition).
-                    val linePositionMs = when {
-                        isActive -> displayPositionMs
-                        renderAsActive -> line.endTimeMs + 1L
-                        targetIndex < activeLineIndex -> line.endTimeMs + 1L
-                        else -> line.startTimeMs - 1L
+                    // Only the active line observes the frame clock. Neighbouring lines get
+                    // a stable completed/not-started position, so their word composables do not
+                    // recompose at playback frame rate.
+                    val isPastLine = targetIndex < activeLineIndex
+                    val linePositionProvider = remember(
+                        positionProvider, line.startTimeMs, line.endTimeMs, isActive, isPastLine
+                    ) {
+                        if (isActive) {
+                            positionProvider
+                        } else {
+                            val fixedPosition = if (isPastLine) line.endTimeMs + 1L else line.startTimeMs - 1L
+                            { fixedPosition }
+                        }
                     }
 
                     Box(
@@ -634,7 +639,7 @@ fun LyricsContent(
                         ) {
                             SingleLyricLineRow(
                                 line = line,
-                                positionProvider = positionProvider,
+                                positionProvider = linePositionProvider,
                                 isAnimationEnabled = isAnimationEnabled,
                                 isActiveLine = isActive,
                                 forceFlowRow = renderAsActive,
@@ -848,7 +853,6 @@ fun SingleLyricLineRow(
     activeFontSizeSp: Float = 32f,
     modifier: Modifier = Modifier
 ) {
-    val currentPositionMs = positionProvider()
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
