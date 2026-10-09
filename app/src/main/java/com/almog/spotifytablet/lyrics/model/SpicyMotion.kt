@@ -96,9 +96,13 @@ object SpicyMotion {
     const val BlurPerLinePx = 1.25f
     const val BlurMaxPx = 1.25f * 5.465f
 
-    /** Resting resolve of the sweep gradient: lit and dim alpha for the main vocal and background vocals. */
+    /**
+     * Sweep gradient alphas. Words and letters carry their own values (0.85 lit, 0.5 dim); the 0.35
+     * in Spicy's CSS only applies to the line element itself, which never paints text in syllable
+     * lyrics. Background vocals use 0.6 / 0.3.
+     */
     const val LitAlpha = 0.85f
-    const val DimAlpha = 0.35f
+    const val DimAlpha = 0.5f
     const val BgLitAlpha = 0.6f
     const val BgDimAlpha = 0.3f
 
@@ -107,6 +111,12 @@ object SpicyMotion {
         val omega = 2f * Math.PI.toFloat() * frequencyHz
         return omega * omega
     }
+
+    /**
+     * Spicy glides the lyric list to the next line with a critically damped spring at 1 Hz: about
+     * 0.8s, no overshoot, and a retarget keeps its velocity so quick line changes read as one glide.
+     */
+    val LineScrollSpring: SpringSpec<Float> = spring(dampingRatio = 1f, stiffness = stiffness(1f))
 
     val WordScaleSpring: SpringSpec<Float> = spring(dampingRatio = 0.64f, stiffness = stiffness(0.88f))
     val WordLiftSpring: SpringSpec<Float> = spring(dampingRatio = 0.4f, stiffness = stiffness(1.45f))

@@ -387,12 +387,12 @@ fun LyricsContent(
             prevAnchorPositionMs = anchor.positionMs
         }
 
-        // Y: spring feels natural for "lines sliding" (Apple Music / Spotify style).
-        // alpha & scale: use the exact same spec so all three stay in sync — no mismatch on seeks.
+        // Y: Spicy's scroll glide (critically damped, ~0.8s, no overshoot).
+        // alpha & scale: short tweens, as in Spicy's line transitions.
         val lineAnimSpec: androidx.compose.animation.core.AnimationSpec<Float> = if (isDiscontinuousSeek) {
             snap()
         } else {
-            spring(dampingRatio = 0.85f, stiffness = 520f)
+            SpicyMotion.LineScrollSpring
         }
         val propAnimSpec: androidx.compose.animation.core.AnimationSpec<Float> = if (isDiscontinuousSeek) {
             snap()
@@ -421,7 +421,24 @@ fun LyricsContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { alpha = stageAlpha },
+                .graphicsLayer {
+                    alpha = stageAlpha
+                    compositingStrategy = CompositingStrategy.Offscreen
+                }
+                .drawWithContent {
+                    drawContent()
+                    val fadePx = 64.dp.toPx().coerceAtMost(size.height * 0.25f)
+                    val startFraction = if (size.height > 0f) fadePx / size.height else 0f
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            startFraction to Color.Black,
+                            (1f - startFraction) to Color.Black,
+                            1f to Color.Transparent
+                        ),
+                        blendMode = BlendMode.DstIn
+                    )
+                },
             contentAlignment = Alignment.CenterStart
         ) {
             // Map of line heights measured in pixels (stable per line)
@@ -454,7 +471,7 @@ fun LyricsContent(
 
                     if (!isDynamicSpacingPrefEnabled) {
                         val fixedSlotPx = with(density) { 88.dp.toPx() }
-                        for (off in -2..3) {
+                        for (off in -3..4) {
                             map[off] = off * fixedSlotPx
                         }
                     } else {
@@ -466,14 +483,14 @@ fun LyricsContent(
                         // Place line centers using half-heights, so wrapped lyrics do not
                         // create oversized gaps or overlap when line measurements arrive.
                         var y = 0f
-                        for (off in 1..3) {
+                        for (off in 1..4) {
                             y += (lineHeightAt(effectiveCenterIndex + off - 1) +
                                     lineHeightAt(effectiveCenterIndex + off)) / 2f + interLineGapPx
                             map[off] = y
                         }
 
                         y = 0f
-                        for (off in -1 downTo -2) {
+                        for (off in -1 downTo -3) {
                             y -= (lineHeightAt(effectiveCenterIndex + off + 1) +
                                     lineHeightAt(effectiveCenterIndex + off)) / 2f + interLineGapPx
                             map[off] = y
@@ -506,8 +523,9 @@ fun LyricsContent(
                 }
             }
 
-            // Render -2..3 window (6 slots) — fewer composables = fewer recompositions per frame.
-            for (offset in -2..3) {
+            // Render a -3..4 window: one spare line each side so a line gliding out of view (Spicy's
+            // scroll takes ~0.8s) never pops out while it is still on screen.
+            for (offset in -3..4) {
                 val targetIndex = effectiveCenterIndex + offset
                 val line = displayLines.getOrNull(targetIndex) ?: continue
 
