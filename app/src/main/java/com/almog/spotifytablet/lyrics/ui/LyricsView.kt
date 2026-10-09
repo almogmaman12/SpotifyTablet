@@ -90,6 +90,7 @@ import kotlinx.coroutines.delay
  */
 private const val PRE_ROLL_OFFSET_MS = 45L
 private const val SPICY_SWEEP_FEATHER = 0.20f
+private const val SPICY_BLUR_MULTIPLIER = 1.25f
 
 private fun isRtlText(text: String): Boolean {
     for (character in text) {
@@ -587,7 +588,8 @@ fun LyricsContent(
                                 forceFlowRow = renderAsActive,
                                 isSubduedBackground = line.isBackground,
                                 rhythm = rhythmContext,
-                                activeFontSizeSp = lyricsFontSizeSp
+                                activeFontSizeSp = lyricsFontSizeSp,
+                                lineDistance = kotlin.math.abs(targetIndex - activeLineIndex)
                             )
 
                             if (isActive && companionBgLine != null && line != companionBgLine) {
@@ -800,6 +802,7 @@ fun SingleLyricLineRow(
     isSubduedBackground: Boolean = false,
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
     activeFontSizeSp: Float = 32f,
+    lineDistance: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
@@ -817,6 +820,16 @@ fun SingleLyricLineRow(
         }
     }
     val rtl = remember(line.rawText) { isRtlText(line.rawText) }
+    val lineBlurRadiusPx = with(LocalDensity.current) {
+        (lineDistance.coerceIn(0, 5) * SPICY_BLUR_MULTIPLIER).dp.toPx()
+    }
+    val lineShadow = if (!isActiveLine && lineDistance > 0) {
+        Shadow(
+            color = Color.White.copy(alpha = lineFillAlpha),
+            offset = Offset.Zero,
+            blurRadius = lineBlurRadiusPx
+        )
+    } else null
 
     // Spicy uses white lyric fills; singer IDs must not tint the whole renderer green/cyan/orange.
     CompositionLocalProvider(
@@ -838,7 +851,8 @@ fun SingleLyricLineRow(
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.SansSerif,
                         color = Color.White.copy(alpha = lineFillAlpha),
-                        letterSpacing = 0.sp
+                        letterSpacing = 0.sp,
+                        shadow = lineShadow
                     )
                 )
             } else {
@@ -944,6 +958,7 @@ fun RhythmWordHighlightText(
     glowColor: Color = Color.White,
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
     activeFontSizeSp: Float = 32f,
+    lineDistance: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val duration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
@@ -972,7 +987,8 @@ fun RhythmWordHighlightText(
                     isSubduedBackground = isSubduedBackground,
                     glowColor = glowColor,
                     activeFontSizeSp = activeFontSizeSp,
-                    isLetter = true
+                    isLetter = true,
+                    lineDistance = lineDistance
                 )
             }
             if (word.trailingSpace) {
@@ -997,6 +1013,7 @@ fun RhythmWordHighlightText(
             glowColor = glowColor,
             activeFontSizeSp = activeFontSizeSp,
             isLetter = false,
+            lineDistance = lineDistance,
             modifier = modifier
         )
     }
@@ -1014,6 +1031,7 @@ private fun SpicyAnimatedTextUnit(
     glowColor: Color,
     activeFontSizeSp: Float,
     isLetter: Boolean,
+    lineDistance: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val duration = (endTimeMs - startTimeMs).coerceAtLeast(1L)
@@ -1045,8 +1063,19 @@ private fun SpicyAnimatedTextUnit(
     }
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
+    val lineBlurRadiusPx = with(LocalDensity.current) {
+        (lineDistance.coerceIn(0, 5) * SPICY_BLUR_MULTIPLIER).dp.toPx()
+    }
+    val lineShadowAlpha = if (playbackState == SpicyWordPlaybackState.Upcoming) dimAlpha else litAlpha
+    val lineShadow = if (!isActiveLine && lineDistance > 0) {
+        Shadow(
+            color = Color.White.copy(alpha = lineShadowAlpha),
+            offset = Offset.Zero,
+            blurRadius = lineBlurRadiusPx
+        )
+    } else null
 
-    val baseStyle = remember(fontSize, lineHeight, baseAlpha, isSubduedBackground, isLetter) {
+    val baseStyle = remember(fontSize, lineHeight, baseAlpha, isSubduedBackground, isLetter, lineDistance, playbackState, lineShadow) {
         TextStyle(
             color = Color.White.copy(alpha = baseAlpha),
             fontSize = fontSize,
@@ -1054,7 +1083,8 @@ private fun SpicyAnimatedTextUnit(
             fontWeight = FontWeight.Bold,
             fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal,
             fontFamily = FontFamily.SansSerif,
-            letterSpacing = 0.sp
+            letterSpacing = 0.sp,
+            shadow = lineShadow
         )
     }
 
