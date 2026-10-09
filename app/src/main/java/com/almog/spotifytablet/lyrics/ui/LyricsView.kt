@@ -94,76 +94,53 @@ private const val SPICY_SWEEP_FEATHER = 0.20f
 private const val SPICY_BLUR_MULTIPLIER = 1.25f
 
 /**
- * Draw-phase karaoke gradient. The brush is intentionally not a ShaderBrush: ShaderBrush caches
- * its shader by size, but this shader also changes with playback time. Creating the shader in
- * applyTo lets Compose redraw a single Text without a second offscreen text layer.
+ * The reference uses a 20% soft transition from bright to dim text. The brush is rebuilt only
+ * when the active word's progress changes, never for every word on every frame.
  */
-private class SpicyPlaybackBrush(
-    private val positionProvider: () -> Long,
-    private val startTimeMs: Long,
-    private val endTimeMs: Long,
-    private val isRtl: Boolean,
-    private val litAlpha: Float,
-    private val dimAlpha: Float,
-    private val glowProvider: () -> Float
-) : androidx.compose.ui.graphics.Brush() {
-    override fun applyTo(size: Size, p: Paint, alpha: Float) {
-        val position = positionProvider() + PRE_ROLL_OFFSET_MS
-        val duration = (endTimeMs - startTimeMs).coerceAtLeast(1L)
-        val activeLitAlpha = (litAlpha + glowProvider().coerceIn(0f, 1f) * 0.10f).coerceAtMost(1f)
-        val baseColor = Color.White.copy(alpha = if (position >= endTimeMs) litAlpha else dimAlpha)
+private data class SpicyGradientStop(val position: Float, val alpha: Float)
 
-        if (position < startTimeMs || position >= endTimeMs || size.width <= 0f || size.height <= 0f) {
-            p.shader = null
-            p.color = baseColor
-            p.alpha = alpha
-            return
-        }
+private fun createSpicySweepBrush(
+    progress: Float,
+    isRtl: Boolean,
+    litAlpha: Float,
+    dimAlpha: Float,
+    glow: Float
+): Brush {
+    val activeLitAlpha = (litAlpha + glow.coerceIn(0f, 1f) * 0.10f).coerceAtMost(1f)
+    val rawStart = -0.20f + 1.20f * progress.coerceIn(0f, 1f)
+    val rawEnd = rawStart + SPICY_SWEEP_FEATHER
 
-        val progress = ((position - startTimeMs).toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-        val rawStart = -0.20f + 1.20f * progress
-        val rawEnd = rawStart + SPICY_SWEEP_FEATHER
+    if (rawEnd <= 0f) {
+        val dim = Color.White.copy(alpha = dimAlpha)
+        return if (isRtl) Brush.horizontalGradient(listOf(dim, dim)) else Brush.verticalGradient(listOf(dim, dim))
+    }
+    if (rawStart >= 1f) {
+        val lit = Color.White.copy(alpha = activeLitAlpha)
+        return if (isRtl) Brush.horizontalGradient(listOf(lit, lit)) else Brush.verticalGradient(listOf(lit, lit))
+    }
 
-        if (rawEnd <= 0f) {
-            p.shader = null
-            p.color = Color.White.copy(alpha = dimAlpha)
-            p.alpha = alpha
-            return
-        }
-        if (rawStart >= 1f) {
-            p.shader = null
-            p.color = Color.White.copy(alpha = litAlpha)
-            p.alpha = alpha
-            return
-        }
+    fun alphaAt(position: Float): Float = when {
+        position <= rawStart -> activeLitAlpha
+        position >= rawEnd -> dimAlpha
+        else -> activeLitAlpha + (dimAlpha - activeLitAlpha) *
+            ((position - rawStart) / (rawEnd - rawStart)).coerceIn(0f, 1f)
+    }
 
-        fun alphaAt(position: Float): Float = when {
-            position <= rawStart -> activeLitAlpha
-            position >= rawEnd -> dimAlpha
-            else -> activeLitAlpha + (dimAlpha - activeLitAlpha) *
-                ((position - rawStart) / (rawEnd - rawStart)).coerceIn(0f, 1f)
-        }
+    val positions = buildList {
+        add(0f)
+        if (rawStart > 0f && rawStart < 1f) add(rawStart)
+        if (rawEnd > 0f && rawEnd < 1f) add(rawEnd)
+        add(1f)
+    }.distinct().sorted()
+    val colorStops = positions.map { stop ->
+        stop to Color.White.copy(alpha = alphaAt(stop))
+    }.toTypedArray()
 
-        val stopPositions = buildList {
-            add(0f)
-            if (rawStart > 0f && rawStart < 1f) add(rawStart)
-            if (rawEnd > 0f && rawEnd < 1f) add(rawEnd)
-            add(1f)
-        }.distinct().sorted()
-        val colors = stopPositions.map { stop ->
-            Color.White.copy(alpha = alphaAt(stop))
-        }
-
-        val from = if (isRtl) Offset(size.width, 0f) else Offset(0f, 0f)
-        val to = if (isRtl) Offset(0f, 0f) else Offset(0f, size.height)
-        p.shader = LinearGradientShader(
-            colors = colors,
-            from = from,
-            to = to,
-            colorStops = stopPositions,
-            tileMode = TileMode.Clamp
-        )
-        p.alpha = alpha
+    return if (isRtl) {
+        Brush.horizontalGradient(colorStops = colorStops)
+    } else {
+        // Spicy's LTR --gradient-degrees is 180deg, so the sweep runs top to bottom.
+        Brush.verticalGradient(colorStops = colorStops)
     }
 }
 
@@ -1186,21 +1163,28 @@ private fun SpicyAnimatedTextUnit(
     // A non-snapshot holder lets the draw-phase brush reuse the spring's glow value without
     // creating a state write or recomposition every frame.
     val currentGlow = remember(startTimeMs, endTimeMs, isLetter) { floatArrayOf(0f) }
-    val sweepBrush = remember(
-        positionProvider,
-        startTimeMs,
-        endTimeMs,
-        isSubduedBackground,
-        text
-    ) {
-        SpicyPlaybackBrush(
-            positionProvider = positionProvider,
-            startTimeMs = startTimeMs,
-            endTimeMs = endTimeMs,
+    val sweepProgress by remember(startTimeMs, endTimeMs, isActiveLine, isAnimationEnabled) {
+        derivedStateOf {
+            if (!isAnimationEnabled || !isActiveLine) {
+                0f
+            } else {
+                ((positionProvider() + PRE_ROLL_OFFSET_MS - startTimeMs).toFloat() /
+                    duration.toFloat()).coerceIn(0f, 1f)
+            }
+        }
+    }
+    val sweepGlow = when {
+        sweepProgress < 0.15f -> (sweepProgress / 0.15f).coerceIn(0f, 1f)
+        sweepProgress <= 0.60f -> 1f
+        else -> ((1f - sweepProgress) / 0.40f).coerceIn(0f, 1f)
+    }
+    val sweepBrush = remember(sweepProgress, isSubduedBackground, text) {
+        createSpicySweepBrush(
+            progress = sweepProgress,
             isRtl = isRtlText(text),
             litAlpha = litAlpha,
             dimAlpha = dimAlpha,
-            glowProvider = { currentGlow[0] }
+            glow = sweepGlow
         )
     }
 
@@ -1272,10 +1256,7 @@ private fun SpicyAnimatedTextUnit(
                 style = animatedStyle,
                 // This snapshot read invalidates only this text's draw node, so the playback shader
                 // is sampled at frame cadence without a duplicate Text, mask layer, or recomposition.
-                modifier = Modifier.drawWithContent {
-                    positionProvider()
-                    drawContent()
-                }
+                modifier = Modifier
             )
         } else {
             Text(text = text, style = staticStyle)
