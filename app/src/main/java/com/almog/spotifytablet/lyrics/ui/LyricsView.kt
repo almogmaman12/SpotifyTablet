@@ -781,62 +781,74 @@ fun SpicyPauseDots(
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
     modifier: Modifier = Modifier
 ) {
-    val currentPositionMs = positionProvider()
-    val totalTime = (nextStartMs - pauseStartMs).coerceAtLeast(1000L)
-    val baseDotTime = totalTime / 3
+    // Spicy's interlude dots keep pulsing instead of becoming permanently "completed".
+    // This loop is only alive while the pause row is composed.
+    var pulseStep by remember(pauseStartMs, nextStartMs) { mutableIntStateOf(0) }
+    LaunchedEffect(pauseStartMs, nextStartMs) {
+        pulseStep = 0
+        while (true) {
+            delay(170L)
+            pulseStep = (pulseStep + 1) % 3
+        }
+    }
 
-    val dot1End = pauseStartMs + baseDotTime
-    val dot2End = pauseStartMs + (baseDotTime * 2)
-
-    val dot1Active = currentPositionMs >= pauseStartMs
-    val dot2Active = currentPositionMs >= dot1End
-    val dot3Active = currentPositionMs >= dot2End
-
-    val dotSpring = rhythm.calculateRhythmSpringSpec<Float>(baseStiffness = 380f, baseDamping = 0.65f)
-
+    val dotSpec = tween<Float>(durationMillis = 160, easing = FastOutSlowInEasing)
     val d1Scale by animateFloatAsState(
-        targetValue = if (dot1Active) 1.35f else 0.85f,
-        animationSpec = dotSpring,
+        targetValue = if (pulseStep == 0) 1.05f else 0.75f,
+        animationSpec = dotSpec,
         label = "dot1Scale"
     )
     val d2Scale by animateFloatAsState(
-        targetValue = if (dot2Active) 1.35f else 0.85f,
-        animationSpec = dotSpring,
+        targetValue = if (pulseStep == 1) 1.05f else 0.75f,
+        animationSpec = dotSpec,
         label = "dot2Scale"
     )
     val d3Scale by animateFloatAsState(
-        targetValue = if (dot3Active) 1.35f else 0.85f,
-        animationSpec = dotSpring,
+        targetValue = if (pulseStep == 2) 1.05f else 0.75f,
+        animationSpec = dotSpec,
         label = "dot3Scale"
+    )
+    val d1Alpha by animateFloatAsState(
+        targetValue = if (pulseStep == 0) 1f else 0.35f,
+        animationSpec = dotSpec,
+        label = "dot1Alpha"
+    )
+    val d2Alpha by animateFloatAsState(
+        targetValue = if (pulseStep == 1) 1f else 0.35f,
+        animationSpec = dotSpec,
+        label = "dot2Alpha"
+    )
+    val d3Alpha by animateFloatAsState(
+        targetValue = if (pulseStep == 2) 1f else 0.35f,
+        animationSpec = dotSpec,
+        label = "dot3Alpha"
     )
 
     Row(
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.padding(vertical = 14.dp)
+        modifier = modifier.padding(vertical = 4.dp)
     ) {
-        PauseDot(isActive = dot1Active, scale = d1Scale)
-        PauseDot(isActive = dot2Active, scale = d2Scale)
-        PauseDot(isActive = dot3Active, scale = d3Scale)
+        PauseDot(scale = d1Scale, alpha = d1Alpha)
+        PauseDot(scale = d2Scale, alpha = d2Alpha)
+        PauseDot(scale = d3Scale, alpha = d3Alpha)
     }
 }
 
 @Composable
 private fun PauseDot(
-    isActive: Boolean,
-    scale: Float
+    scale: Float,
+    alpha: Float
 ) {
     Box(
         modifier = Modifier
-            .size(16.dp)
+            .size(7.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
+                this.alpha = alpha
             }
-            .background(
-                color = if (isActive) Color.White else Color(0x55FFFFFF),
-                shape = CircleShape
-            )
+            .background(color = Color.White, shape = CircleShape)
     )
 }
 
