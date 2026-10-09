@@ -131,7 +131,7 @@ fun LyricsContent(
     var displayPositionMs by remember { mutableLongStateOf(anchor.positionMs) }
 
     // Reset positions immediately when the track changes
-    LaunchedEffect(track) {
+    LaunchedEffect(track, anchor.positionMs, anchor.anchorRealtimeMs, anchor.isPlaying, anchor.speed) {
         currentPositionMs = anchor.positionMs
         displayPositionMs = anchor.positionMs
     }
@@ -170,10 +170,17 @@ fun LyricsContent(
 
     // Temporal locality cache: stores last active line index to enable O(1) checks
     val lastActiveRef = remember(track) { intArrayOf(-1) }
-    val activeLineIndex = remember(track, currentPositionMs) {
-        val idx = track?.let { findActiveLineIndex(it.lines, currentPositionMs, lastActiveRef[0]) } ?: -1
-        lastActiveRef[0] = idx
-        idx
+    // Recalculate on playback-position changes, but invalidate composition only when
+    // the active line index actually changes. This avoids rebuilding the lyrics tree
+    // on every animation frame.
+    val activeLineIndex by remember(track) {
+        derivedStateOf {
+            val idx = track?.let {
+                findActiveLineIndex(it.lines, currentPositionMs, lastActiveRef[0])
+            } ?: -1
+            lastActiveRef[0] = idx
+            idx
+        }
     }
 
     // Manual scroll & fling gesture override state
@@ -200,8 +207,10 @@ fun LyricsContent(
             .fillMaxSize()
             .padding(horizontal = 24.dp, vertical = 0.dp)
             .pointerInput(track?.lines?.size) {
+                var accumulatedDragPx = 0f
                 detectVerticalDragGestures(
                     onDragStart = {
+                        accumulatedDragPx = 0f
                         isUserInteracting = true
                         onUserScrollStateChanged?.invoke(true)
                     },
@@ -214,11 +223,16 @@ fun LyricsContent(
                         lastInteractionTime = System.currentTimeMillis()
                     },
                     onVerticalDrag = { _, dragAmount ->
-                        if (dragAmount < -30f) {
+                        accumulatedDragPx += dragAmount
+                        val thresholdPx = 30f
+                        while (accumulatedDragPx <= -thresholdPx) {
                             manualScrollOffsetLines = (manualScrollOffsetLines + 1).coerceAtMost(3)
+                            accumulatedDragPx += thresholdPx
                             lastInteractionTime = System.currentTimeMillis()
-                        } else if (dragAmount > 30f) {
+                        }
+                        while (accumulatedDragPx >= thresholdPx) {
                             manualScrollOffsetLines = (manualScrollOffsetLines - 1).coerceAtLeast(-3)
+                            accumulatedDragPx -= thresholdPx
                             lastInteractionTime = System.currentTimeMillis()
                         }
                     }
@@ -253,7 +267,9 @@ fun LyricsContent(
             label = "pauseAlpha"
         )
 
-        val lastLineEndTime = track.lines.lastOrNull()?.endTimeMs ?: Long.MAX_VALUE
+        val lastLineEndTime = track.lines.asSequence()
+            .filterNot { it.isBackground }
+            .maxOfOrNull { it.endTimeMs } ?: Long.MAX_VALUE
         val isOutro = activeLineIndex == -1 && currentPositionMs >= lastLineEndTime
 
         val stageAlpha by animateFloatAsState(
@@ -288,15 +304,17 @@ fun LyricsContent(
 
         // Find companion background line happening during active line if any
         val activeLine = track.lines.getOrNull(activeLineIndex)
-        val companionBgLine = remember(activeLineIndex, track.lines) {
+        val companionBgLine = remember(activeLine?.startTimeMs, track.lines) {
             if (activeLine != null && !activeLine.isBackground) {
-                track.lines.find { other ->
-                    other.isBackground && (
-                        (other.startTimeMs in activeLine.startTimeMs..activeLine.endTimeMs) ||
-                        (activeLine.startTimeMs in other.startTimeMs..other.endTimeMs) ||
-                        (Math.abs(other.startTimeMs - activeLine.startTimeMs) < 2500L)
-                    )
-                }
+                track.lines.asSequence()
+                    .filter { it.isBackground }
+                    .filter { other ->
+                        other.startTimeMs <= activeLine.endTimeMs &&
+                            other.endTimeMs >= activeLine.startTimeMs
+                    }
+                    .minByOrNull { other ->
+                        kotlin.math.abs(other.startTimeMs - activeLine.startTimeMs)
+                    }
             } else {
                 null
             }
