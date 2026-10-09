@@ -423,11 +423,18 @@ fun LyricsContent(
             }
         }
 
+        // Spicy's active line sits above the exact vertical center. Use the measured
+        // viewport height so the focal point stays consistent across screen sizes.
+        val focalShiftPx = with(LocalDensity.current) {
+            (this@BoxWithConstraints.maxHeight * 0.12f).toPx()
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
                     alpha = stageAlpha
+                    translationY = -focalShiftPx
                     compositingStrategy = CompositingStrategy.Offscreen
                 }
                 .drawWithContent {
@@ -948,7 +955,7 @@ fun SingleLyricLineRow(
                             lineHeight = lineHeight,
                             fontStyle = fontStyle,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = baseAlpha)
+                            color = Color.White.copy(alpha = lineFillAlpha)
                         )
                     )
                 }
