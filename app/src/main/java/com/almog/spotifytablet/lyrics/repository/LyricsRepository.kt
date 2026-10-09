@@ -192,6 +192,27 @@ class LyricsRepository(
                     wordsArray.put(wObj)
                 }
                 lObj.put("words", wordsArray)
+
+                if (line.backgroundLine != null) {
+                    val bgObj = JSONObject()
+                    bgObj.put("startTimeMs", line.backgroundLine.startTimeMs)
+                    bgObj.put("endTimeMs", line.backgroundLine.endTimeMs)
+                    bgObj.put("rawText", line.backgroundLine.rawText)
+                    bgObj.put("isSynthesized", line.backgroundLine.isSynthesized)
+                    bgObj.put("isBackground", true)
+                    val bgWordsArray = JSONArray()
+                    for (bw in line.backgroundLine.words) {
+                        val bwObj = JSONObject()
+                        bwObj.put("text", bw.text)
+                        bwObj.put("startTimeMs", bw.startTimeMs)
+                        bwObj.put("endTimeMs", bw.endTimeMs)
+                        bwObj.put("trailingSpace", bw.trailingSpace)
+                        bgWordsArray.put(bwObj)
+                    }
+                    bgObj.put("words", bgWordsArray)
+                    lObj.put("backgroundLine", bgObj)
+                }
+
                 linesArray.put(lObj)
             }
             root.put("lines", linesArray)
@@ -259,6 +280,34 @@ class LyricsRepository(
                         )
                     )
                 }
+
+                var cachedBgLine: LyricLine? = null
+                if (lObj.has("backgroundLine")) {
+                    val bgObj = lObj.getJSONObject("backgroundLine")
+                    val bgWordsArray = bgObj.optJSONArray("words") ?: JSONArray()
+                    val bgWords = mutableListOf<WordSync>()
+                    for (k in 0 until bgWordsArray.length()) {
+                        val bwObj = bgWordsArray.getJSONObject(k)
+                        bgWords.add(
+                            WordSync(
+                                text = bwObj.getString("text"),
+                                startTimeMs = bwObj.getLong("startTimeMs"),
+                                endTimeMs = bwObj.getLong("endTimeMs"),
+                                trailingSpace = bwObj.optBoolean("trailingSpace", true)
+                            )
+                        )
+                    }
+                    cachedBgLine = LyricLine(
+                        startTimeMs = bgObj.getLong("startTimeMs"),
+                        endTimeMs = bgObj.getLong("endTimeMs"),
+                        words = bgWords,
+                        rawText = bgObj.optString("rawText", ""),
+                        isSynthesized = bgObj.optBoolean("isSynthesized", false),
+                        isBackground = true,
+                        agentId = "bg"
+                    )
+                }
+
                 lines.add(
                     LyricLine(
                         startTimeMs = lObj.getLong("startTimeMs"),
@@ -268,7 +317,8 @@ class LyricsRepository(
                         isSynthesized = lObj.optBoolean("isSynthesized", false),
                         isBackground = lObj.optBoolean("isBackground", false),
                         agentId = if (lObj.has("agentId")) lObj.optString("agentId") else null,
-                        translation = if (lObj.has("translation")) lObj.optString("translation") else null
+                        translation = if (lObj.has("translation")) lObj.optString("translation") else null,
+                        backgroundLine = cachedBgLine
                     )
                 )
             }
@@ -536,15 +586,26 @@ class LyricsRepository(
                     val words = mutableListOf<WordSync>()
                     val rawTextBuilder = StringBuilder()
 
+                    // Merge syllables that belong to the same word.
+                    // Spicy marks IsPartOfWord=true for every syllable that continues the
+                    // current word (i.e. it is NOT the last syllable of the word).
+                    // IsPartOfWord=false means this syllable IS the last (or only) syllable
+                    // of a word, so we flush the accumulated word here.
+                    //
+                    // Before this fix every syllable became its own FlowRow item, causing
+                    // FlowRow to break mid-word (e.g. "beau-" on one line, "-tiful" on the next).
                     for (j in 0 until syllablesArray.length()) {
                         val sylObj = syllablesArray.getJSONObject(j)
                         val text = sylObj.optString("Text", "")
                         val sStart = (sylObj.optDouble("StartTime", 0.0) * 1000).toLong()
                         val sEnd = (sylObj.optDouble("EndTime", 0.0) * 1000).toLong()
+                        // IsPartOfWord=true -> this syllable continues the word (no trailing space)
+                        // IsPartOfWord=false -> this syllable finishes the word (has trailing space unless line end)
                         val isPartOfWord = sylObj.optBoolean("IsPartOfWord", false)
+                        val isLastSyllable = (j == syllablesArray.length() - 1)
 
                         rawTextBuilder.append(text)
-                        if (!isPartOfWord && j < syllablesArray.length() - 1) {
+                        if (!isPartOfWord && !isLastSyllable) {
                             rawTextBuilder.append(" ")
                         }
 
@@ -553,7 +614,7 @@ class LyricsRepository(
                                 text = text,
                                 startTimeMs = sStart,
                                 endTimeMs = sEnd,
-                                trailingSpace = !isPartOfWord
+                                trailingSpace = !isPartOfWord && !isLastSyllable
                             )
                         )
                     }
@@ -576,9 +637,10 @@ class LyricsRepository(
                                 val bsStart = (sObj.optDouble("StartTime", 0.0) * 1000).toLong()
                                 val bsEnd = (sObj.optDouble("EndTime", 0.0) * 1000).toLong()
                                 val bPartOfWord = sObj.optBoolean("IsPartOfWord", false)
+                                val bLastSyl = (k == bgSyllables.length() - 1)
 
                                 bgRawBuilder.append(bText)
-                                if (!bPartOfWord && k < bgSyllables.length() - 1) {
+                                if (!bPartOfWord && !bLastSyl) {
                                     bgRawBuilder.append(" ")
                                 }
 
@@ -587,10 +649,11 @@ class LyricsRepository(
                                         text = bText,
                                         startTimeMs = bsStart,
                                         endTimeMs = bsEnd,
-                                        trailingSpace = !bPartOfWord
+                                        trailingSpace = !bPartOfWord && !bLastSyl
                                     )
                                 )
                             }
+
                             bgLine = LyricLine(
                                 startTimeMs = bgStartMs,
                                 endTimeMs = bgEndMs,
@@ -608,7 +671,8 @@ class LyricsRepository(
                         words = words.clampWordOverlaps(lineEndMs),
                         rawText = rawTextBuilder.toString().trim(),
                         agentId = if (isOpposite) "v2" else null,
-                        translation = if (lineTrans.isNotEmpty()) lineTrans else null
+                        translation = if (lineTrans.isNotEmpty()) lineTrans else null,
+                        backgroundLine = bgLine
                     )
                     lines.add(mainLine)
                     if (bgLine != null) {

@@ -124,33 +124,36 @@ fun calculateRhythmWordScale(
     currentPositionMs: Long,
     rhythm: TrackRhythmContext
 ): Float {
-    if (progress <= 0f) return 0.97f
+    if (progress <= 0f) return 0.95f
     if (progress >= 1f) return 1.0f
 
     val tempoFactor = rhythm.tempoFactor
-    // Snappier pop on fast tracks, relaxed float on slow tracks
+    // Spicy lyrics ScaleRange: Time 0 -> 0.95, Time 0.7 -> 1.0505 (or 1.175 for letter peaks), Time 1 -> 1.0
+    // Shorter staccato words get a higher relative peak (1.175), longer phrases settle smoothly (1.06)
     val peakScale = if (durationMs < rhythm.eighthIntervalMs) {
-        1.14f * (0.95f + 0.05f * tempoFactor)
+        1.175f * (0.96f + 0.04f * tempoFactor)
     } else {
-        1.10f
+        1.065f
     }
 
-    val baseScale = if (progress < 0.50f) {
-        val t = progress / 0.50f
-        val ease = 1f - (1f - t) * (1f - t) * (1f - t)
-        0.97f + (peakScale - 0.97f) * ease
+    // Cubic spline interpolation peaking at Time = 0.70 like Spicy Lyrics Spline
+    val baseScale = if (progress < 0.70f) {
+        val t = progress / 0.70f
+        // Sinusoidal / smooth cubic acceleration to peak at 0.70
+        val ease = (1.0f - kotlin.math.cos(t * Math.PI.toFloat())) * 0.5f
+        0.95f + (peakScale - 0.95f) * ease
     } else {
-        val t = (progress - 0.50f) / 0.50f
+        val t = (progress - 0.70f) / 0.30f
+        // Smooth return from peak (1.05~1.175) to resting 1.0 at Time = 1.0
         val ease = t * t * (3f - 2f * t)
         peakScale - (peakScale - 1.0f) * ease
     }
 
-    // Optional beat-synced micro-pulse for sustained vocal holds (> 1.25 beats)
+    // Micro-pulse for sustained vocal holds (> 1.25 beats)
     val microPulse = if (durationMs > rhythm.beatIntervalMs * 1.25f && rhythm.hasExplicitBpm) {
         val beatInterval = rhythm.beatIntervalMs
         val beatPhase = (currentPositionMs % beatInterval.toLong()).toFloat() / beatInterval
-        // Subtle rhythmic harmonic wave (< 2% amplitude) with exponential decay
-        (0.018f * sin(beatPhase * Math.PI.toFloat()) * kotlin.math.exp(-2.2f * beatPhase)).coerceAtLeast(0f)
+        (0.012f * sin(beatPhase * Math.PI.toFloat()) * kotlin.math.exp(-1.5f * beatPhase)).coerceAtLeast(0f)
     } else {
         0.0f
     }
@@ -160,6 +163,10 @@ fun calculateRhythmWordScale(
 
 /**
  * Computes dynamic vertical rise/lift for active syllables adapted to track pacing.
+ * Faithfully mirrors Spicy Lyrics YOffsetRange:
+ * Time 0 -> +(1/100) font baseline dip
+ * Time 0.9 -> -(1/56) highest peak lift
+ * Time 1.0 -> 0 resting baseline
  */
 fun calculateRhythmWordYOffset(
     progress: Float,
@@ -168,14 +175,18 @@ fun calculateRhythmWordYOffset(
 ): Float {
     if (progress <= 0f || progress >= 1f) return 0f
 
-    val maxLift = if (durationMs < rhythm.eighthIntervalMs) -3.4f else -2.2f
-    return if (progress < 0.50f) {
-        val t = progress / 0.50f
-        val ease = 1f - (1f - t) * (1f - t) * (1f - t)
-        maxLift * ease
+    // In Spicy Lyrics: YOffset is -(1/56) to -(1/60) of font size. For ~32sp, that is ~-2.8px to -3.4px.
+    val peakLift = if (durationMs < rhythm.eighthIntervalMs) -3.4f else -2.2f
+    val initialDip = 0.8f // +(1/100) initial dip at Time=0
+
+    return if (progress < 0.90f) {
+        val t = progress / 0.90f
+        // Rise smoothly from initialDip to peakLift
+        val ease = (1.0f - kotlin.math.cos(t * Math.PI.toFloat())) * 0.5f
+        initialDip + (peakLift - initialDip) * ease
     } else {
-        val t = (progress - 0.50f) / 0.50f
-        val ease = t * t * (3f - 2f * t)
-        maxLift * (1f - ease)
+        val t = (progress - 0.90f) / 0.10f
+        // Gentle settle from peakLift to 0 resting baseline
+        peakLift * (1f - t * t)
     }
 }

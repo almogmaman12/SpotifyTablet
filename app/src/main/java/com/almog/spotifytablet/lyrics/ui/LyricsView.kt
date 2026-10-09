@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -43,6 +45,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
@@ -68,6 +72,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.almog.spotifytablet.Constants
 import com.almog.spotifytablet.SettingsActivity
 import com.almog.spotifytablet.lyrics.model.LyricLine
 import com.almog.spotifytablet.lyrics.model.LyricTrack
@@ -87,6 +92,61 @@ import kotlinx.coroutines.delay
  * Starts syllable scaling/transient animation slightly ahead for responsive feel.
  */
 private const val PRE_ROLL_OFFSET_MS = 45L
+private const val SPICY_SWEEP_FEATHER = 0.20f
+
+private fun smoothStep(value: Float): Float {
+    val x = value.coerceIn(0f, 1f)
+    return x * x * (3f - 2f * x)
+}
+
+/** Spicy Lyrics' word scale profile: 0.95 at attack, a small peak at 70%, then settles to 1. */
+private fun spicyScale(progress: Float, peakScale: Float): Float {
+    val p = progress.coerceIn(0f, 1f)
+    return if (p <= 0.7f) {
+        0.95f + (peakScale - 0.95f) * smoothStep(p / 0.7f)
+    } else {
+        peakScale + (1f - peakScale) * smoothStep((p - 0.7f) / 0.3f)
+    }
+}
+
+/** The subtle lift used by Spicy Lyrics, expressed as a fraction of the lyric font size. */
+private fun spicyYOffset(progress: Float): Float {
+    val p = progress.coerceIn(0f, 1f)
+    return if (p <= 0.9f) {
+        0.01f + ((-1f / 60f) - 0.01f) * smoothStep(p / 0.9f)
+    } else {
+        (-1f / 60f) * (1f - smoothStep((p - 0.9f) / 0.1f))
+    }
+}
+
+/** Brief attack glow: rise by 15%, hold to 60%, then fade away. */
+private fun spicyGlow(progress: Float): Float {
+    val p = progress.coerceIn(0f, 1f)
+    return when {
+        p < 0.15f -> smoothStep(p / 0.15f)
+        p <= 0.6f -> 1f
+        else -> 1f - smoothStep((p - 0.6f) / 0.4f)
+    }
+}
+
+private fun isRtlText(text: String): Boolean {
+    for (character in text) {
+        when (Character.getDirectionality(character)) {
+            Character.DIRECTIONALITY_LEFT_TO_RIGHT -> return false
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT,
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC -> return true
+            else -> Unit
+        }
+    }
+    return false
+}
+
+/** Avoid splitting Hebrew, Arabic, and other joining scripts into per-character composables. */
+private fun canSplitIntoLetters(text: String): Boolean =
+    !isRtlText(text) && text.none { it.code in 0x0590..0x0DFF }
+
+private fun isLetterCapableDuration(durationMs: Long, word: WordSync): Boolean =
+    durationMs >= 1400L && word.graphemes.size in 2..12 && canSplitIntoLetters(word.text)
 
 private val LineTransformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
 private val ShadowOffsetBase = Offset(0f, 2f)
@@ -129,12 +189,48 @@ fun LyricsContent(
     // inside Compose's own vsync-aligned callback.
     var currentPositionMs by remember { mutableLongStateOf(anchor.positionMs) }
     var displayPositionMs by remember { mutableLongStateOf(anchor.positionMs) }
+    // Stable provider: draw/layer lambdas can read playback time without rebuilding Text composables.
+    val positionProvider = remember { { displayPositionMs } }
+    val displayLines = remember(track?.lines) {
+        track?.lines?.filterNot { it.isBackground } ?: emptyList()
+    }
+
+    val context = LocalContext.current
+    val prefs = remember(context) {
+        context.getSharedPreferences(Constants.PREF_NAME, android.content.Context.MODE_PRIVATE)
+    }
+    val isPauseDotsPrefEnabled = prefs.getBoolean(SettingsActivity.PREF_PAUSE_DOTS, true)
 
     // Reset positions immediately when the track changes
-    LaunchedEffect(track) {
+    LaunchedEffect(track, anchor.positionMs, anchor.anchorRealtimeMs, anchor.isPlaying, anchor.speed) {
         currentPositionMs = anchor.positionMs
         displayPositionMs = anchor.positionMs
     }
+
+    // Temporal locality cache: stores last active line index to enable O(1) checks
+    val lastActiveRef = remember(displayLines) { intArrayOf(-1) }
+    // Playback position updates each frame; the composition changes only at line boundaries.
+    val activeIndexState = remember(displayLines) {
+        derivedStateOf {
+            val idx = if (displayLines.isNotEmpty()) {
+                findActiveLineIndex(displayLines, currentPositionMs, lastActiveRef[0])
+            } else -1
+            lastActiveRef[0] = idx
+            idx
+        }
+    }
+
+    val pauseInfoState = remember(displayLines, isPauseDotsPrefEnabled) {
+        derivedStateOf {
+            if (isPauseDotsPrefEnabled) {
+                getPauseInfo(displayLines, activeIndexState.value, currentPositionMs)
+            } else null
+        }
+    }
+    val isIdleState = remember(displayLines, isPauseDotsPrefEnabled) {
+        derivedStateOf { activeIndexState.value == -1 && pauseInfoState.value == null }
+    }
+    val activeLineIndex = activeIndexState.value
 
     // Unified frame-driven position loop:
     // Derives smooth vsync-aligned position and drift-smoothing in a SINGLE withFrameNanos pass.
@@ -152,31 +248,46 @@ fun LyricsContent(
             displayPositionMs = anchor.positionMs
         }
 
+        val firstStart = displayLines.firstOrNull()?.startTimeMs ?: Long.MAX_VALUE
+        val powerManager = context.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+        var minFrameNanos = 16_666_666L
+        var lastFrameNanos = 0L
+        var frameCounter = 0
+
         while (true) {
-            withFrameNanos {
+            if (frameCounter++ % 120 == 0) {
+                minFrameNanos = if (powerManager?.isPowerSaveMode == true) 33_333_333L else 16_666_666L
+            }
+
+            if (isIdleState.value) {
+                // No lyrics or dots are animating: update slowly instead of requesting every vsync.
+                val elapsedMs = android.os.SystemClock.elapsedRealtime() - anchor.anchorRealtimeMs
+                val pos = anchor.positionMs + (elapsedMs * anchor.speed).toLong()
+                currentPositionMs = pos
+                displayPositionMs = pos
+                val sleepMs = if (pos < firstStart) ((firstStart - pos) / 2).coerceIn(16L, 200L) else 200L
+                delay(sleepMs)
+                continue
+            }
+
+            withFrameNanos { frameNanos ->
+                if (frameNanos - lastFrameNanos < minFrameNanos) return@withFrameNanos
+                lastFrameNanos = frameNanos
                 val elapsedMs = android.os.SystemClock.elapsedRealtime() - anchor.anchorRealtimeMs
                 val newPos = anchor.positionMs + (elapsedMs * anchor.speed).toLong()
                 currentPositionMs = newPos
 
                 val diff = newPos - displayPositionMs
                 displayPositionMs += when {
-                    diff <= 0L -> diff              // backward correction or already caught up: snap
-                    diff > 1500L -> diff            // real seek — snap instantly
-                    else -> (diff * 0.3).toLong().coerceAtLeast(1L) // forward drift: chase at ~30%/frame
+                    diff <= 0L -> diff
+                    diff > 1500L -> diff
+                    else -> (diff * 0.3).toLong().coerceAtLeast(1L)
                 }
             }
         }
     }
 
-    // Temporal locality cache: stores last active line index to enable O(1) checks
-    val lastActiveRef = remember(track) { intArrayOf(-1) }
-    val activeLineIndex = remember(track, currentPositionMs) {
-        val idx = track?.let { findActiveLineIndex(it.lines, currentPositionMs, lastActiveRef[0]) } ?: -1
-        lastActiveRef[0] = idx
-        idx
-    }
 
-    // Manual scroll & fling gesture override state
     var manualScrollOffsetLines by remember { mutableIntStateOf(0) }
     var isUserInteracting by remember { mutableStateOf(false) }
     var lastInteractionTime by remember { mutableLongStateOf(0L) }
@@ -192,16 +303,18 @@ fun LyricsContent(
 
     val effectiveCenterIndex = (activeLineIndex + manualScrollOffsetLines).coerceIn(
         -1,
-        (track?.lines?.lastIndex ?: 0)
+        displayLines.lastIndex
     )
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 24.dp, vertical = 0.dp)
             .pointerInput(track?.lines?.size) {
+                var accumulatedDragPx = 0f
                 detectVerticalDragGestures(
                     onDragStart = {
+                        accumulatedDragPx = 0f
                         isUserInteracting = true
                         onUserScrollStateChanged?.invoke(true)
                     },
@@ -214,11 +327,16 @@ fun LyricsContent(
                         lastInteractionTime = System.currentTimeMillis()
                     },
                     onVerticalDrag = { _, dragAmount ->
-                        if (dragAmount < -30f) {
+                        accumulatedDragPx += dragAmount
+                        val thresholdPx = 30f
+                        while (accumulatedDragPx <= -thresholdPx) {
                             manualScrollOffsetLines = (manualScrollOffsetLines + 1).coerceAtMost(3)
+                            accumulatedDragPx += thresholdPx
                             lastInteractionTime = System.currentTimeMillis()
-                        } else if (dragAmount > 30f) {
+                        }
+                        while (accumulatedDragPx >= thresholdPx) {
                             manualScrollOffsetLines = (manualScrollOffsetLines - 1).coerceAtLeast(-3)
+                            accumulatedDragPx -= thresholdPx
                             lastInteractionTime = System.currentTimeMillis()
                         }
                     }
@@ -227,7 +345,7 @@ fun LyricsContent(
         contentAlignment = Alignment.Center
     ) {
         if (track == null || track.lines.isEmpty()) {
-            return@Box
+            return@BoxWithConstraints
         }
 
         val rhythmContext = remember(track.bpm) {
@@ -238,13 +356,10 @@ fun LyricsContent(
             }
         }
 
-        val context = LocalContext.current
-        val prefs = remember(context) { context.getSharedPreferences(com.almog.spotifytablet.Constants.PREF_NAME, android.content.Context.MODE_PRIVATE) }
-        val isPauseDotsPrefEnabled = prefs.getBoolean(SettingsActivity.PREF_PAUSE_DOTS, true)
         val isDynamicSpacingPrefEnabled = prefs.getBoolean(SettingsActivity.PREF_DYNAMIC_SPACING, true)
         val lyricsFontSizeSp = prefs.getInt(com.almog.spotifytablet.Constants.PREF_KEY_LYRICS_FONT_SIZE, 32).toFloat()
 
-        val pauseInfo = if (isPauseDotsPrefEnabled) getPauseInfo(track.lines, activeLineIndex, currentPositionMs) else null
+        val pauseInfo = pauseInfoState.value
         val isPauseActive = pauseInfo != null
 
         val pauseAlpha by animateFloatAsState(
@@ -253,8 +368,12 @@ fun LyricsContent(
             label = "pauseAlpha"
         )
 
-        val lastLineEndTime = track.lines.lastOrNull()?.endTimeMs ?: Long.MAX_VALUE
-        val isOutro = activeLineIndex == -1 && currentPositionMs >= lastLineEndTime
+        val lastLineEndTime = track.lines.asSequence()
+            .filterNot { it.isBackground }
+            .maxOfOrNull { it.endTimeMs } ?: Long.MAX_VALUE
+        val isOutro by remember(displayLines, lastLineEndTime) {
+            derivedStateOf { activeIndexState.value == -1 && currentPositionMs >= lastLineEndTime }
+        }
 
         val stageAlpha by animateFloatAsState(
             targetValue = if (isOutro) 0f else 1f,
@@ -278,25 +397,27 @@ fun LyricsContent(
         val lineAnimSpec: androidx.compose.animation.core.AnimationSpec<Float> = if (isDiscontinuousSeek) {
             snap()
         } else {
-            spring(dampingRatio = 0.8f, stiffness = 380f)
+            spring(dampingRatio = 0.85f, stiffness = 520f)
         }
         val propAnimSpec: androidx.compose.animation.core.AnimationSpec<Float> = if (isDiscontinuousSeek) {
             snap()
         } else {
-            tween(durationMillis = 220, easing = FastOutSlowInEasing)
+            tween(durationMillis = 200, easing = androidx.compose.animation.core.CubicBezierEasing(0.61f, 1f, 0.88f, 1f))
         }
 
         // Find companion background line happening during active line if any
-        val activeLine = track.lines.getOrNull(activeLineIndex)
-        val companionBgLine = remember(activeLineIndex, track.lines) {
+        val activeLine = displayLines.getOrNull(activeLineIndex)
+        val companionBgLine = remember(activeLine?.startTimeMs, track.lines) {
             if (activeLine != null && !activeLine.isBackground) {
-                track.lines.find { other ->
-                    other.isBackground && (
-                        (other.startTimeMs in activeLine.startTimeMs..activeLine.endTimeMs) ||
-                        (activeLine.startTimeMs in other.startTimeMs..other.endTimeMs) ||
-                        (Math.abs(other.startTimeMs - activeLine.startTimeMs) < 2500L)
-                    )
-                }
+                track.lines.asSequence()
+                    .filter { it.isBackground }
+                    .filter { other ->
+                        other.startTimeMs <= activeLine.endTimeMs &&
+                                other.endTimeMs >= activeLine.startTimeMs
+                    }
+                    .minByOrNull { other ->
+                        kotlin.math.abs(other.startTimeMs - activeLine.startTimeMs)
+                    }
             } else {
                 null
             }
@@ -313,7 +434,9 @@ fun LyricsContent(
             val density = LocalDensity.current
 
             // The visual gap between the bottom of one line and the top of the next line (constant 36.dp)
-            val interLineGapPx = with(density) { 36.dp.toPx() }
+            // Spicy Lyrics uses a width-relative line gap (1cqw), not a fixed 36dp gap.
+            val containerWidth = this@BoxWithConstraints.maxWidth
+            val interLineGapPx = with(density) { (containerWidth * 0.01f).toPx() }
 
             // Fallback height derived from actual font metrics used in SingleLyricLineRow:
             // activeFontSizeSp × lineHeight factor (1.1875) converted to px.
@@ -329,7 +452,7 @@ fun LyricsContent(
             // Use derivedStateOf so any individual height update in lineHeightsPx (not just .size
             // changes) instantly invalidates this snapshot — eliminates the stale-size bug that
             // caused spacing jumps when a line's real height first arrived from onSizeChanged.
-            val targetYOffsetsPx by remember(effectiveCenterIndex, track.lines, isDynamicSpacingPrefEnabled, fallbackLineHeightPx) {
+            val targetYOffsetsPx by remember(effectiveCenterIndex, displayLines, isDynamicSpacingPrefEnabled, fallbackLineHeightPx, interLineGapPx) {
                 derivedStateOf {
                     val map = mutableMapOf<Int, Float>()
                     map[0] = 0f
@@ -340,24 +463,25 @@ fun LyricsContent(
                             map[off] = off * fixedSlotPx
                         }
                     } else {
-                        // Downward (next lines: offset 1, 2, 3)
-                        var currentAccumY = 0f
-                        for (off in 0..2) {
-                            val fromIdx = effectiveCenterIndex + off
-                            val fromLine = track.lines.getOrNull(fromIdx)
-                            val h = if (fromLine != null) (lineHeightsPx[fromLine.startTimeMs]?.toFloat() ?: fallbackLineHeightPx) else fallbackLineHeightPx
-                            currentAccumY += h + interLineGapPx
-                            map[off + 1] = currentAccumY
+                        fun lineHeightAt(index: Int): Float {
+                            val line = displayLines.getOrNull(index) ?: return fallbackLineHeightPx
+                            return lineHeightsPx[line.startTimeMs]?.toFloat() ?: fallbackLineHeightPx
                         }
 
-                        // Upward (previous lines: offset -1, -2)
-                        var currentAccumUpY = 0f
-                        for (off in 0 downTo -1) {
-                            val toIdx = effectiveCenterIndex + off - 1
-                            val toLine = track.lines.getOrNull(toIdx)
-                            val h = if (toLine != null) (lineHeightsPx[toLine.startTimeMs]?.toFloat() ?: fallbackLineHeightPx) else fallbackLineHeightPx
-                            currentAccumUpY -= (h + interLineGapPx)
-                            map[off - 1] = currentAccumUpY
+                        // Place line centers using half-heights, so wrapped lyrics do not
+                        // create oversized gaps or overlap when line measurements arrive.
+                        var y = 0f
+                        for (off in 1..3) {
+                            y += (lineHeightAt(effectiveCenterIndex + off - 1) +
+                                    lineHeightAt(effectiveCenterIndex + off)) / 2f + interLineGapPx
+                            map[off] = y
+                        }
+
+                        y = 0f
+                        for (off in -1 downTo -2) {
+                            y -= (lineHeightAt(effectiveCenterIndex + off + 1) +
+                                    lineHeightAt(effectiveCenterIndex + off)) / 2f + interLineGapPx
+                            map[off] = y
                         }
                     }
 
@@ -377,7 +501,7 @@ fun LyricsContent(
                     contentAlignment = Alignment.CenterStart
                 ) {
                     SpicyPauseDots(
-                        currentPositionMs = currentPositionMs,
+                        positionProvider = positionProvider,
                         pauseStartMs = pauseInfo.pauseStartMs,
                         nextStartMs = pauseInfo.nextStartMs,
                         rhythm = rhythmContext,
@@ -389,7 +513,7 @@ fun LyricsContent(
             // Render -2..3 window (6 slots) — fewer composables = fewer recompositions per frame.
             for (offset in -2..3) {
                 val targetIndex = effectiveCenterIndex + offset
-                val line = track.lines.getOrNull(targetIndex) ?: continue
+                val line = displayLines.getOrNull(targetIndex) ?: continue
 
                 // Skip companion background line — rendered inline below the active row
                 if (offset != 0 && line == companionBgLine) continue
@@ -413,10 +537,11 @@ fun LyricsContent(
                         label = "lineY_${line.startTimeMs}"
                     )
 
+                    // Spicy Lyrics' default vocal opacity is ~0.50 for sung and unsung lines.
                     val targetAlpha = when {
                         isActive -> 1.0f
-                        Math.abs(offset) == 1 -> 0.35f
-                        else -> 0.18f
+                        targetIndex < activeLineIndex -> 0.497f
+                        else -> 0.51f
                     }
                     val animatedAlpha by animateFloatAsState(
                         targetValue = targetAlpha,
@@ -424,7 +549,8 @@ fun LyricsContent(
                         label = "lineAlpha_${line.startTimeMs}"
                     )
 
-                    val targetScale = if (isActive) 1.0f else 0.92f
+                    // Spicy keeps whole lines at 1x; the scale pulse belongs to individual words/letters.
+                    val targetScale = 1.0f
                     val animatedScale by animateFloatAsState(
                         targetValue = targetScale,
                         animationSpec = propAnimSpec,
@@ -472,7 +598,7 @@ fun LyricsContent(
                         ) {
                             SingleLyricLineRow(
                                 line = line,
-                                currentPositionMs = linePositionMs,
+                                positionProvider = positionProvider,
                                 isAnimationEnabled = isAnimationEnabled,
                                 isActiveLine = isActive,
                                 forceFlowRow = renderAsActive,
@@ -484,7 +610,7 @@ fun LyricsContent(
                             if (isActive && companionBgLine != null && line != companionBgLine) {
                                 SingleLyricLineRow(
                                     line = companionBgLine,
-                                    currentPositionMs = displayPositionMs,
+                                    positionProvider = positionProvider,
                                     isAnimationEnabled = isAnimationEnabled,
                                     isActiveLine = true,
                                     isSubduedBackground = true,
@@ -497,7 +623,7 @@ fun LyricsContent(
                             // Music interlude dots: integrated cleanly between lines (directly under active line, above next line)
                             if (isActive && pauseInfo != null && pauseAlpha > 0.01f) {
                                 SpicyPauseDots(
-                                    currentPositionMs = currentPositionMs,
+                                    positionProvider = positionProvider,
                                     pauseStartMs = pauseInfo.pauseStartMs,
                                     nextStartMs = pauseInfo.nextStartMs,
                                     rhythm = rhythmContext,
@@ -608,12 +734,13 @@ private fun getPauseInfo(lines: List<LyricLine>, activeLineIndex: Int, currentPo
 
 @Composable
 fun SpicyPauseDots(
-    currentPositionMs: Long,
+    positionProvider: () -> Long,
     pauseStartMs: Long,
     nextStartMs: Long,
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
     modifier: Modifier = Modifier
 ) {
+    val currentPositionMs = positionProvider()
     val totalTime = (nextStartMs - pauseStartMs).coerceAtLeast(1000L)
     val baseDotTime = totalTime / 3
 
@@ -676,7 +803,7 @@ private fun PauseDot(
 @Composable
 fun SingleLyricLineRow(
     line: LyricLine,
-    currentPositionMs: Long,
+    positionProvider: () -> Long,
     isAnimationEnabled: Boolean = true,
     isActiveLine: Boolean = true,
     forceFlowRow: Boolean = false,
@@ -685,119 +812,125 @@ fun SingleLyricLineRow(
     activeFontSizeSp: Float = 32f,
     modifier: Modifier = Modifier
 ) {
+    val currentPositionMs = positionProvider()
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
-    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1875f).sp
+    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
-    val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
+    val baseAlpha = if (isSubduedBackground) 0.60f else 1.0f
+    val rtl = remember(line.rawText) { isRtlText(line.rawText) }
 
-    val agentGlowColor = when (line.agentId) {
-        "v2" -> Color(0xFF00E5FF)
-        "v3" -> Color(0xFFFFB300)
-        else -> if (isSubduedBackground) Color(0xFF00E676) else Color(0xFF1DB954)
-    }
-
-    Column(
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.Center,
-        modifier = modifier.fillMaxWidth()
+    // Spicy uses white lyric fills; singer IDs must not tint the whole renderer green/cyan/orange.
+    CompositionLocalProvider(
+        LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr
     ) {
-        // Use FlowRow when: (a) active line — full sweep animation, or
-        // (b) forceFlowRow — adjacent line, FlowRow structure but isActiveLine=false
-        //     so words render as static dim/lit text with zero sweep overhead.
-        // Far lines (offset ±2) use cheap single Text.
-        if (!isActiveLine && !forceFlowRow) {
-            // PERF: inactive lines use a single Text — zero per-word composables.
-            // Completed lines (above active) show fully lit; upcoming (below) show dim.
-            val isCompleted = currentPositionMs > line.startTimeMs
-            Text(
-                text = line.rawText,
-                style = TextStyle(
-                    fontSize = fontSize,
-                    lineHeight = lineHeight,
-                    fontStyle = fontStyle,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.SansSerif,
-                    color = if (isCompleted)
-                        Color(0xFFF2F2F2).copy(alpha = baseAlpha)
-                    else
-                        Color(0x66FFFFFF).copy(alpha = baseAlpha * 0.6f),
-                    letterSpacing = (-0.3).sp
-                )
-            )
-        } else {
-            // Active line: full word-by-word sweep animation
-            val effectiveWords = if (line.words.isNotEmpty()) {
-                line.words
-            } else if (line.rawText.isNotBlank()) {
-                remember(line.rawText, line.startTimeMs, line.endTimeMs) {
-                    val tokens = line.rawText.split("\\s+".toRegex()).filter { it.isNotEmpty() }
-                    if (tokens.isEmpty()) emptyList()
-                    else {
-                        val lineDur = (line.endTimeMs - line.startTimeMs).coerceAtLeast(tokens.size * 50L)
-                        val tokenDur = lineDur / tokens.size
-                        tokens.mapIndexed { idx, tok ->
-                            WordSync(
-                                text = tok,
-                                startTimeMs = line.startTimeMs + (idx * tokenDur),
-                                endTimeMs = line.startTimeMs + ((idx + 1) * tokenDur),
-                                trailingSpace = idx < tokens.size - 1
-                            )
-                        }
-                    }
-                }
-            } else emptyList()
-
-            if (effectiveWords.isNotEmpty()) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalArrangement = Arrangement.spacedBy(1.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    effectiveWords.forEach { word ->
-                        RhythmWordHighlightText(
-                            word = word,
-                            currentPositionMs = currentPositionMs,
-                            isAnimationEnabled = isAnimationEnabled,
-                            isActiveLine = isActiveLine,
-                            isSubduedBackground = isSubduedBackground,
-                            glowColor = agentGlowColor,
-                            rhythm = rhythm
-                        )
-                    }
-                }
-            } else {
+        Column(
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.Center,
+            modifier = modifier.fillMaxWidth()
+        ) {
+            if (!isActiveLine && !forceFlowRow) {
+                // Spicy keeps the adjacent lines simple: the line itself controls its opacity.
                 Text(
                     text = line.rawText,
                     style = TextStyle(
                         fontSize = fontSize,
                         lineHeight = lineHeight,
                         fontStyle = fontStyle,
-                        color = Color.White.copy(alpha = 0.5f)
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.SansSerif,
+                        color = Color.White.copy(alpha = baseAlpha),
+                        letterSpacing = 0.sp
                     )
                 )
-            }
-        }
+            } else {
+                val effectiveWords = if (line.words.isNotEmpty()) {
+                    line.words
+                } else if (line.rawText.isNotBlank()) {
+                    remember(line.rawText, line.startTimeMs, line.endTimeMs) {
+                        val tokens = line.rawText.split("\\s+".toRegex()).filter { it.isNotEmpty() }
+                        if (tokens.isEmpty()) emptyList()
+                        else {
+                            val lineDur = (line.endTimeMs - line.startTimeMs).coerceAtLeast(tokens.size * 50L)
+                            val tokenDur = lineDur / tokens.size
+                            tokens.mapIndexed { idx, token ->
+                                WordSync(
+                                    text = token,
+                                    startTimeMs = line.startTimeMs + idx * tokenDur,
+                                    endTimeMs = line.startTimeMs + (idx + 1) * tokenDur,
+                                    trailingSpace = idx < tokens.size - 1
+                                )
+                            }
+                        }
+                    }
+                } else emptyList()
 
-        // Dual-Line Translation / Transliteration rendering
-        if (!line.translation.isNullOrBlank()) {
-            Text(
-                text = line.translation,
-                style = TextStyle(
-                    fontSize = (fontSize.value * 0.55f).sp,
-                    lineHeight = (lineHeight.value * 0.6f).sp,
-                    fontStyle = FontStyle.Normal,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = FontFamily.SansSerif,
-                    textAlign = TextAlign.Start,
-                    color = if (isActiveLine) Color(0xCCFFFFFF) else Color(0x55FFFFFF),
-                    shadow = Shadow(
-                        color = Color(0x99000000),
-                        offset = ShadowOffsetSubtle,
-                        blurRadius = 4f
+                if (effectiveWords.isNotEmpty()) {
+                    // Keep split syllables of a word together so a line wrap never breaks a word in half.
+                    val wordGroups = remember(effectiveWords) {
+                        val groups = mutableListOf<List<WordSync>>()
+                        var currentGroup = mutableListOf<WordSync>()
+                        for (word in effectiveWords) {
+                            currentGroup.add(word)
+                            if (word.trailingSpace) {
+                                groups.add(currentGroup.toList())
+                                currentGroup = mutableListOf()
+                            }
+                        }
+                        if (currentGroup.isNotEmpty()) groups.add(currentGroup.toList())
+                        groups
+                    }
+
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(0.dp),
+                        verticalArrangement = Arrangement.spacedBy(1.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        wordGroups.forEach { syllables ->
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                syllables.forEach { word ->
+                                    RhythmWordHighlightText(
+                                        word = word,
+                                        positionProvider = positionProvider,
+                                        isAnimationEnabled = isAnimationEnabled,
+                                        isActiveLine = isActiveLine,
+                                        isSubduedBackground = isSubduedBackground,
+                                        glowColor = Color.White,
+                                        rhythm = rhythm,
+                                        activeFontSizeSp = activeFontSizeSp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        text = line.rawText,
+                        style = TextStyle(
+                            fontSize = fontSize,
+                            lineHeight = lineHeight,
+                            fontStyle = fontStyle,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = baseAlpha)
+                        )
                     )
-                ),
-                modifier = Modifier.padding(top = 2.dp, bottom = 1.dp)
-            )
+                }
+            }
+
+            if (!line.translation.isNullOrBlank()) {
+                Text(
+                    text = line.translation,
+                    style = TextStyle(
+                        fontSize = (fontSize.value * 0.55f).sp,
+                        lineHeight = (lineHeight.value * 0.6f).sp,
+                        fontStyle = FontStyle.Normal,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.SansSerif,
+                        textAlign = TextAlign.Start,
+                        color = if (isActiveLine) Color.White.copy(alpha = 0.80f) else Color.White.copy(alpha = 0.50f)
+                    ),
+                    modifier = Modifier.padding(top = 2.dp, bottom = 1.dp)
+                )
+            }
         }
     }
 }
@@ -805,14 +938,16 @@ fun SingleLyricLineRow(
 @Composable
 fun RhythmWordHighlightText(
     word: WordSync,
-    currentPositionMs: Long,
+    positionProvider: () -> Long,
     isAnimationEnabled: Boolean = true,
     isActiveLine: Boolean = true,
     isSubduedBackground: Boolean = false,
-    glowColor: Color = if (isSubduedBackground) Color(0xFF00E676) else Color(0xFF1DB954),
+    glowColor: Color = Color.White,
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
+    activeFontSizeSp: Float = 32f,
     modifier: Modifier = Modifier
 ) {
+    val currentPositionMs = positionProvider()
     val duration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
 
     // Predictive Pre-Roll (starts anticipation 45ms before timestamp)
@@ -830,29 +965,31 @@ fun RhythmWordHighlightText(
     val isWordActive = rawWordProgress > 0f && rawWordProgress < 1f
     val isWordCompleted = rawWordProgress >= 1f
 
+    val wordPeakScale = if (isLetterCapableDuration(duration, word)) 1.175f else 1.0505f
     val wordScale = if (isWordActive) {
-        val baseScale = calculateRhythmWordScale(rawWordProgress, duration, currentPositionMs, rhythm)
-        if (isSubduedBackground) 1.0f + (baseScale - 1.0f) * 0.6f else baseScale
+        val scale = spicyScale(rawWordProgress, wordPeakScale)
+        if (isSubduedBackground) 1f + (scale - 1f) * 0.55f else scale
     } else if (isWordCompleted) {
-        1.0f
+        1f
     } else {
-        0.97f
+        0.95f
     }
 
     val wordOffsetY = if (isWordActive) {
-        val baseLift = calculateRhythmWordYOffset(rawWordProgress, duration, rhythm)
-        if (isSubduedBackground) baseLift * 0.5f else baseLift
+        val lift = spicyYOffset(rawWordProgress) * activeFontSizeSp
+        if (isSubduedBackground) lift * 0.5f else lift
     } else {
-        0.0f
+        0f
     }
 
     val isLetterCapable = isAnimationEnabled &&
-        (duration >= 1400L) &&
-        word.text.length in 2..10
+            duration >= 1400L &&
+            word.graphemes.size in 2..12 &&
+            canSplitIntoLetters(word.text)
 
     Box(
         modifier = modifier
-            .padding(horizontal = 2.dp, vertical = 0.dp)
+            .padding(horizontal = 0.dp, vertical = 0.dp)
             .graphicsLayer {
                 scaleX = wordScale
                 scaleY = wordScale
@@ -868,7 +1005,8 @@ fun RhythmWordHighlightText(
                 isWordCompleted = isWordCompleted,
                 isSubduedBackground = isSubduedBackground,
                 glowColor = glowColor,
-                rhythm = rhythm
+                rhythm = rhythm,
+                activeFontSizeSp = activeFontSizeSp
             )
         } else {
             RhythmSingleSyllableSweepText(
@@ -879,7 +1017,8 @@ fun RhythmWordHighlightText(
                 isWordCompleted = isWordCompleted,
                 isSubduedBackground = isSubduedBackground,
                 glowColor = glowColor,
-                rhythm = rhythm
+                rhythm = rhythm,
+                activeFontSizeSp = activeFontSizeSp
             )
         }
     }
@@ -894,13 +1033,14 @@ private fun RhythmSingleSyllableSweepText(
     isWordCompleted: Boolean,
     isSubduedBackground: Boolean,
     glowColor: Color,
-    rhythm: TrackRhythmContext
+    rhythm: TrackRhythmContext,
+    activeFontSizeSp: Float
 ) {
     val displayString = remember(word.text, word.trailingSpace) {
         if (word.trailingSpace) "${word.text} " else word.text
     }
-    val fontSize = if (isSubduedBackground) 24.sp else 34.sp
-    val lineHeight = if (isSubduedBackground) 32.sp else 46.sp
+    val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
+    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
     val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
 
@@ -949,11 +1089,12 @@ private fun RhythmSingleSyllableSweepText(
         else -> {
             val sweepProgress = calculateWordProgressEasing(rawProgress, durationMs, rhythm)
             val p = sweepProgress.coerceIn(0f, 1f)
-            val featherFrac = 0.03f
+            val featherFrac = SPICY_SWEEP_FEATHER
+            val sweepEnd = (-0.20f + 1.20f * p).coerceIn(0f, 1f)
             val textBrush = Brush.horizontalGradient(
                 0f to litColor,
-                (p - featherFrac).coerceIn(0f, 1f) to litColor,
-                p to dimColor,
+                (sweepEnd - featherFrac).coerceIn(0f, 1f) to litColor,
+                sweepEnd to dimColor,
                 1f to dimColor
             )
             TextStyle(
@@ -965,9 +1106,9 @@ private fun RhythmSingleSyllableSweepText(
                 letterSpacing = (-0.3).sp,
                 lineHeight = lineHeight,
                 shadow = Shadow(
-                    color = glowColor,
+                    color = glowColor.copy(alpha = spicyGlow(rawProgress) * if (isSubduedBackground) 0.45f else 0.72f),
                     offset = ShadowOffsetGlow,
-                    blurRadius = if (isSubduedBackground) 16f else 24f
+                    blurRadius = if (isSubduedBackground) 7f else 12f
                 )
             )
         }
@@ -987,11 +1128,12 @@ private fun RhythmLetterGroupSweepText(
     isWordCompleted: Boolean,
     isSubduedBackground: Boolean,
     glowColor: Color,
-    rhythm: TrackRhythmContext
+    rhythm: TrackRhythmContext,
+    activeFontSizeSp: Float
 ) {
     val totalDuration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
-    val fontSize = if (isSubduedBackground) 24.sp else 34.sp
-    val lineHeight = if (isSubduedBackground) 32.sp else 46.sp
+    val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
+    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
     val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
 
@@ -1049,11 +1191,11 @@ private fun RhythmLetterGroupSweepText(
             val isLetterDone = rawLetterProgress >= 1f
 
             val letterScale = if (isLetterActive) {
-                1.12f * (0.96f + 0.04f * rhythm.tempoFactor)
+                spicyScale(rawLetterProgress, 1.175f)
             } else if (isLetterDone || isWordCompleted) {
-                1.0f
+                1f
             } else {
-                0.97f
+                0.95f
             }
 
             val letterStyle = when {
@@ -1062,11 +1204,12 @@ private fun RhythmLetterGroupSweepText(
                 else -> {
                     val letterProgress = calculateWordProgressEasing(rawLetterProgress, letterDuration, rhythm)
                     val p = letterProgress.coerceIn(0f, 1f)
-                    val featherFrac = 0.04f
+                    val featherFrac = SPICY_SWEEP_FEATHER
+                    val sweepEnd = (-0.20f + 1.20f * p).coerceIn(0f, 1f)
                     val textBrush = Brush.horizontalGradient(
                         0f to litColor,
-                        (p - featherFrac).coerceIn(0f, 1f) to litColor,
-                        p to dimColor,
+                        (sweepEnd - featherFrac).coerceIn(0f, 1f) to litColor,
+                        sweepEnd to dimColor,
                         1f to dimColor
                     )
                     TextStyle(
@@ -1078,9 +1221,9 @@ private fun RhythmLetterGroupSweepText(
                         letterSpacing = (-0.2).sp,
                         lineHeight = lineHeight,
                         shadow = Shadow(
-                            color = glowColor,
+                            color = glowColor.copy(alpha = spicyGlow(rawLetterProgress) * if (isSubduedBackground) 0.45f else 0.72f),
                             offset = ShadowOffsetGlow,
-                            blurRadius = if (isSubduedBackground) 16f else 24f
+                            blurRadius = if (isSubduedBackground) 7f else 12f
                         )
                     )
                 }

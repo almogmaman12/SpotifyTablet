@@ -82,7 +82,8 @@ data class LyricLine(
     val isSynthesized: Boolean = false,
     val isBackground: Boolean = false,
     val agentId: String? = null,
-    val translation: String? = null
+    val translation: String? = null,
+    val backgroundLine: LyricLine? = null
 ) {
     val isWordSynced: Boolean
         get() = words.isNotEmpty() && !isSynthesized

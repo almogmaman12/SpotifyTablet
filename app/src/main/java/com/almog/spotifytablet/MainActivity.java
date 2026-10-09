@@ -196,7 +196,40 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        // Keep screen awake and show over the system keyguard/lockscreen.
+        // FLAG_DISMISS_KEYGUARD + FLAG_SHOW_WHEN_LOCKED prevent the screen from
+        // going to the lock-screen on idle, app-crash, or Android's own keyguard timeout.
+        getWindow().addFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true);
+            setTurnScreenOn(true);
+            android.app.KeyguardManager km = (android.app.KeyguardManager) getSystemService(KEYGUARD_SERVICE);
+            if (km != null) km.requestDismissKeyguard(this, null);
+        }
+
+        // Global crash handler: restart the app instead of dying to the lockscreen.
+        // Without this, any uncaught exception drops the tablet to the system lock screen.
+        Thread.setDefaultUncaughtExceptionHandler((thread, ex) -> {
+            android.util.Log.e(TAG, "Uncaught exception — restarting app", ex);
+            android.content.Intent intent = new android.content.Intent(getApplicationContext(), MainActivity.class);
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            android.app.PendingIntent pendingIntent = android.app.PendingIntent.getActivity(
+                    getApplicationContext(), 0, intent,
+                    android.app.PendingIntent.FLAG_ONE_SHOT | android.app.PendingIntent.FLAG_IMMUTABLE);
+            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+            if (am != null) {
+                am.set(android.app.AlarmManager.ELAPSED_REALTIME,
+                        android.os.SystemClock.elapsedRealtime() + 600, pendingIntent);
+            }
+            android.os.Process.killProcess(android.os.Process.myPid());
+            System.exit(1);
+        });
+
         enableFullScreenMode();
         setContentView(R.layout.activity_main);
         if (getSupportActionBar() != null) {
