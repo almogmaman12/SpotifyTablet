@@ -279,7 +279,7 @@ fun LyricsContent(
     val pauseInfoState = remember(displayLines, isPauseDotsPrefEnabled) {
         derivedStateOf {
             if (isPauseDotsPrefEnabled) {
-                getPauseInfo(displayLines, activeLineIndex, currentPositionMs)
+                getPauseInfo(displayLines, activeIndexState.value, currentPositionMs)
             } else null
         }
     }
