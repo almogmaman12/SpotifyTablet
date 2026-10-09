@@ -132,7 +132,11 @@ private fun createSpicySweepBrush(
     }.toTypedArray()
 
     return if (isRtl) {
-        Brush.horizontalGradient(colorStops = colorStops)
+        Brush.horizontalGradient(
+            colorStops = colorStops,
+            startX = Float.POSITIVE_INFINITY,
+            endX = 0f
+        )
     } else {
         // Spicy's LTR --gradient-degrees is 180deg, so the sweep runs top to bottom.
         Brush.verticalGradient(colorStops = colorStops)
@@ -565,10 +569,8 @@ fun LyricsContent(
                 key(line.startTimeMs) {
                     val isActive = targetIndex == activeLineIndex
 
-                    // Lines at offset 0 and ±1 always use FlowRow so there is never a
-                    // mode switch at the transition moment. Only barely-visible offset ±2
-                    // uses the cheap single-Text path. Pinned positions for non-active
-                    // FlowRows mean they never recompose per frame.
+                    // The active line and its immediate neighbors use word-aware layout.
+                    // Rows farther away stay as single Text nodes to keep composition and GPU work low.
                     val renderAsActive = isActive || Math.abs(offset) <= 1
 
                     val targetYPx = (targetYOffsetsPx[offset] ?: (offset * (fallbackLineHeightPx + interLineGapPx))) - focalShiftPx
@@ -598,16 +600,6 @@ fun LyricsContent(
                         animationSpec = propAnimSpec,
                         label = "lineScale_${line.startTimeMs}"
                     )
-
-                    // Active: live position (smoothed via displayPositionMs to prevent sweep jumps on drift correction).
-                    // Departing (renderAsActive): completed state (stable).
-                    // Upcoming inactive: not-started state (stable, no per-frame recomposition).
-                    val linePositionMs = when {
-                        isActive -> displayPositionMs
-                        renderAsActive -> line.endTimeMs + 1L
-                        targetIndex < activeLineIndex -> line.endTimeMs + 1L
-                        else -> line.startTimeMs - 1L
-                    }
 
                     Box(
                         modifier = Modifier
@@ -858,25 +850,6 @@ private fun PauseDot(
                 .background(Color.White, CircleShape)
         )
     }
-}
-
-@Composable
-private fun PauseDot(
-    isActive: Boolean,
-    scale: Float
-) {
-    Box(
-        modifier = Modifier
-            .size(16.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .background(
-                color = if (isActive) Color.White else Color(0x55FFFFFF),
-                shape = CircleShape
-            )
-    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
