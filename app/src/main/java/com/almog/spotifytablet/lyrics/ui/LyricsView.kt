@@ -46,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
@@ -152,16 +153,25 @@ private class SpicyPlaybackBrush(
                 ((t - rawStart) / (rawEnd - rawStart)).coerceIn(0f, 1f)
         }
 
-        val stops = buildList {
-            add(0f)
-            if (rawStart in 0f..1f) add(rawStart)
-            if (rawEnd in 0f..1f) add(rawEnd)
-            add(1f)
-        }.distinct().sorted()
+        val stops = if (isRtl) {
+            listOf(
+                0f,
+                (1f - rawEnd).coerceIn(0f, 1f),
+                (1f - rawStart).coerceIn(0f, 1f),
+                1f
+            ).distinct().sorted()
+        } else {
+            buildList {
+                add(0f)
+                if (rawStart in 0f..1f) add(rawStart)
+                if (rawEnd in 0f..1f) add(rawEnd)
+                add(1f)
+            }.distinct().sorted()
+        }
 
         val colorStops = stops.map { t ->
-            val gradientPosition = if (isRtl) 1f - t else t
-            t to Color.White.copy(alpha = alphaAt(gradientPosition))
+            val progressAxis = if (isRtl) 1f - t else t
+            t to Color.White.copy(alpha = alphaAt(progressAxis))
         }.toTypedArray()
 
         val gradient = if (isRtl) {
@@ -485,7 +495,9 @@ fun LyricsContent(
         val focalShiftPx = viewportHeightPx * 0.12f
 
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .clipToBounds(),
             contentAlignment = Alignment.CenterStart
         ) {
             // Map of line heights measured in pixels (stable per line)
