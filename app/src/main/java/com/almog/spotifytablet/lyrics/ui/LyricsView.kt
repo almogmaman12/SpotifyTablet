@@ -1309,14 +1309,21 @@ private fun RhythmLetterGroupSweepText(
 
             val isLetterActive = rawLetterProgress > 0f && rawLetterProgress < 1f
             val isLetterDone = rawLetterProgress >= 1f
-
-            val letterScale = if (isLetterActive) {
-                spicyScale(rawLetterProgress, 1.175f)
-            } else if (isLetterDone || isWordCompleted) {
-                1f
-            } else {
-                0.95f
+            val targetLetterScale = when {
+                isLetterActive -> spicyScale(rawLetterProgress, 1.175f)
+                isLetterDone || isWordCompleted -> 1f
+                else -> 0.95f
             }
+            val letterScaleSpring = remember(word.startTimeMs, index) {
+                SpicySpring(targetLetterScale, frequency = 0.88f, damping = 0.64f)
+            }
+            val letterScale = letterScaleSpring.update(targetLetterScale, currentPositionMs)
+            val targetLetterYOffset = spicyLetterYOffset(rawLetterProgress)
+            val letterYOffsetSpring = remember(word.startTimeMs, index) {
+                SpicySpring(targetLetterYOffset, frequency = 1.45f, damping = 0.4f)
+            }
+            val letterYOffset = letterYOffsetSpring.update(targetLetterYOffset, currentPositionMs) *
+                activeFontSizeSp * if (isSubduedBackground) 0.5f else 1f
 
             val letterStyle = when {
                 isLetterDone || isWordCompleted -> completedLetterStyle
@@ -1350,6 +1357,7 @@ private fun RhythmLetterGroupSweepText(
                 modifier = Modifier.graphicsLayer {
                     scaleX = letterScale
                     scaleY = letterScale
+                    translationY = letterYOffset * density * fontScale
                 },
                 contentAlignment = Alignment.CenterStart
             ) {
