@@ -50,7 +50,6 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
@@ -1142,27 +1141,15 @@ private fun SpicyAnimatedTextUnit(
         }
     }
 
-    // Opacity mirrors Mixed.css: normal text uses 0.85 sung / 0.35 unsung.
-    // Background vocals use the dedicated 0.60 / 0.30 levels.
     val litAlpha = if (isSubduedBackground) 0.60f else 0.85f
     val dimAlpha = if (isSubduedBackground) 0.30f else 0.35f
-    // The animated foreground is composited over the dim base, so use the inverse
-    // alpha needed to land on Spicy's target final opacity.
-    val overlayAlpha = ((litAlpha - dimAlpha) / (1f - dimAlpha)).coerceIn(0f, 1f)
-    val baseAlpha = if (isAnimationEnabled && isActiveLine) {
-        dimAlpha
-    } else if (playbackState == SpicyWordPlaybackState.Upcoming) {
-        dimAlpha
-    } else {
-        litAlpha
-    }
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val lineBlurRadiusPx = with(LocalDensity.current) {
         (lineDistance.coerceIn(0, 5) * SPICY_BLUR_MULTIPLIER).dp.toPx()
     }
     val lineShadowAlpha = if (playbackState == SpicyWordPlaybackState.Upcoming) dimAlpha else litAlpha
-    val lineShadow = if (!isActiveLine && lineDistance > 0) {
+    val inactiveLineShadow = if (!isActiveLine && lineDistance > 0) {
         Shadow(
             color = Color.White.copy(alpha = lineShadowAlpha),
             offset = Offset.Zero,
@@ -1170,48 +1157,67 @@ private fun SpicyAnimatedTextUnit(
         )
     } else null
 
-    val baseStyle = remember(fontSize, lineHeight, baseAlpha, isSubduedBackground, isLetter, lineDistance, playbackState, lineShadow) {
+    val animator = remember(startTimeMs, endTimeMs, isLetter) {
+        SpicyLyricsAnimator(isLetter = isLetter)
+    }
+    // A non-snapshot holder lets the draw-phase brush reuse the spring's glow value without
+    // creating a state write or recomposition every frame.
+    val currentGlow = remember(startTimeMs, endTimeMs, isLetter) { floatArrayOf(0f) }
+    val sweepBrush = remember(
+        positionProvider,
+        startTimeMs,
+        endTimeMs,
+        isSubduedBackground,
+        text
+    ) {
+        SpicyPlaybackBrush(
+            positionProvider = positionProvider,
+            startTimeMs = startTimeMs,
+            endTimeMs = endTimeMs,
+            isRtl = isRtlText(text),
+            litAlpha = litAlpha,
+            dimAlpha = dimAlpha,
+            glowProvider = { currentGlow[0] }
+        )
+    }
+
+    val staticStyle = remember(
+        fontSize,
+        lineHeight,
+        litAlpha,
+        dimAlpha,
+        isSubduedBackground,
+        playbackState,
+        inactiveLineShadow
+    ) {
+        val alpha = if (playbackState == SpicyWordPlaybackState.Completed) litAlpha else dimAlpha
         TextStyle(
-            color = Color.White.copy(alpha = baseAlpha),
+            color = Color.White.copy(alpha = alpha),
             fontSize = fontSize,
             lineHeight = lineHeight,
             fontWeight = FontWeight.Bold,
             fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal,
             fontFamily = FontFamily.SansSerif,
             letterSpacing = 0.sp,
-            shadow = lineShadow
+            shadow = inactiveLineShadow
         )
     }
-
-    // Glow intensity changes in a few perceptual stages rather than recomposing every frame.
-    // The spring itself remains continuous for scale and vertical movement in the layer lambda.
-    val glowStage by remember(startTimeMs, endTimeMs, isActiveLine, isAnimationEnabled) {
-        derivedStateOf {
-            if (!isActiveLine || !isAnimationEnabled) {
-                0
-            } else {
-                val p = ((positionProvider() + PRE_ROLL_OFFSET_MS - startTimeMs).toFloat() /
-                    duration.toFloat()).coerceIn(0f, 1f)
-                when {
-                    p < 0.05f -> 0
-                    p < 0.15f -> 1
-                    p < 0.60f -> 2
-                    p < 0.80f -> 3
-                    p < 0.96f -> 4
-                    else -> 5
-                }
-            }
-        }
-    }
-    val glowAlpha = when (glowStage) {
-        1 -> 0.45f
-        2 -> 0.72f
-        3 -> 0.52f
-        4 -> 0.22f
-        else -> 0f
-    }
-    val animator = remember(startTimeMs, endTimeMs, isLetter) {
-        SpicyLyricsAnimator(isLetter = isLetter)
+    val animatedStyle = remember(fontSize, lineHeight, isSubduedBackground, sweepBrush, glowColor) {
+        TextStyle(
+            brush = sweepBrush,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            fontWeight = FontWeight.Bold,
+            fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal,
+            fontFamily = FontFamily.SansSerif,
+            letterSpacing = 0.sp,
+            // One shadow on the single glyph pass; the brush brightens it slightly during attack.
+            shadow = Shadow(
+                color = glowColor.copy(alpha = if (isSubduedBackground) 0.14f else 0.22f),
+                offset = Offset.Zero,
+                blurRadius = if (isLetter) 9f else 6f
+            )
+        )
     }
 
     Box(
@@ -1223,6 +1229,7 @@ private fun SpicyAnimatedTextUnit(
                     endTimeMs = endTimeMs,
                     frameTimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
                 )
+                currentGlow[0] = frame.glow
                 scaleX = frame.scale
                 scaleY = frame.scale
                 translationY = frame.yOffsetEm * activeFontSizeSp * density *
@@ -1236,132 +1243,19 @@ private fun SpicyAnimatedTextUnit(
         },
         contentAlignment = Alignment.CenterStart
     ) {
-        Text(text = text, style = baseStyle)
-
-        // The overlay's moving mask recreates Spicy's -20% to 100% gradient sweep.
-        // Position is sampled in draw, not composition, so the moving edge doesn't rebuild Text.
         if (isAnimationEnabled && isActiveLine) {
-            val overlayStyle = remember(fontSize, lineHeight, isSubduedBackground, isLetter, glowAlpha) {
-                TextStyle(
-                    color = Color.White.copy(alpha = overlayAlpha),
-                    fontSize = fontSize,
-                    lineHeight = lineHeight,
-                    fontWeight = FontWeight.Bold,
-                    fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal,
-                    fontFamily = FontFamily.SansSerif,
-                    letterSpacing = 0.sp,
-                    shadow = Shadow(
-                        color = glowColor.copy(alpha = glowAlpha * if (isLetter) 0.9f else 0.45f),
-                        offset = Offset.Zero,
-                        blurRadius = if (isLetter) 16f else 6f
-                    )
-                )
-            }
-
             Text(
                 text = text,
-                style = overlayStyle,
-                modifier = Modifier
-                    .graphicsLayer {
-                        compositingStrategy = CompositingStrategy.Offscreen
-                    }
-                    .drawWithContent {
-                        drawContent()
-                        val position = positionProvider() + PRE_ROLL_OFFSET_MS
-                        val progress = ((position - startTimeMs).toFloat() / duration.toFloat())
-                            .coerceIn(0f, 1f)
-                        val rawSweepPosition = -0.20f + 1.20f * progress
-                        val feather = SPICY_SWEEP_FEATHER
-                        val transitionEnd = rawSweepPosition + feather
-                        val rtl = isRtlText(text)
-                        val mask = if (rtl) {
-                            when {
-                                transitionEnd <= 0f -> Brush.horizontalGradient(
-                                    colors = listOf(Color.Transparent, Color.Transparent),
-                                    startX = 0f,
-                                    endX = size.width
-                                )
-                                rawSweepPosition >= 1f -> Brush.horizontalGradient(
-                                    colors = listOf(Color.White, Color.White),
-                                    startX = 0f,
-                                    endX = size.width
-                                )
-                                rawSweepPosition < 0f -> {
-                                    // Stop positions begin off the right edge; preserve the
-                                    // partially revealed edge instead of snapping at 0%.
-                                    val edgeAlpha = (transitionEnd / feather).coerceIn(0f, 1f)
-                                    val fadeStart = (1f - transitionEnd).coerceIn(0f, 1f)
-                                    Brush.horizontalGradient(
-                                        colorStops = arrayOf(
-                                            0f to Color.Transparent,
-                                            fadeStart to Color.Transparent,
-                                            1f to Color.White.copy(alpha = edgeAlpha)
-                                        ),
-                                        startX = 0f,
-                                        endX = size.width
-                                    )
-                                }
-                                else -> {
-                                    val fadeStart = (1f - transitionEnd).coerceIn(0f, 1f)
-                                    val litStart = (1f - rawSweepPosition).coerceIn(0f, 1f)
-                                    Brush.horizontalGradient(
-                                        colorStops = arrayOf(
-                                            0f to Color.Transparent,
-                                            fadeStart to Color.Transparent,
-                                            litStart to Color.White,
-                                            1f to Color.White
-                                        ),
-                                        startX = 0f,
-                                        endX = size.width
-                                    )
-                                }
-                            }
-                        } else {
-                            when {
-                                transitionEnd <= 0f -> Brush.verticalGradient(
-                                    colors = listOf(Color.Transparent, Color.Transparent),
-                                    startY = 0f,
-                                    endY = size.height
-                                )
-                                rawSweepPosition >= 1f -> Brush.verticalGradient(
-                                    colors = listOf(Color.White, Color.White),
-                                    startY = 0f,
-                                    endY = size.height
-                                )
-                                rawSweepPosition < 0f -> {
-                                    // The CSS gradient starts at -20%, so the top edge begins
-                                    // partially dim and becomes progressively lit before 0%.
-                                    val edgeAlpha = (transitionEnd / feather).coerceIn(0f, 1f)
-                                    val fadeEnd = transitionEnd.coerceIn(0f, 1f)
-                                    Brush.verticalGradient(
-                                        colorStops = arrayOf(
-                                            0f to Color.White.copy(alpha = edgeAlpha),
-                                            fadeEnd to Color.Transparent,
-                                            1f to Color.Transparent
-                                        ),
-                                        startY = 0f,
-                                        endY = size.height
-                                    )
-                                }
-                                else -> {
-                                    val fadeEnd = transitionEnd.coerceIn(0f, 1f)
-                                    Brush.verticalGradient(
-                                        colorStops = arrayOf(
-                                            0f to Color.White,
-                                            rawSweepPosition to Color.White,
-                                            fadeEnd to Color.Transparent,
-                                            1f to Color.Transparent
-                                        ),
-                                        startY = 0f,
-                                        endY = size.height
-                                    )
-                                }
-                            }
-                        }
-                        drawRect(brush = mask, blendMode = BlendMode.DstIn)
-                    }
+                style = animatedStyle,
+                // This snapshot read invalidates only this text's draw node, so the playback shader
+                // is sampled at frame cadence without a duplicate Text, mask layer, or recomposition.
+                modifier = Modifier.drawWithContent {
+                    positionProvider()
+                    drawContent()
+                }
             )
+        } else {
+            Text(text = text, style = staticStyle)
         }
     }
 }
-
