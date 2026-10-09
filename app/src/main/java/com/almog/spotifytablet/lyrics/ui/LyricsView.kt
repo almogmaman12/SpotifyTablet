@@ -80,7 +80,6 @@ import com.almog.spotifytablet.lyrics.model.LyricLine
 import com.almog.spotifytablet.lyrics.model.LyricTrack
 import com.almog.spotifytablet.lyrics.model.TrackRhythmContext
 import com.almog.spotifytablet.lyrics.model.WordSync
-import com.almog.spotifytablet.lyrics.model.calculateRhythmSpringSpec
 import com.almog.spotifytablet.lyrics.viewmodel.LyricsUiState
 import com.almog.spotifytablet.lyrics.viewmodel.LyricsViewModel
 import com.almog.spotifytablet.lyrics.viewmodel.findActiveLineIndex
@@ -105,11 +104,13 @@ private class SpicyPlaybackBrush(
     private val endTimeMs: Long,
     private val isRtl: Boolean,
     private val litAlpha: Float,
-    private val dimAlpha: Float
+    private val dimAlpha: Float,
+    private val glowProvider: () -> Float
 ) : androidx.compose.ui.graphics.Brush() {
     override fun applyTo(size: Size, p: Paint, alpha: Float) {
         val position = positionProvider() + PRE_ROLL_OFFSET_MS
         val duration = (endTimeMs - startTimeMs).coerceAtLeast(1L)
+        val activeLitAlpha = (litAlpha + glowProvider().coerceIn(0f, 1f) * 0.10f).coerceAtMost(1f)
         val baseColor = Color.White.copy(alpha = if (position >= endTimeMs) litAlpha else dimAlpha)
 
         if (position < startTimeMs || position >= endTimeMs || size.width <= 0f || size.height <= 0f) {
@@ -137,9 +138,9 @@ private class SpicyPlaybackBrush(
         }
 
         fun alphaAt(position: Float): Float = when {
-            position <= rawStart -> litAlpha
+            position <= rawStart -> activeLitAlpha
             position >= rawEnd -> dimAlpha
-            else -> litAlpha + (dimAlpha - litAlpha) *
+            else -> activeLitAlpha + (dimAlpha - activeLitAlpha) *
                 ((position - rawStart) / (rawEnd - rawStart)).coerceIn(0f, 1f)
         }
 
@@ -520,7 +521,7 @@ fun LyricsContent(
             // Use derivedStateOf so any individual height update in lineHeightsPx (not just .size
             // changes) instantly invalidates this snapshot — eliminates the stale-size bug that
             // caused spacing jumps when a line's real height first arrived from onSizeChanged.
-            val targetYOffsetsPx by remember(effectiveCenterIndex, displayLines, isDynamicSpacingPrefEnabled, fallbackLineHeightPx, interLineGapPx) {
+            val targetYOffsetsPx by remember(effectiveCenterIndex, displayLines, isDynamicSpacingPrefEnabled, fallbackLineHeightPx, interLineGapPx, topOffsetCount, bottomOffsetCount) {
                 derivedStateOf {
                     val map = mutableMapOf<Int, Float>()
                     map[0] = 0f
@@ -818,50 +819,72 @@ fun SpicyPauseDots(
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
     modifier: Modifier = Modifier
 ) {
-    val totalTime = (nextStartMs - pauseStartMs).coerceAtLeast(1000L)
-    val baseDotTime = totalTime / 3
-
-    val dot1End = pauseStartMs + baseDotTime
-    val dot2End = pauseStartMs + (baseDotTime * 2)
-
-    // These derived states depend on playback time, but only invalidate composition when
-    // a dot crosses its threshold, rather than on every playback-clock update.
-    val dot1Active by remember(pauseStartMs, nextStartMs) {
-        derivedStateOf { positionProvider() >= pauseStartMs }
-    }
-    val dot2Active by remember(pauseStartMs, nextStartMs) {
-        derivedStateOf { positionProvider() >= dot1End }
-    }
-    val dot3Active by remember(pauseStartMs, nextStartMs) {
-        derivedStateOf { positionProvider() >= dot2End }
-    }
-
-    val dotSpring = rhythm.calculateRhythmSpringSpec<Float>(baseStiffness = 380f, baseDamping = 0.65f)
-
-    val d1Scale by animateFloatAsState(
-        targetValue = if (dot1Active) 1.35f else 0.85f,
-        animationSpec = dotSpring,
-        label = "dot1Scale"
-    )
-    val d2Scale by animateFloatAsState(
-        targetValue = if (dot2Active) 1.35f else 0.85f,
-        animationSpec = dotSpring,
-        label = "dot2Scale"
-    )
-    val d3Scale by animateFloatAsState(
-        targetValue = if (dot3Active) 1.35f else 0.85f,
-        animationSpec = dotSpring,
-        label = "dot3Scale"
-    )
-
+    val gapDuration = (nextStartMs - pauseStartMs).coerceAtLeast(1000L)
+    // The three dots roll in sequence for the whole interlude, rather than growing once
+    // at three timing thresholds and then remaining still.
     Row(
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.padding(vertical = 14.dp)
+        modifier = modifier.padding(vertical = 8.dp)
     ) {
-        PauseDot(isActive = dot1Active, scale = d1Scale)
-        PauseDot(isActive = dot2Active, scale = d2Scale)
-        PauseDot(isActive = dot3Active, scale = d3Scale)
+        repeat(3) { index ->
+            PauseDot(
+                index = index,
+                positionProvider = positionProvider,
+                pauseStartMs = pauseStartMs,
+                pauseDurationMs = gapDuration
+            )
+        }
+    }
+}
+
+@Composable
+private fun PauseDot(
+    index: Int,
+    positionProvider: () -> Long,
+    pauseStartMs: Long,
+    pauseDurationMs: Long
+) {
+    val liftPx = with(LocalDensity.current) { 7.dp.toPx() }
+
+    Box(
+        modifier = Modifier
+            .size(30.dp)
+            .drawBehind {
+                val elapsed = (positionProvider() - pauseStartMs).coerceAtLeast(0L)
+                val pulse = pauseDotPulse(elapsed, index)
+                val radius = size.minDimension * 0.49f
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.40f * pulse),
+                            Color.White.copy(alpha = 0.12f * pulse),
+                            Color.Transparent
+                        ),
+                        center = Offset(size.width / 2f, size.height / 2f),
+                        radius = radius
+                    ),
+                    radius = radius
+                )
+            }
+            .graphicsLayer {
+                val elapsed = (positionProvider() - pauseStartMs).coerceAtLeast(0L)
+                val pulse = pauseDotPulse(elapsed, index)
+                val progress = (elapsed.toFloat() / pauseDurationMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
+                val fadeOut = if (progress > 0.92f) (1f - progress) / 0.08f else 1f
+                val scale = 0.72f + 0.62f * pulse
+                scaleX = scale
+                scaleY = scale
+                translationY = -liftPx * pulse
+                alpha = (0.45f + 0.55f * pulse) * fadeOut.coerceIn(0f, 1f)
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .background(Color.White, CircleShape)
+        )
     }
 }
 
