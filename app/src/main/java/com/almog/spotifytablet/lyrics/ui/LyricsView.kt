@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -87,6 +89,58 @@ import kotlinx.coroutines.delay
  * Starts syllable scaling/transient animation slightly ahead for responsive feel.
  */
 private const val PRE_ROLL_OFFSET_MS = 45L
+private const val SPICY_SWEEP_FEATHER = 0.20f
+
+private fun smoothStep(value: Float): Float {
+    val x = value.coerceIn(0f, 1f)
+    return x * x * (3f - 2f * x)
+}
+
+/** Spicy Lyrics' word scale profile: 0.95 at attack, a small peak at 70%, then settles to 1. */
+private fun spicyScale(progress: Float, peakScale: Float): Float {
+    val p = progress.coerceIn(0f, 1f)
+    return if (p <= 0.7f) {
+        0.95f + (peakScale - 0.95f) * smoothStep(p / 0.7f)
+    } else {
+        peakScale + (1f - peakScale) * smoothStep((p - 0.7f) / 0.3f)
+    }
+}
+
+/** The subtle lift used by Spicy Lyrics, expressed as a fraction of the lyric font size. */
+private fun spicyYOffset(progress: Float): Float {
+    val p = progress.coerceIn(0f, 1f)
+    return if (p <= 0.9f) {
+        0.01f + ((-1f / 60f) - 0.01f) * smoothStep(p / 0.9f)
+    } else {
+        (-1f / 60f) * (1f - smoothStep((p - 0.9f) / 0.1f))
+    }
+}
+
+/** Brief attack glow: rise by 15%, hold to 60%, then fade away. */
+private fun spicyGlow(progress: Float): Float {
+    val p = progress.coerceIn(0f, 1f)
+    return when {
+        p < 0.15f -> smoothStep(p / 0.15f)
+        p <= 0.6f -> 1f
+        else -> 1f - smoothStep((p - 0.6f) / 0.4f)
+    }
+}
+
+private fun isRtlText(text: String): Boolean {
+    for (character in text) {
+        when (Character.getDirectionality(character)) {
+            Character.DIRECTIONALITY_LEFT_TO_RIGHT -> return false
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT,
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC -> return true
+            else -> Unit
+        }
+    }
+    return false
+}
+
+/** Avoid splitting Hebrew, Arabic, and other joining scripts into per-character composables. */
+private fun canSplitIntoLetters(text: String): Boolean =
+    !isRtlText(text) && text.none { it.code in 0x0590..0x0DFF }
 
 private val LineTransformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
 private val ShadowOffsetBase = Offset(0f, 2f)
@@ -202,7 +256,7 @@ fun LyricsContent(
         (track?.lines?.lastIndex ?: 0)
     )
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 24.dp, vertical = 0.dp)
@@ -294,12 +348,12 @@ fun LyricsContent(
         val lineAnimSpec: androidx.compose.animation.core.AnimationSpec<Float> = if (isDiscontinuousSeek) {
             snap()
         } else {
-            spring(dampingRatio = 0.8f, stiffness = 380f)
+            spring(dampingRatio = 0.85f, stiffness = 520f)
         }
         val propAnimSpec: androidx.compose.animation.core.AnimationSpec<Float> = if (isDiscontinuousSeek) {
             snap()
         } else {
-            tween(durationMillis = 220, easing = FastOutSlowInEasing)
+            tween(durationMillis = 200, easing = androidx.compose.animation.core.CubicBezierEasing(0.61f, 1f, 0.88f, 1f))
         }
 
         // Find companion background line happening during active line if any
@@ -331,7 +385,8 @@ fun LyricsContent(
             val density = LocalDensity.current
 
             // The visual gap between the bottom of one line and the top of the next line (constant 36.dp)
-            val interLineGapPx = with(density) { 36.dp.toPx() }
+            // Spicy Lyrics uses a width-relative line gap (1cqw), not a fixed 36dp gap.
+            val interLineGapPx = with(density) { (maxWidth * 0.01f).toPx() }
 
             // Fallback height derived from actual font metrics used in SingleLyricLineRow:
             // activeFontSizeSp × lineHeight factor (1.1875) converted to px.
@@ -358,24 +413,25 @@ fun LyricsContent(
                             map[off] = off * fixedSlotPx
                         }
                     } else {
-                        // Downward (next lines: offset 1, 2, 3)
-                        var currentAccumY = 0f
-                        for (off in 0..2) {
-                            val fromIdx = effectiveCenterIndex + off
-                            val fromLine = track.lines.getOrNull(fromIdx)
-                            val h = if (fromLine != null) (lineHeightsPx[fromLine.startTimeMs]?.toFloat() ?: fallbackLineHeightPx) else fallbackLineHeightPx
-                            currentAccumY += h + interLineGapPx
-                            map[off + 1] = currentAccumY
+                        fun lineHeightAt(index: Int): Float {
+                            val line = track.lines.getOrNull(index) ?: return fallbackLineHeightPx
+                            return lineHeightsPx[line.startTimeMs]?.toFloat() ?: fallbackLineHeightPx
                         }
 
-                        // Upward (previous lines: offset -1, -2)
-                        var currentAccumUpY = 0f
-                        for (off in 0 downTo -1) {
-                            val toIdx = effectiveCenterIndex + off - 1
-                            val toLine = track.lines.getOrNull(toIdx)
-                            val h = if (toLine != null) (lineHeightsPx[toLine.startTimeMs]?.toFloat() ?: fallbackLineHeightPx) else fallbackLineHeightPx
-                            currentAccumUpY -= (h + interLineGapPx)
-                            map[off - 1] = currentAccumUpY
+                        // Place line centers using half-heights, so wrapped lyrics do not
+                        // create oversized gaps or overlap when line measurements arrive.
+                        var y = 0f
+                        for (off in 1..3) {
+                            y += (lineHeightAt(effectiveCenterIndex + off - 1) +
+                                lineHeightAt(effectiveCenterIndex + off)) / 2f + interLineGapPx
+                            map[off] = y
+                        }
+
+                        y = 0f
+                        for (off in -1 downTo -2) {
+                            y -= (lineHeightAt(effectiveCenterIndex + off + 1) +
+                                lineHeightAt(effectiveCenterIndex + off)) / 2f + interLineGapPx
+                            map[off] = y
                         }
                     }
 
@@ -431,10 +487,11 @@ fun LyricsContent(
                         label = "lineY_${line.startTimeMs}"
                     )
 
+                    // Spicy Lyrics' default vocal opacity is ~0.50 for sung and unsung lines.
                     val targetAlpha = when {
                         isActive -> 1.0f
-                        Math.abs(offset) == 1 -> 0.35f
-                        else -> 0.18f
+                        targetIndex < activeLineIndex -> 0.497f
+                        else -> 0.51f
                     }
                     val animatedAlpha by animateFloatAsState(
                         targetValue = targetAlpha,
@@ -442,7 +499,8 @@ fun LyricsContent(
                         label = "lineAlpha_${line.startTimeMs}"
                     )
 
-                    val targetScale = if (isActive) 1.0f else 0.92f
+                    // Spicy keeps whole lines at 1x; the scale pulse belongs to individual words/letters.
+                    val targetScale = 1.0f
                     val animatedScale by animateFloatAsState(
                         targetValue = targetScale,
                         animationSpec = propAnimSpec,
