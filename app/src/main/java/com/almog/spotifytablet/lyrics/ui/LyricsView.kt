@@ -96,10 +96,6 @@ private const val SPICY_SWEEP_FEATHER = 0.20f
 private const val SPICY_BLUR_MULTIPLIER = 1.25f
 
 /**
- * The reference uses a 20% soft transition from bright to dim text. The brush is rebuilt only
- * when the active word's progress changes, never for every word on every frame.
- */
-/**
  * A stable ShaderBrush for a single glyph. A small gradient shader is created once per size;
  * only its matrix changes during draw, moving the 20% feather from -20% to 100%.
  */
@@ -1186,7 +1182,11 @@ private fun SpicyAnimatedTextUnit(
     }
     val glowStage by remember(startTimeMs, endTimeMs, isActiveLine, isAnimationEnabled) {
         derivedStateOf {
-            if (!isAnimationEnabled || !isActiveLine) {
+            if (
+                !isAnimationEnabled ||
+                !isActiveLine ||
+                playbackState != SpicyWordPlaybackState.Active
+            ) {
                 0
             } else {
                 val p = ((positionProvider() + PRE_ROLL_OFFSET_MS - startTimeMs).toFloat() /
