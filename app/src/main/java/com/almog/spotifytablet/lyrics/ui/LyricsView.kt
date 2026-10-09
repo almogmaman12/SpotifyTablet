@@ -46,15 +46,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.LinearGradientShader
-import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -1160,9 +1155,6 @@ private fun SpicyAnimatedTextUnit(
     val animator = remember(startTimeMs, endTimeMs, isLetter) {
         SpicyLyricsAnimator(isLetter = isLetter)
     }
-    // A non-snapshot holder lets the draw-phase brush reuse the spring's glow value without
-    // creating a state write or recomposition every frame.
-    val currentGlow = remember(startTimeMs, endTimeMs, isLetter) { floatArrayOf(0f) }
     val sweepProgress by remember(startTimeMs, endTimeMs, isActiveLine, isAnimationEnabled) {
         derivedStateOf {
             if (!isAnimationEnabled || !isActiveLine) {
@@ -1229,14 +1221,13 @@ private fun SpicyAnimatedTextUnit(
 
     Box(
         modifier = modifier.graphicsLayer {
-            if (isAnimationEnabled && isActiveLine) {
+            if (isAnimationEnabled && isActiveLine && playbackState == SpicyWordPlaybackState.Active) {
                 val frame = animator.sample(
                     positionMs = positionProvider(),
                     startTimeMs = startTimeMs,
                     endTimeMs = endTimeMs,
                     frameTimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
                 )
-                currentGlow[0] = frame.glow
                 scaleX = frame.scale
                 scaleY = frame.scale
                 translationY = frame.yOffsetEm * activeFontSizeSp * density *
