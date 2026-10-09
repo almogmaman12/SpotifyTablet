@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.almog.spotifytablet.Constants
 import com.almog.spotifytablet.SettingsActivity
 import com.almog.spotifytablet.lyrics.model.LyricLine
 import com.almog.spotifytablet.lyrics.model.LyricTrack
@@ -143,6 +144,9 @@ private fun isRtlText(text: String): Boolean {
 /** Avoid splitting Hebrew, Arabic, and other joining scripts into per-character composables. */
 private fun canSplitIntoLetters(text: String): Boolean =
     !isRtlText(text) && text.none { it.code in 0x0590..0x0DFF }
+
+private fun isLetterCapableDuration(durationMs: Long, word: WordSync): Boolean =
+    durationMs >= 1400L && word.graphemes.size in 2..12 && canSplitIntoLetters(word.text)
 
 private val LineTransformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
 private val ShadowOffsetBase = Offset(0f, 2f)
@@ -960,30 +964,31 @@ fun RhythmWordHighlightText(
     val isWordActive = rawWordProgress > 0f && rawWordProgress < 1f
     val isWordCompleted = rawWordProgress >= 1f
 
+    val wordPeakScale = if (isLetterCapableDuration(duration, word)) 1.175f else 1.0505f
     val wordScale = if (isWordActive) {
-        val baseScale = calculateRhythmWordScale(rawWordProgress, duration, currentPositionMs, rhythm)
-        if (isSubduedBackground) 1.0f + (baseScale - 1.0f) * 0.6f else baseScale
+        val scale = spicyScale(rawWordProgress, wordPeakScale)
+        if (isSubduedBackground) 1f + (scale - 1f) * 0.55f else scale
     } else if (isWordCompleted) {
-        1.0f
+        1f
     } else {
-        0.97f
+        0.95f
     }
 
     val wordOffsetY = if (isWordActive) {
-        val baseLift = calculateRhythmWordYOffset(rawWordProgress, duration, rhythm)
-        if (isSubduedBackground) baseLift * 0.5f else baseLift
+        val lift = spicyYOffset(rawWordProgress) * activeFontSizeSp
+        if (isSubduedBackground) lift * 0.5f else lift
     } else {
-        0.0f
+        0f
     }
 
     val isLetterCapable = isAnimationEnabled &&
         duration >= 1400L &&
         word.graphemes.size in 2..12 &&
-        word.text.none { it.code in 0x0600..0x0DFF }
+        canSplitIntoLetters(word.text)
 
     Box(
         modifier = modifier
-            .padding(horizontal = 2.dp, vertical = 0.dp)
+            .padding(horizontal = 0.dp, vertical = 0.dp)
             .graphicsLayer {
                 scaleX = wordScale
                 scaleY = wordScale
@@ -1083,11 +1088,12 @@ private fun RhythmSingleSyllableSweepText(
         else -> {
             val sweepProgress = calculateWordProgressEasing(rawProgress, durationMs, rhythm)
             val p = sweepProgress.coerceIn(0f, 1f)
-            val featherFrac = 0.03f
+            val featherFrac = SPICY_SWEEP_FEATHER
+            val sweepEnd = (-0.20f + 1.20f * p).coerceIn(0f, 1f)
             val textBrush = Brush.horizontalGradient(
                 0f to litColor,
-                (p - featherFrac).coerceIn(0f, 1f) to litColor,
-                p to dimColor,
+                (sweepEnd - featherFrac).coerceIn(0f, 1f) to litColor,
+                sweepEnd to dimColor,
                 1f to dimColor
             )
             TextStyle(
@@ -1099,9 +1105,9 @@ private fun RhythmSingleSyllableSweepText(
                 letterSpacing = (-0.3).sp,
                 lineHeight = lineHeight,
                 shadow = Shadow(
-                    color = glowColor,
+                    color = glowColor.copy(alpha = spicyGlow(rawProgress) * if (isSubduedBackground) 0.45f else 0.72f),
                     offset = ShadowOffsetGlow,
-                    blurRadius = if (isSubduedBackground) 16f else 24f
+                    blurRadius = if (isSubduedBackground) 7f else 12f
                 )
             )
         }
@@ -1184,11 +1190,11 @@ private fun RhythmLetterGroupSweepText(
             val isLetterDone = rawLetterProgress >= 1f
 
             val letterScale = if (isLetterActive) {
-                1.12f * (0.96f + 0.04f * rhythm.tempoFactor)
+                spicyScale(rawLetterProgress, 1.175f)
             } else if (isLetterDone || isWordCompleted) {
-                1.0f
+                1f
             } else {
-                0.97f
+                0.95f
             }
 
             val letterStyle = when {
@@ -1197,11 +1203,12 @@ private fun RhythmLetterGroupSweepText(
                 else -> {
                     val letterProgress = calculateWordProgressEasing(rawLetterProgress, letterDuration, rhythm)
                     val p = letterProgress.coerceIn(0f, 1f)
-                    val featherFrac = 0.04f
+                    val featherFrac = SPICY_SWEEP_FEATHER
+                    val sweepEnd = (-0.20f + 1.20f * p).coerceIn(0f, 1f)
                     val textBrush = Brush.horizontalGradient(
                         0f to litColor,
-                        (p - featherFrac).coerceIn(0f, 1f) to litColor,
-                        p to dimColor,
+                        (sweepEnd - featherFrac).coerceIn(0f, 1f) to litColor,
+                        sweepEnd to dimColor,
                         1f to dimColor
                     )
                     TextStyle(
@@ -1213,9 +1220,9 @@ private fun RhythmLetterGroupSweepText(
                         letterSpacing = (-0.2).sp,
                         lineHeight = lineHeight,
                         shadow = Shadow(
-                            color = glowColor,
+                            color = glowColor.copy(alpha = spicyGlow(rawLetterProgress) * if (isSubduedBackground) 0.45f else 0.72f),
                             offset = ShadowOffsetGlow,
-                            blurRadius = if (isSubduedBackground) 16f else 24f
+                            blurRadius = if (isSubduedBackground) 7f else 12f
                         )
                     )
                 }
