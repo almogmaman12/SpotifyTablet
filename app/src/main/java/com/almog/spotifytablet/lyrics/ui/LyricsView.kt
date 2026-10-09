@@ -130,6 +130,52 @@ private class SpicySweepBrush(
     }
 }
 
+
+/**
+ * Small port of Spicy's damped spring. It advances only when the active lyric line
+ * receives a new playback position, so it adds no per-word frame loop or coroutine.
+ */
+private class SpicySpring(
+    startPosition: Float,
+    private val frequency: Float,
+    private val damping: Float
+) {
+    private var position = startPosition
+    private var velocity = 0f
+    private var goal = startPosition
+    private var lastPositionMs: Long? = null
+
+    fun update(nextGoal: Float, positionMs: Long): Float {
+        goal = nextGoal
+        val previous = lastPositionMs
+        lastPositionMs = positionMs
+        if (previous == null) return position
+        val deltaMs = positionMs - previous
+        if (deltaMs <= 0L) return position
+        if (deltaMs > 100L) {
+            position = goal
+            velocity = 0f
+            return position
+        }
+        return step((deltaMs / 1000f).coerceAtMost(0.05f))
+    }
+
+    private fun step(dt: Float): Float {
+        val f = frequency * (2f * Math.PI.toFloat())
+        val q = kotlin.math.exp(-damping * f * dt)
+        val c = kotlin.math.sqrt(1f - damping * damping)
+        val i = kotlin.math.cos(dt * f * c)
+        val j = kotlin.math.sin(dt * f * c)
+        val z = j / c
+        val y = j / (f * c)
+        val offset = position - goal
+
+        position = (offset * (i + z * damping) + velocity * y) * q + goal
+        velocity = (velocity * (i - z * damping) - offset * (z * f)) * q
+        return position
+    }
+}
+
 private fun smoothStep(value: Float): Float {
     val x = value.coerceIn(0f, 1f)
     return x * x * (3f - 2f * x)
@@ -152,6 +198,16 @@ private fun spicyYOffset(progress: Float): Float {
         0.01f + ((-1f / 60f) - 0.01f) * smoothStep(p / 0.9f)
     } else {
         (-1f / 60f) * (1f - smoothStep((p - 0.9f) / 0.1f))
+    }
+}
+
+/** Per-letter lift range from Spicy's LetterYOffsetRange. */
+private fun spicyLetterYOffset(progress: Float): Float {
+    val p = progress.coerceIn(0f, 1f)
+    return if (p <= 0.9f) {
+        0.01f + ((-1f / 56f) - 0.01f) * smoothStep(p / 0.9f)
+    } else {
+        (-1f / 56f) * (1f - smoothStep((p - 0.9f) / 0.1f))
     }
 }
 
