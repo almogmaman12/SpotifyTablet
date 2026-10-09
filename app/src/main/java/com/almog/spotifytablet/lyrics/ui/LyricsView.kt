@@ -1135,12 +1135,12 @@ fun RhythmWordHighlightText(
             RhythmSingleSyllableSweepText(
                 word = word,
                 rawProgress = rawWordProgress,
-                durationMs = duration,
+                currentPositionMs = currentPositionMs,
+                isActiveLine = isActiveLine,
                 isWordActive = isWordActive,
                 isWordCompleted = isWordCompleted,
                 isSubduedBackground = isSubduedBackground,
                 glowColor = glowColor,
-                rhythm = rhythm,
                 activeFontSizeSp = activeFontSizeSp
             )
         }
@@ -1151,12 +1151,12 @@ fun RhythmWordHighlightText(
 private fun RhythmSingleSyllableSweepText(
     word: WordSync,
     rawProgress: Float,
-    durationMs: Long,
+    currentPositionMs: Long,
+    isActiveLine: Boolean,
     isWordActive: Boolean,
     isWordCompleted: Boolean,
     isSubduedBackground: Boolean,
     glowColor: Color,
-    rhythm: TrackRhythmContext,
     activeFontSizeSp: Float
 ) {
     val displayString = remember(word.text, word.trailingSpace) {
@@ -1166,6 +1166,14 @@ private fun RhythmSingleSyllableSweepText(
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
     val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
+    val glowSpring = remember(word.startTimeMs, isActiveLine) {
+        SpicySpring(spicyGlow(rawProgress), frequency = 1.18f, damping = 0.56f)
+    }
+    val glowStrength = if (isActiveLine) {
+        glowSpring.update(spicyGlow(rawProgress), currentPositionMs)
+    } else {
+        0f
+    }
 
     val litColor = Color.White.copy(alpha = baseAlpha)
     val dimColor = Color.White.copy(alpha = baseAlpha * 0.35f)
@@ -1226,7 +1234,7 @@ private fun RhythmSingleSyllableSweepText(
                 letterSpacing = 0.sp,
                 lineHeight = lineHeight,
                 shadow = Shadow(
-                    color = glowColor.copy(alpha = spicyGlow(rawProgress) * if (isSubduedBackground) 0.45f else 0.72f),
+                    color = glowColor.copy(alpha = glowStrength * if (isSubduedBackground) 0.45f else 0.72f),
                     offset = ShadowOffsetGlow,
                     blurRadius = if (isSubduedBackground) 7f else 12f
                 )
@@ -1324,6 +1332,10 @@ private fun RhythmLetterGroupSweepText(
             }
             val letterYOffset = letterYOffsetSpring.update(targetLetterYOffset, currentPositionMs) *
                 activeFontSizeSp * if (isSubduedBackground) 0.5f else 1f
+            val letterGlowSpring = remember(word.startTimeMs, index) {
+                SpicySpring(spicyGlow(rawLetterProgress), frequency = 1.18f, damping = 0.56f)
+            }
+            val letterGlow = letterGlowSpring.update(spicyGlow(rawLetterProgress), currentPositionMs)
 
             val letterStyle = when {
                 isLetterDone || isWordCompleted -> completedLetterStyle
@@ -1345,7 +1357,7 @@ private fun RhythmLetterGroupSweepText(
                         letterSpacing = 0.sp,
                         lineHeight = lineHeight,
                         shadow = Shadow(
-                            color = glowColor.copy(alpha = spicyGlow(rawLetterProgress) * if (isSubduedBackground) 0.45f else 0.72f),
+                            color = glowColor.copy(alpha = letterGlow * if (isSubduedBackground) 0.45f else 0.72f),
                             offset = ShadowOffsetGlow,
                             blurRadius = if (isSubduedBackground) 7f else 12f
                         )
