@@ -1081,7 +1081,9 @@ fun RhythmWordHighlightText(
     val isWordActive = rawWordProgress > 0f && rawWordProgress < 1f
     val isWordCompleted = rawWordProgress >= 1f
 
-    val wordPeakScale = if (isLetterCapableDuration(duration, word)) 1.175f else 1.0505f
+    // Spicy uses the 1.0505 word spring even when a word is split into letters.
+    // The 1.175 peak belongs to each individual letter, not the whole word wrapper.
+    val wordPeakScale = 1.0505f
     val targetWordScale = when {
         isWordActive -> spicyScale(rawWordProgress, wordPeakScale)
         isWordCompleted -> 1f
