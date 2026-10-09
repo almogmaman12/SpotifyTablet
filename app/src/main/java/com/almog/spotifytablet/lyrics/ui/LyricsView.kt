@@ -762,118 +762,123 @@ fun SingleLyricLineRow(
     modifier: Modifier = Modifier
 ) {
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
-    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1875f).sp
+    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
-    val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
+    val baseAlpha = if (isSubduedBackground) 0.60f else 1.0f
+    val rtl = remember(line.rawText) { isRtlText(line.rawText) }
 
-    val agentGlowColor = when (line.agentId) {
-        "v2" -> Color(0xFF00E5FF)
-        "v3" -> Color(0xFFFFB300)
-        else -> if (isSubduedBackground) Color(0xFF00E676) else Color(0xFF1DB954)
-    }
-
-    Column(
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.Center,
-        modifier = modifier.fillMaxWidth()
+    // Spicy uses white lyric fills; singer IDs must not tint the whole renderer green/cyan/orange.
+    CompositionLocalProvider(
+        LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr
     ) {
-        // Use FlowRow when: (a) active line — full sweep animation, or
-        // (b) forceFlowRow — adjacent line, FlowRow structure but isActiveLine=false
-        //     so words render as static dim/lit text with zero sweep overhead.
-        // Far lines (offset ±2) use cheap single Text.
-        if (!isActiveLine && !forceFlowRow) {
-            // PERF: inactive lines use a single Text — zero per-word composables.
-            // Completed lines (above active) show fully lit; upcoming (below) show dim.
-            val isCompleted = currentPositionMs > line.startTimeMs
-            Text(
-                text = line.rawText,
-                style = TextStyle(
-                    fontSize = fontSize,
-                    lineHeight = lineHeight,
-                    fontStyle = fontStyle,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.SansSerif,
-                    color = if (isCompleted)
-                        Color(0xFFF2F2F2).copy(alpha = baseAlpha)
-                    else
-                        Color(0x66FFFFFF).copy(alpha = baseAlpha * 0.6f),
-                    letterSpacing = (-0.3).sp
-                )
-            )
-        } else {
-            // Active line: full word-by-word sweep animation
-            val effectiveWords = if (line.words.isNotEmpty()) {
-                line.words
-            } else if (line.rawText.isNotBlank()) {
-                remember(line.rawText, line.startTimeMs, line.endTimeMs) {
-                    val tokens = line.rawText.split("\\s+".toRegex()).filter { it.isNotEmpty() }
-                    if (tokens.isEmpty()) emptyList()
-                    else {
-                        val lineDur = (line.endTimeMs - line.startTimeMs).coerceAtLeast(tokens.size * 50L)
-                        val tokenDur = lineDur / tokens.size
-                        tokens.mapIndexed { idx, tok ->
-                            WordSync(
-                                text = tok,
-                                startTimeMs = line.startTimeMs + (idx * tokenDur),
-                                endTimeMs = line.startTimeMs + ((idx + 1) * tokenDur),
-                                trailingSpace = idx < tokens.size - 1
-                            )
-                        }
-                    }
-                }
-            } else emptyList()
-
-            if (effectiveWords.isNotEmpty()) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalArrangement = Arrangement.spacedBy(1.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    effectiveWords.forEach { word ->
-                        RhythmWordHighlightText(
-                            word = word,
-                            currentPositionMs = currentPositionMs,
-                            isAnimationEnabled = isAnimationEnabled,
-                            isActiveLine = isActiveLine,
-                            isSubduedBackground = isSubduedBackground,
-                            glowColor = agentGlowColor,
-                            rhythm = rhythm
-                        )
-                    }
-                }
-            } else {
+        Column(
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.Center,
+            modifier = modifier.fillMaxWidth()
+        ) {
+            if (!isActiveLine && !forceFlowRow) {
+                // Spicy keeps the adjacent lines simple: the line itself controls its opacity.
                 Text(
                     text = line.rawText,
                     style = TextStyle(
                         fontSize = fontSize,
                         lineHeight = lineHeight,
                         fontStyle = fontStyle,
-                        color = Color.White.copy(alpha = 0.5f)
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.SansSerif,
+                        color = Color.White.copy(alpha = baseAlpha),
+                        letterSpacing = 0.sp
                     )
                 )
-            }
-        }
+            } else {
+                val effectiveWords = if (line.words.isNotEmpty()) {
+                    line.words
+                } else if (line.rawText.isNotBlank()) {
+                    remember(line.rawText, line.startTimeMs, line.endTimeMs) {
+                        val tokens = line.rawText.split("\\s+".toRegex()).filter { it.isNotEmpty() }
+                        if (tokens.isEmpty()) emptyList()
+                        else {
+                            val lineDur = (line.endTimeMs - line.startTimeMs).coerceAtLeast(tokens.size * 50L)
+                            val tokenDur = lineDur / tokens.size
+                            tokens.mapIndexed { idx, token ->
+                                WordSync(
+                                    text = token,
+                                    startTimeMs = line.startTimeMs + idx * tokenDur,
+                                    endTimeMs = line.startTimeMs + (idx + 1) * tokenDur,
+                                    trailingSpace = idx < tokens.size - 1
+                                )
+                            }
+                        }
+                    }
+                } else emptyList()
 
-        // Dual-Line Translation / Transliteration rendering
-        if (!line.translation.isNullOrBlank()) {
-            Text(
-                text = line.translation,
-                style = TextStyle(
-                    fontSize = (fontSize.value * 0.55f).sp,
-                    lineHeight = (lineHeight.value * 0.6f).sp,
-                    fontStyle = FontStyle.Normal,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = FontFamily.SansSerif,
-                    textAlign = TextAlign.Start,
-                    color = if (isActiveLine) Color(0xCCFFFFFF) else Color(0x55FFFFFF),
-                    shadow = Shadow(
-                        color = Color(0x99000000),
-                        offset = ShadowOffsetSubtle,
-                        blurRadius = 4f
+                if (effectiveWords.isNotEmpty()) {
+                    // Keep split syllables of a word together so a line wrap never breaks a word in half.
+                    val wordGroups = remember(effectiveWords) {
+                        val groups = mutableListOf<List<WordSync>>()
+                        var currentGroup = mutableListOf<WordSync>()
+                        for (word in effectiveWords) {
+                            currentGroup.add(word)
+                            if (word.trailingSpace) {
+                                groups.add(currentGroup.toList())
+                                currentGroup = mutableListOf()
+                            }
+                        }
+                        if (currentGroup.isNotEmpty()) groups.add(currentGroup.toList())
+                        groups
+                    }
+
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(0.dp),
+                        verticalArrangement = Arrangement.spacedBy(1.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        wordGroups.forEach { syllables ->
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                syllables.forEach { word ->
+                                    RhythmWordHighlightText(
+                                        word = word,
+                                        currentPositionMs = currentPositionMs,
+                                        isAnimationEnabled = isAnimationEnabled,
+                                        isActiveLine = isActiveLine,
+                                        isSubduedBackground = isSubduedBackground,
+                                        glowColor = Color.White,
+                                        rhythm = rhythm,
+                                        activeFontSizeSp = activeFontSizeSp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        text = line.rawText,
+                        style = TextStyle(
+                            fontSize = fontSize,
+                            lineHeight = lineHeight,
+                            fontStyle = fontStyle,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = baseAlpha)
+                        )
                     )
-                ),
-                modifier = Modifier.padding(top = 2.dp, bottom = 1.dp)
-            )
+                }
+            }
+
+            if (!line.translation.isNullOrBlank()) {
+                Text(
+                    text = line.translation,
+                    style = TextStyle(
+                        fontSize = (fontSize.value * 0.55f).sp,
+                        lineHeight = (lineHeight.value * 0.6f).sp,
+                        fontStyle = FontStyle.Normal,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.SansSerif,
+                        textAlign = TextAlign.Start,
+                        color = if (isActiveLine) Color.White.copy(alpha = 0.80f) else Color.White.copy(alpha = 0.50f)
+                    ),
+                    modifier = Modifier.padding(top = 2.dp, bottom = 1.dp)
+                )
+            }
         }
     }
 }
