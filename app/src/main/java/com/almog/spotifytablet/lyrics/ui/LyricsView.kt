@@ -1074,21 +1074,36 @@ fun RhythmWordHighlightText(
     val isWordCompleted = rawWordProgress >= 1f
 
     val wordPeakScale = if (isLetterCapableDuration(duration, word)) 1.175f else 1.0505f
-    val wordScale = if (isWordActive) {
-        val scale = spicyScale(rawWordProgress, wordPeakScale)
-        if (isSubduedBackground) 1f + (scale - 1f) * 0.55f else scale
-    } else if (isWordCompleted) {
-        1f
+    val targetWordScale = when {
+        isWordActive -> spicyScale(rawWordProgress, wordPeakScale)
+        isWordCompleted -> 1f
+        else -> 0.95f
+    }
+    val initialWordScale = targetWordScale
+    val wordScaleSpring = remember(word.startTimeMs, isActiveLine) {
+        SpicySpring(initialWordScale, frequency = 0.88f, damping = 0.64f)
+    }
+    val springWordScale = if (isActiveLine && isAnimationEnabled) {
+        wordScaleSpring.update(targetWordScale, currentPositionMs)
     } else {
-        0.95f
+        targetWordScale
+    }
+    val wordScale = if (isSubduedBackground) {
+        1f + (springWordScale - 1f) * 0.55f
+    } else {
+        springWordScale
     }
 
-    val wordOffsetY = if (isWordActive) {
-        val lift = spicyYOffset(rawWordProgress) * activeFontSizeSp
-        if (isSubduedBackground) lift * 0.5f else lift
-    } else {
-        0f
+    val targetYOffset = if (isActiveLine) spicyYOffset(rawWordProgress) else 0f
+    val wordOffsetSpring = remember(word.startTimeMs, isActiveLine) {
+        SpicySpring(targetYOffset, frequency = 1.45f, damping = 0.4f)
     }
+    val springYOffset = if (isActiveLine && isAnimationEnabled) {
+        wordOffsetSpring.update(targetYOffset, currentPositionMs)
+    } else {
+        targetYOffset
+    }
+    val wordOffsetY = springYOffset * activeFontSizeSp * if (isSubduedBackground) 0.5f else 1f
 
     val isLetterCapable = isAnimationEnabled &&
             duration >= 1400L &&
@@ -1101,7 +1116,7 @@ fun RhythmWordHighlightText(
             .graphicsLayer {
                 scaleX = wordScale
                 scaleY = wordScale
-                translationY = wordOffsetY * density
+                translationY = wordOffsetY * density * fontScale
             },
         contentAlignment = Alignment.CenterStart
     ) {
