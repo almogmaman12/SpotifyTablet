@@ -45,6 +45,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
@@ -183,6 +185,17 @@ fun LyricsContent(
     // inside Compose's own vsync-aligned callback.
     var currentPositionMs by remember { mutableLongStateOf(anchor.positionMs) }
     var displayPositionMs by remember { mutableLongStateOf(anchor.positionMs) }
+    // Stable provider: draw/layer lambdas can read playback time without rebuilding Text composables.
+    val positionProvider = remember { { displayPositionMs } }
+    val displayLines = remember(track?.lines) {
+        track?.lines?.filterNot { it.isBackground } ?: emptyList()
+    }
+
+    val context = LocalContext.current
+    val prefs = remember(context) {
+        context.getSharedPreferences(Constants.PREF_NAME, android.content.Context.MODE_PRIVATE)
+    }
+    val isPauseDotsPrefEnabled = prefs.getBoolean(SettingsActivity.PREF_PAUSE_DOTS, true)
 
     // Reset positions immediately when the track changes
     LaunchedEffect(track, anchor.positionMs, anchor.anchorRealtimeMs, anchor.isPlaying, anchor.speed) {
@@ -206,35 +219,68 @@ fun LyricsContent(
             displayPositionMs = anchor.positionMs
         }
 
+        val firstStart = displayLines.firstOrNull()?.startTimeMs ?: Long.MAX_VALUE
+        val powerManager = context.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+        var minFrameNanos = 16_666_666L
+        var lastFrameNanos = 0L
+        var frameCounter = 0
+
         while (true) {
-            withFrameNanos {
+            if (frameCounter++ % 120 == 0) {
+                minFrameNanos = if (powerManager?.isPowerSaveMode == true) 33_333_333L else 16_666_666L
+            }
+
+            if (isIdleState.value) {
+                // No lyrics or dots are animating: update slowly instead of requesting every vsync.
+                val elapsedMs = android.os.SystemClock.elapsedRealtime() - anchor.anchorRealtimeMs
+                val pos = anchor.positionMs + (elapsedMs * anchor.speed).toLong()
+                currentPositionMs = pos
+                displayPositionMs = pos
+                val sleepMs = if (pos < firstStart) ((firstStart - pos) / 2).coerceIn(16L, 200L) else 200L
+                delay(sleepMs)
+                continue
+            }
+
+            withFrameNanos { frameNanos ->
+                if (frameNanos - lastFrameNanos < minFrameNanos) return@withFrameNanos
+                lastFrameNanos = frameNanos
                 val elapsedMs = android.os.SystemClock.elapsedRealtime() - anchor.anchorRealtimeMs
                 val newPos = anchor.positionMs + (elapsedMs * anchor.speed).toLong()
                 currentPositionMs = newPos
 
                 val diff = newPos - displayPositionMs
                 displayPositionMs += when {
-                    diff <= 0L -> diff              // backward correction or already caught up: snap
-                    diff > 1500L -> diff            // real seek — snap instantly
-                    else -> (diff * 0.3).toLong().coerceAtLeast(1L) // forward drift: chase at ~30%/frame
+                    diff <= 0L -> diff
+                    diff > 1500L -> diff
+                    else -> (diff * 0.3).toLong().coerceAtLeast(1L)
                 }
             }
         }
     }
 
     // Temporal locality cache: stores last active line index to enable O(1) checks
-    val lastActiveRef = remember(track) { intArrayOf(-1) }
-    // Recalculate on playback-position changes, but invalidate composition only when
-    // the active line index actually changes. This avoids rebuilding the lyrics tree
-    // on every animation frame.
-    val activeLineIndex by remember(track) {
+    val lastActiveRef = remember(displayLines) { intArrayOf(-1) }
+    // Playback position updates each frame; the composition changes only at line boundaries.
+    val activeIndexState = remember(displayLines) {
         derivedStateOf {
-            val idx = track?.let {
-                findActiveLineIndex(it.lines, currentPositionMs, lastActiveRef[0])
-            } ?: -1
+            val idx = if (displayLines.isNotEmpty()) {
+                findActiveLineIndex(displayLines, currentPositionMs, lastActiveRef[0])
+            } else -1
             lastActiveRef[0] = idx
             idx
         }
+    }
+    val activeLineIndex = activeIndexState.value
+
+    val pauseInfoState = remember(displayLines, isPauseDotsPrefEnabled) {
+        derivedStateOf {
+            if (isPauseDotsPrefEnabled) {
+                getPauseInfo(displayLines, activeLineIndex, currentPositionMs)
+            } else null
+        }
+    }
+    val isIdleState = remember(displayLines, isPauseDotsPrefEnabled) {
+        derivedStateOf { activeIndexState.value == -1 && pauseInfoState.value == null }
     }
 
     // Manual scroll & fling gesture override state
@@ -253,7 +299,7 @@ fun LyricsContent(
 
     val effectiveCenterIndex = (activeLineIndex + manualScrollOffsetLines).coerceIn(
         -1,
-        (track?.lines?.lastIndex ?: 0)
+        displayLines.lastIndex
     )
 
     BoxWithConstraints(
@@ -295,7 +341,7 @@ fun LyricsContent(
         contentAlignment = Alignment.Center
     ) {
         if (track == null || track.lines.isEmpty()) {
-            return@Box
+            return@BoxWithConstraints
         }
 
         val rhythmContext = remember(track.bpm) {
@@ -306,13 +352,10 @@ fun LyricsContent(
             }
         }
 
-        val context = LocalContext.current
-        val prefs = remember(context) { context.getSharedPreferences(com.almog.spotifytablet.Constants.PREF_NAME, android.content.Context.MODE_PRIVATE) }
-        val isPauseDotsPrefEnabled = prefs.getBoolean(SettingsActivity.PREF_PAUSE_DOTS, true)
         val isDynamicSpacingPrefEnabled = prefs.getBoolean(SettingsActivity.PREF_DYNAMIC_SPACING, true)
         val lyricsFontSizeSp = prefs.getInt(com.almog.spotifytablet.Constants.PREF_KEY_LYRICS_FONT_SIZE, 32).toFloat()
 
-        val pauseInfo = if (isPauseDotsPrefEnabled) getPauseInfo(track.lines, activeLineIndex, currentPositionMs) else null
+        val pauseInfo = pauseInfoState.value
         val isPauseActive = pauseInfo != null
 
         val pauseAlpha by animateFloatAsState(
@@ -324,7 +367,9 @@ fun LyricsContent(
         val lastLineEndTime = track.lines.asSequence()
             .filterNot { it.isBackground }
             .maxOfOrNull { it.endTimeMs } ?: Long.MAX_VALUE
-        val isOutro = activeLineIndex == -1 && currentPositionMs >= lastLineEndTime
+        val isOutro by remember(displayLines, lastLineEndTime) {
+            derivedStateOf { activeIndexState.value == -1 && currentPositionMs >= lastLineEndTime }
+        }
 
         val stageAlpha by animateFloatAsState(
             targetValue = if (isOutro) 0f else 1f,
@@ -357,7 +402,7 @@ fun LyricsContent(
         }
 
         // Find companion background line happening during active line if any
-        val activeLine = track.lines.getOrNull(activeLineIndex)
+        val activeLine = displayLines.getOrNull(activeLineIndex)
         val companionBgLine = remember(activeLine?.startTimeMs, track.lines) {
             if (activeLine != null && !activeLine.isBackground) {
                 track.lines.asSequence()
@@ -402,7 +447,7 @@ fun LyricsContent(
             // Use derivedStateOf so any individual height update in lineHeightsPx (not just .size
             // changes) instantly invalidates this snapshot — eliminates the stale-size bug that
             // caused spacing jumps when a line's real height first arrived from onSizeChanged.
-            val targetYOffsetsPx by remember(effectiveCenterIndex, track.lines, isDynamicSpacingPrefEnabled, fallbackLineHeightPx) {
+            val targetYOffsetsPx by remember(effectiveCenterIndex, displayLines, isDynamicSpacingPrefEnabled, fallbackLineHeightPx, interLineGapPx) {
                 derivedStateOf {
                     val map = mutableMapOf<Int, Float>()
                     map[0] = 0f
@@ -414,7 +459,7 @@ fun LyricsContent(
                         }
                     } else {
                         fun lineHeightAt(index: Int): Float {
-                            val line = track.lines.getOrNull(index) ?: return fallbackLineHeightPx
+                            val line = displayLines.getOrNull(index) ?: return fallbackLineHeightPx
                             return lineHeightsPx[line.startTimeMs]?.toFloat() ?: fallbackLineHeightPx
                         }
 
@@ -451,7 +496,7 @@ fun LyricsContent(
                     contentAlignment = Alignment.CenterStart
                 ) {
                     SpicyPauseDots(
-                        currentPositionMs = currentPositionMs,
+                        positionProvider = positionProvider,
                         pauseStartMs = pauseInfo.pauseStartMs,
                         nextStartMs = pauseInfo.nextStartMs,
                         rhythm = rhythmContext,
@@ -463,7 +508,7 @@ fun LyricsContent(
             // Render -2..3 window (6 slots) — fewer composables = fewer recompositions per frame.
             for (offset in -2..3) {
                 val targetIndex = effectiveCenterIndex + offset
-                val line = track.lines.getOrNull(targetIndex) ?: continue
+                val line = displayLines.getOrNull(targetIndex) ?: continue
 
                 // Skip companion background line — rendered inline below the active row
                 if (offset != 0 && line == companionBgLine) continue
@@ -548,7 +593,8 @@ fun LyricsContent(
                         ) {
                             SingleLyricLineRow(
                                 line = line,
-                                currentPositionMs = linePositionMs,
+                                positionProvider = positionProvider,
+                                mode = mode,
                                 isAnimationEnabled = isAnimationEnabled,
                                 isActiveLine = isActive,
                                 forceFlowRow = renderAsActive,
