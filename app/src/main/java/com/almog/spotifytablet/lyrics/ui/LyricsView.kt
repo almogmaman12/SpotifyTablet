@@ -50,6 +50,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -610,6 +611,9 @@ fun LyricsContent(
                                 }
                             }
                             .graphicsLayer {
+                                // Modulate alpha per draw instead of creating an offscreen bitmap
+                                // for every half-opacity neighboring line.
+                                compositingStrategy = CompositingStrategy.ModulateAlpha
                                 translationY = animatedYOffsetPx
                                 val currentStageAlpha = stageAlpha
                                 val currentCenterY = viewportHeightPx / 2f + animatedYOffsetPx
@@ -832,6 +836,7 @@ private fun PauseDot(
                 )
             }
             .graphicsLayer {
+                compositingStrategy = CompositingStrategy.ModulateAlpha
                 val elapsed = (positionProvider() - pauseStartMs).coerceAtLeast(0L)
                 val pulse = pauseDotPulse(elapsed, index)
                 val progress = (elapsed.toFloat() / pauseDurationMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
