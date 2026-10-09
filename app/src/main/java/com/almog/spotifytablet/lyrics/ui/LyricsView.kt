@@ -471,38 +471,14 @@ fun LyricsContent(
             }
         }
 
-        // Spicy's active line sits above the exact vertical center. Use the measured
-        // viewport height so the focal point stays consistent across screen sizes.
-        val focalShiftPx = with(LocalDensity.current) {
-            (this@BoxWithConstraints.maxHeight * 0.12f).toPx()
-        }
+        // Use the whole height supplied by the host layout. Center the active lyric at 38%,
+        // like Spicy's fullscreen lyrics, but do the edge fade per line instead of allocating
+        // a full-screen offscreen layer every frame.
+        val viewportHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
+        val focalShiftPx = viewportHeightPx * 0.12f
 
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    alpha = stageAlpha
-                    compositingStrategy = CompositingStrategy.Offscreen
-                }
-                .drawWithContent {
-                    drawContent()
-                    // Spicy fades lyric rows into the surrounding background at both edges.
-                    val edge = 0.08f
-                    val innerEdge = 0.02f
-                    val mask = Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0f to Color.Transparent,
-                            innerEdge to Color.Transparent,
-                            edge to Color.White,
-                            (1f - edge) to Color.White,
-                            (1f - innerEdge) to Color.Transparent,
-                            1f to Color.Transparent
-                        ),
-                        startY = 0f,
-                        endY = size.height
-                    )
-                    drawRect(brush = mask, blendMode = BlendMode.DstIn)
-                },
+            modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.CenterStart
         ) {
             // Map of line heights measured in pixels (stable per line)
@@ -519,6 +495,23 @@ fun LyricsContent(
             // This matches the real rendered height far better than the old 44.dp constant,
             // so the initial layout position is correct before onSizeChanged fires.
             val fallbackLineHeightPx = with(density) { (lyricsFontSizeSp * 1.1875f).sp.toPx() }
+            val estimatedSlotHeightPx = if (isDynamicSpacingPrefEnabled) {
+                (fallbackLineHeightPx + interLineGapPx).coerceAtLeast(with(density) { 36.dp.toPx() })
+            } else {
+                with(density) { 88.dp.toPx() }
+            }
+
+            // Asymmetric window: the active line sits at 38% of the viewport, leaving more
+            // lyric rows below it than above. Render enough cheap static rows to cover the
+            // full height instead of hard-coding a six-line window.
+            val topOffsetCount = kotlin.math.ceil(
+                viewportHeightPx * 0.38f / estimatedSlotHeightPx
+            ).toInt().plus(2).coerceIn(3, 18)
+            val bottomOffsetCount = kotlin.math.ceil(
+                viewportHeightPx * 0.62f / estimatedSlotHeightPx
+            ).toInt().plus(2).coerceIn(4, 20)
+            val edgeFadeStartPx = with(density) { 16.dp.toPx() }
+            val edgeFadeEndPx = with(density) { 64.dp.toPx() }
 
             // Dynamic cumulative Y calculation:
             // Center line (offset 0) is at Y = 0.
@@ -535,7 +528,7 @@ fun LyricsContent(
 
                     if (!isDynamicSpacingPrefEnabled) {
                         val fixedSlotPx = with(density) { 88.dp.toPx() }
-                        for (off in -2..3) {
+                        for (off in -topOffsetCount..bottomOffsetCount) {
                             map[off] = off * fixedSlotPx
                         }
                     } else {
@@ -547,14 +540,14 @@ fun LyricsContent(
                         // Place line centers using half-heights, so wrapped lyrics do not
                         // create oversized gaps or overlap when line measurements arrive.
                         var y = 0f
-                        for (off in 1..3) {
+                        for (off in 1..bottomOffsetCount) {
                             y += (lineHeightAt(effectiveCenterIndex + off - 1) +
                                     lineHeightAt(effectiveCenterIndex + off)) / 2f + interLineGapPx
                             map[off] = y
                         }
 
                         y = 0f
-                        for (off in -1 downTo -2) {
+                        for (off in -1 downTo -topOffsetCount) {
                             y -= (lineHeightAt(effectiveCenterIndex + off + 1) +
                                     lineHeightAt(effectiveCenterIndex + off)) / 2f + interLineGapPx
                             map[off] = y
@@ -586,8 +579,9 @@ fun LyricsContent(
                 }
             }
 
-            // Render -2..3 window (6 slots) — fewer composables = fewer recompositions per frame.
-            for (offset in -2..3) {
+            // Render a viewport-sized window. Only the active line and its immediate neighbors
+            // use word-aware layout; all farther rows stay as single Text nodes.
+            for (offset in -topOffsetCount..bottomOffsetCount) {
                 val targetIndex = effectiveCenterIndex + offset
                 val line = displayLines.getOrNull(targetIndex) ?: continue
 
@@ -653,7 +647,15 @@ fun LyricsContent(
                             }
                             .graphicsLayer {
                                 translationY = animatedYOffsetPx
-                                alpha = animatedAlpha
+                                val currentStageAlpha = stageAlpha
+                                val currentCenterY = viewportHeightPx / 2f + animatedYOffsetPx
+                                val edgeAlpha = lyricEdgeFade(
+                                    centerY = currentCenterY,
+                                    height = viewportHeightPx,
+                                    edgeStartPx = edgeFadeStartPx,
+                                    edgeEndPx = edgeFadeEndPx
+                                )
+                                alpha = animatedAlpha * currentStageAlpha * edgeAlpha
                                 scaleX = animatedScale
                                 scaleY = animatedScale
                                 transformOrigin = LineTransformOrigin
