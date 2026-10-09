@@ -1034,6 +1034,9 @@ private fun SpicyAnimatedTextUnit(
     // Background vocals use the dedicated 0.60 / 0.30 levels.
     val litAlpha = if (isSubduedBackground) 0.60f else 0.85f
     val dimAlpha = if (isSubduedBackground) 0.30f else 0.35f
+    // The animated foreground is composited over the dim base, so use the inverse
+    // alpha needed to land on Spicy's target final opacity.
+    val overlayAlpha = ((litAlpha - dimAlpha) / (1f - dimAlpha)).coerceIn(0f, 1f)
     val baseAlpha = if (isAnimationEnabled && isActiveLine) {
         dimAlpha
     } else if (playbackState == SpicyWordPlaybackState.Upcoming) {
@@ -1116,7 +1119,7 @@ private fun SpicyAnimatedTextUnit(
         if (isAnimationEnabled && isActiveLine) {
             val overlayStyle = remember(fontSize, lineHeight, isSubduedBackground, isLetter, glowAlpha) {
                 TextStyle(
-                    color = Color.White.copy(alpha = litAlpha),
+                    color = Color.White.copy(alpha = overlayAlpha),
                     fontSize = fontSize,
                     lineHeight = lineHeight,
                     fontWeight = FontWeight.Bold,
@@ -1160,16 +1163,18 @@ private fun SpicyAnimatedTextUnit(
                                 endX = size.width
                             )
                         } else {
+                            // Spicy's default --gradient-degrees is 180deg, so LTR fill
+                            // progresses vertically over each word/letter rather than horizontally.
                             val fadeStart = (sweepEnd - feather).coerceIn(0f, 1f)
-                            Brush.horizontalGradient(
+                            Brush.verticalGradient(
                                 colorStops = arrayOf(
                                     0f to Color.White,
                                     fadeStart to Color.White,
                                     sweepEnd to Color.Transparent,
                                     1f to Color.Transparent
                                 ),
-                                startX = 0f,
-                                endX = size.width
+                                startY = 0f,
+                                endY = size.height
                             )
                         }
                         drawRect(brush = mask, blendMode = BlendMode.DstIn)
