@@ -140,9 +140,9 @@ private class SpicyPlaybackBrush(
         } else {
             transformMatrix.translate(0f, rawStart * size.height)
         }
-        // Reuse the same matrix. Compose updates its cached transform shader without creating
-        // a new Paint shader, Matrix, or TextStyle every frame.
-        transform(transformMatrix)
+        // ShaderBrush.transform(Matrix) is not part of the public Compose API used by this
+        // project. Keep the matrix calculations here until the sweep is moved to a supported
+        // draw-phase shader implementation.
     }
 }
 
