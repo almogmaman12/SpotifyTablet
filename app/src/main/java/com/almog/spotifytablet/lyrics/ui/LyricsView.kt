@@ -605,7 +605,7 @@ fun LyricsContent(
                             if (isActive && companionBgLine != null && line != companionBgLine) {
                                 SingleLyricLineRow(
                                     line = companionBgLine,
-                                    currentPositionMs = displayPositionMs,
+                                    positionProvider = positionProvider,
                                     isAnimationEnabled = isAnimationEnabled,
                                     isActiveLine = true,
                                     isSubduedBackground = true,
@@ -618,7 +618,7 @@ fun LyricsContent(
                             // Music interlude dots: integrated cleanly between lines (directly under active line, above next line)
                             if (isActive && pauseInfo != null && pauseAlpha > 0.01f) {
                                 SpicyPauseDots(
-                                    currentPositionMs = currentPositionMs,
+                                    positionProvider = positionProvider,
                                     pauseStartMs = pauseInfo.pauseStartMs,
                                     nextStartMs = pauseInfo.nextStartMs,
                                     rhythm = rhythmContext,
@@ -939,6 +939,7 @@ fun RhythmWordHighlightText(
     isSubduedBackground: Boolean = false,
     glowColor: Color = Color.White,
     rhythm: TrackRhythmContext = TrackRhythmContext.Default,
+    activeFontSizeSp: Float = 32f,
     modifier: Modifier = Modifier
 ) {
     val currentPositionMs = positionProvider()
@@ -998,7 +999,8 @@ fun RhythmWordHighlightText(
                 isWordCompleted = isWordCompleted,
                 isSubduedBackground = isSubduedBackground,
                 glowColor = glowColor,
-                rhythm = rhythm
+                rhythm = rhythm,
+                activeFontSizeSp = activeFontSizeSp
             )
         } else {
             RhythmSingleSyllableSweepText(
@@ -1009,7 +1011,8 @@ fun RhythmWordHighlightText(
                 isWordCompleted = isWordCompleted,
                 isSubduedBackground = isSubduedBackground,
                 glowColor = glowColor,
-                rhythm = rhythm
+                rhythm = rhythm,
+                activeFontSizeSp = activeFontSizeSp
             )
         }
     }
@@ -1024,13 +1027,14 @@ private fun RhythmSingleSyllableSweepText(
     isWordCompleted: Boolean,
     isSubduedBackground: Boolean,
     glowColor: Color,
-    rhythm: TrackRhythmContext
+    rhythm: TrackRhythmContext,
+    activeFontSizeSp: Float
 ) {
     val displayString = remember(word.text, word.trailingSpace) {
         if (word.trailingSpace) "${word.text} " else word.text
     }
-    val fontSize = if (isSubduedBackground) 24.sp else 34.sp
-    val lineHeight = if (isSubduedBackground) 32.sp else 46.sp
+    val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
+    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
     val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
 
@@ -1117,11 +1121,12 @@ private fun RhythmLetterGroupSweepText(
     isWordCompleted: Boolean,
     isSubduedBackground: Boolean,
     glowColor: Color,
-    rhythm: TrackRhythmContext
+    rhythm: TrackRhythmContext,
+    activeFontSizeSp: Float
 ) {
     val totalDuration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
-    val fontSize = if (isSubduedBackground) 24.sp else 34.sp
-    val lineHeight = if (isSubduedBackground) 32.sp else 46.sp
+    val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
+    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
     val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
 
