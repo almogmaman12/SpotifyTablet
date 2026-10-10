@@ -617,16 +617,20 @@
           break;
         }
       }
+      // These spline values depend on the active letter, not on each letter in the word.
+      // Calculate them once per frame instead of repeating the same spline work for every glyph.
+      var baseScale = activeIdx !== -1 ? LetterScaleSpline.at(activePct) : 0;
+      var baseY = activeIdx !== -1 ? LetterYOffsetSpline.at(activePct) : 0;
+      var baseGlow = activeIdx !== -1 ? GlowSpline.at(activePct) : 0;
+      var restScale = LetterScaleSpline.at(0);
+      var restY = LetterYOffsetSpline.at(0);
+      var restGlow = GlowSpline.at(0);
       for (var k = 0; k < letters.length; k++) {
         var letter = letters[k];
         if (!letter.sp) letter.sp = createLetterSprings();
-        var tScale = LetterScaleSpline.at(0), tY = LetterYOffsetSpline.at(0), tGlow = GlowSpline.at(0), tGrad;
+        var tScale = restScale, tY = restY, tGlow = restGlow, tGrad;
         var ls = stateOf(pos, letter.start, letter.end);
         if (activeIdx !== -1) {
-          var baseScale = LetterScaleSpline.at(activePct);
-          var baseY = LetterYOffsetSpline.at(activePct);
-          var baseGlow = GlowSpline.at(activePct);
-          var restScale = LetterScaleSpline.at(0), restY = LetterYOffsetSpline.at(0), restGlow = GlowSpline.at(0);
           var distance = Math.abs(k - activeIdx);
           var falloff = Math.max(0, 1 / (1 + Math.pow(distance, 2.8)));
           var glowFalloff = Math.max(0, 1 / (1 + distance * 0.9));
