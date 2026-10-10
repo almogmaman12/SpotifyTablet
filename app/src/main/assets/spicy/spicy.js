@@ -720,13 +720,14 @@
 
   function animate(pos, dt) {
     var anyUnsung = false;
+    var blurTarget = -1;
     for (var i = 0; i < lines.length; i++) {
       var l = lines[i];
       var st = stateOf(pos, l.start, l.end);
       if (st !== "Sung") anyUnsung = true;
       var changed = l.st !== st;
       if (st === "Active") {
-        if (blurLast !== i) { applyBlur(i, pos); blurLast = i; }
+        if (blurTarget === -1 || !l.bgLine) blurTarget = i;
         if (changed) { setClass(l.el, "Active", true); setClass(l.el, "NotSung", false); setClass(l.el, "Sung", false); layoutDirty = true; }
         if (l.dot) setClass(l.el, "pre-hidden", pos > l.end - PRE_HIDDEN_DOT_LINE_MS);
         l.settled = false;
@@ -752,6 +753,10 @@
         }
       }
       l.st = st;
+    }
+    if (blurTarget !== -1 && blurLast !== blurTarget) {
+      applyBlur(blurTarget, pos);
+      blurLast = blurTarget;
     }
     setClass(scrollEl, "LinesAllSung", !anyUnsung && lines.length > 0);
   }
