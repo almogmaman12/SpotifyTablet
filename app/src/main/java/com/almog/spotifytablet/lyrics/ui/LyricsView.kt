@@ -994,34 +994,67 @@ fun RhythmWordHighlightText(
     }
     val active = isActiveLine && rawProgress > 0f && rawProgress < 1f
     val completed = rawProgress >= 1f
-    val scale = when {
+    val isLetterCapable = isAnimationEnabled &&
+        duration >= 1400L &&
+        word.graphemes.size in 2..12 &&
+        canSplitIntoLetters(word.text)
+
+    val scaleTarget = when {
         !isAnimationEnabled || !active -> 1f
         else -> spicyScale(rawProgress, 1.0505f)
     }
-    val offsetY = if (isAnimationEnabled && active) {
+    val scale by animateFloatAsState(
+        targetValue = scaleTarget,
+        animationSpec = spring(
+            dampingRatio = 0.64f,
+            stiffness = (2f * Math.PI.toFloat() * 0.88f).let { it * it }
+        ),
+        label = "spicy-word-scale"
+    )
+    val offsetTarget = if (isAnimationEnabled && active) {
         spicyYOffset(rawProgress) * activeFontSizeSp * if (isSubduedBackground) 0.5f else 1f
     } else 0f
+    val offsetY by animateFloatAsState(
+        targetValue = offsetTarget,
+        animationSpec = spring(
+            dampingRatio = 0.4f,
+            stiffness = (2f * Math.PI.toFloat() * 1.45f).let { it * it }
+        ),
+        label = "spicy-word-lift"
+    )
 
     Box(
-        modifier = modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                translationY = offsetY * density
-            },
+        modifier = modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+            translationY = offsetY * density
+        },
         contentAlignment = Alignment.CenterStart
     ) {
-        RhythmSingleSyllableSweepText(
-            word = word,
-            rawProgress = rawProgress,
-            durationMs = duration,
-            isWordActive = active,
-            isWordCompleted = completed,
-            isSubduedBackground = isSubduedBackground,
-            glowColor = glowColor,
-            rhythm = rhythm,
-            activeFontSizeSp = activeFontSizeSp
-        )
+        if (isLetterCapable && isActiveLine) {
+            RhythmLetterGroupSweepText(
+                word = word,
+                currentPositionMs = currentPositionMs,
+                isWordActive = active,
+                isWordCompleted = completed,
+                isSubduedBackground = isSubduedBackground,
+                glowColor = glowColor,
+                rhythm = rhythm,
+                activeFontSizeSp = activeFontSizeSp
+            )
+        } else {
+            RhythmSingleSyllableSweepText(
+                word = word,
+                rawProgress = rawProgress,
+                durationMs = duration,
+                isWordActive = active,
+                isWordCompleted = completed,
+                isSubduedBackground = isSubduedBackground,
+                glowColor = glowColor,
+                rhythm = rhythm,
+                activeFontSizeSp = activeFontSizeSp
+            )
+        }
     }
 }
 
@@ -1041,7 +1074,7 @@ private fun RhythmSingleSyllableSweepText(
         if (word.trailingSpace) "${word.text} " else word.text
     }
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
-    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
+    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.69f * 1.1818f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
     val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
 
@@ -1088,8 +1121,7 @@ private fun RhythmSingleSyllableSweepText(
         isWordCompleted -> completedStyle
         !isWordActive -> unstartedStyle
         else -> {
-            val sweepProgress = calculateWordProgressEasing(rawProgress, durationMs, rhythm)
-            val p = sweepProgress.coerceIn(0f, 1f)
+            val p = rawProgress.coerceIn(0f, 1f)
             val textBrush = SpicySweepBrush(
                 progress = p,
                 isRtl = isRtlText(word.text),
@@ -1201,8 +1233,7 @@ private fun RhythmLetterGroupSweepText(
                 isLetterDone || isWordCompleted -> completedLetterStyle
                 !isLetterActive -> unstartedLetterStyle
                 else -> {
-                    val letterProgress = calculateWordProgressEasing(rawLetterProgress, letterDuration, rhythm)
-                    val p = letterProgress.coerceIn(0f, 1f)
+                    val p = rawLetterProgress.coerceIn(0f, 1f)
                     val textBrush = SpicySweepBrush(
                         progress = p,
                         isRtl = isRtlText(word.text),
