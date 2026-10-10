@@ -453,7 +453,10 @@
     var heights = new Array(lines.length);
     var gaps = new Array(lines.length);
     for (var m = 0; m < lines.length; m++) {
-      heights[m] = lines[m].el.offsetHeight;
+      var row = lines[m];
+      var oldGap = parseFloat(row.pb || "0") || 0;
+      // Preserve wrapper height contributions such as child margins, excluding the old gap.
+      heights[m] = Math.max(0, row.wrap.offsetHeight - oldGap);
       gaps[m] = gapFor(m);
     }
 
