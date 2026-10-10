@@ -166,8 +166,14 @@ fun LyricsView(
     )
 }
 
-/** Preference that switches between the bundled Spicy Lyrics web renderer (default) and the native one. */
+/** Preference that switches between the bundled Spicy Lyrics web renderer and the native one. */
 const val PREF_SPICY_WEB_RENDERER = "lyrics_spicy_web_renderer"
+
+/**
+ * Which renderer draws the lyrics: "mobile" (port of spicylyrics/mobile, default on this branch),
+ * "web" (bundled Spicy Lyrics page in a WebView) or "native" (this app's original Compose renderer).
+ */
+const val PREF_LYRICS_RENDERER = "lyrics_renderer"
 
 @Composable
 fun LyricsContent(
@@ -177,10 +183,20 @@ fun LyricsContent(
     onUserScrollStateChanged: ((Boolean) -> Unit)? = null
 ) {
     val context = LocalContext.current
-    val wantsWeb = remember(context) {
-        context.getSharedPreferences(Constants.PREF_NAME, android.content.Context.MODE_PRIVATE)
-            .getBoolean(PREF_SPICY_WEB_RENDERER, true)
+    val renderer = remember(context) {
+        val prefs = context.getSharedPreferences(Constants.PREF_NAME, android.content.Context.MODE_PRIVATE)
+        prefs.getString(PREF_LYRICS_RENDERER, null)
+            ?: if (prefs.getBoolean(PREF_SPICY_WEB_RENDERER, true)) "mobile" else "native"
     }
+    if (renderer == "mobile") {
+        com.almog.spotifytablet.lyrics.mobile.MobileLyricsContent(
+            uiState = uiState,
+            modifier = modifier,
+            onLineClicked = onLineClicked
+        )
+        return
+    }
+    val wantsWeb = renderer == "web"
     // If the device has no usable WebView, fall back to the native renderer instead of showing nothing.
     var webUnavailable by remember { mutableStateOf(false) }
     if (wantsWeb && !webUnavailable) {
