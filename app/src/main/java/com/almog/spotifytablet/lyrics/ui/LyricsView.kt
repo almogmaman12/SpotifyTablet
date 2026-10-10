@@ -166,8 +166,38 @@ fun LyricsView(
     )
 }
 
+/** Preference that switches between the bundled Spicy Lyrics web renderer (default) and the native one. */
+const val PREF_SPICY_WEB_RENDERER = "lyrics_spicy_web_renderer"
+
 @Composable
 fun LyricsContent(
+    uiState: LyricsUiState,
+    modifier: Modifier = Modifier,
+    onLineClicked: ((Long) -> Unit)? = null,
+    onUserScrollStateChanged: ((Boolean) -> Unit)? = null
+) {
+    val context = LocalContext.current
+    val wantsWeb = remember(context) {
+        context.getSharedPreferences(Constants.PREF_NAME, android.content.Context.MODE_PRIVATE)
+            .getBoolean(PREF_SPICY_WEB_RENDERER, true)
+    }
+    // If the device has no usable WebView, fall back to the native renderer instead of showing nothing.
+    var webUnavailable by remember { mutableStateOf(false) }
+    if (wantsWeb && !webUnavailable) {
+        com.almog.spotifytablet.lyrics.web.SpicyWebLyricsContent(
+            uiState = uiState,
+            modifier = modifier,
+            onLineClicked = onLineClicked,
+            onUserScrollStateChanged = onUserScrollStateChanged,
+            onUnavailable = { webUnavailable = true }
+        )
+    } else {
+        NativeLyricsContent(uiState, modifier, onLineClicked, onUserScrollStateChanged)
+    }
+}
+
+@Composable
+fun NativeLyricsContent(
     uiState: LyricsUiState,
     modifier: Modifier = Modifier,
     onLineClicked: ((Long) -> Unit)? = null,
@@ -686,66 +716,66 @@ fun LyricsContent(
 
         // Attribution Badge (Required by Spicy Lyrics & Provider Terms of Service)
         track.attribution?.let { attr ->
-            val context = LocalContext.current
-            val openUrl = { url: String? ->
-                if (!url.isNullOrBlank()) {
-                    try {
-                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(intent)
-                    } catch (_: Exception) {}
-                }
-            }
-
-            Row(
+            LyricsAttributionBadge(
+                attr = attr,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(bottom = 12.dp, start = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = "Lyrics from ${attr.provider}",
-                    color = Color.White.copy(alpha = 0.45f),
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.SansSerif
-                )
-                if (attr.uploader != null) {
-                    Text(
-                        text = "· uploaded by",
-                        color = Color.White.copy(alpha = 0.45f),
-                        fontSize = 11.sp
-                    )
-                    Text(
-                        text = attr.uploader.username,
-                        color = Color.White.copy(alpha = 0.75f),
-                        fontSize = 11.sp,
-                        textDecoration = if (attr.uploader.url != null) TextDecoration.Underline else TextDecoration.None,
-                        modifier = Modifier.clickable(enabled = attr.uploader.url != null) {
-                            openUrl(attr.uploader.url)
-                        }
-                    )
-                }
-                if (attr.maker != null) {
-                    Text(
-                        text = "· made by",
-                        color = Color.White.copy(alpha = 0.45f),
-                        fontSize = 11.sp
-                    )
-                    Text(
-                        text = attr.maker.username,
-                        color = Color.White.copy(alpha = 0.75f),
-                        fontSize = 11.sp,
-                        textDecoration = if (attr.maker.url != null) TextDecoration.Underline else TextDecoration.None,
-                        modifier = Modifier.clickable(enabled = attr.maker.url != null) {
-                            openUrl(attr.maker.url)
-                        }
-                    )
-                }
-            }
+                    .padding(bottom = 12.dp, start = 4.dp)
+            )
         }
     }
 }
+
+@Composable
+internal fun LyricsAttributionBadge(
+    attr: com.almog.spotifytablet.lyrics.model.LyricAttribution,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val openUrl = { url: String? ->
+        if (!url.isNullOrBlank()) {
+            try {
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+            } catch (_: Exception) {}
+        }
+    }
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = "Lyrics from ${attr.provider}",
+            color = Color.White.copy(alpha = 0.45f),
+            fontSize = 11.sp,
+            fontFamily = FontFamily.SansSerif
+        )
+        if (attr.uploader != null) {
+            Text(text = "· uploaded by", color = Color.White.copy(alpha = 0.45f), fontSize = 11.sp)
+            Text(
+                text = attr.uploader.username,
+                color = Color.White.copy(alpha = 0.75f),
+                fontSize = 11.sp,
+                textDecoration = if (attr.uploader.url != null) TextDecoration.Underline else TextDecoration.None,
+                modifier = Modifier.clickable(enabled = attr.uploader.url != null) { openUrl(attr.uploader.url) }
+            )
+        }
+        if (attr.maker != null) {
+            Text(text = "· made by", color = Color.White.copy(alpha = 0.45f), fontSize = 11.sp)
+            Text(
+                text = attr.maker.username,
+                color = Color.White.copy(alpha = 0.75f),
+                fontSize = 11.sp,
+                textDecoration = if (attr.maker.url != null) TextDecoration.Underline else TextDecoration.None,
+                modifier = Modifier.clickable(enabled = attr.maker.url != null) { openUrl(attr.maker.url) }
+            )
+        }
+    }
+}
+
 
 private data class PauseInfo(val pauseStartMs: Long, val nextStartMs: Long)
 

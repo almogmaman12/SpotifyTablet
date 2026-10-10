@@ -1,0 +1,7 @@
+This folder contains code derived from Spicy Lyrics (https://github.com/Spikerko/spicy-lyrics),
+Copyright (C) Spikerko and contributors, licensed under the GNU Affero General Public License v3.
+  - spicy.css is copied from src/css/Lyrics/main.css and Mixed.css.
+  - spicy.js re-implements Spicy Lyrics' lyric renderer (DOM structure, spline/spring animation,
+    blur, scrolling) for use outside Spotify. The Spring class is a port of Fraktality's spr (MIT).
+The full license text is in LICENSE-spicy-lyrics. If you distribute this app, the AGPL applies to
+these files and, as a combined work, to the app: provide the corresponding source to recipients.

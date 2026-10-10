@@ -1,0 +1,13 @@
+/* App glue for the standalone Spicy renderer (not part of Spicy Lyrics). */
+:root { --spice-sidebar: #000; color-scheme: dark; }
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+body { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+#SpicyLyricsPage {
+  position: absolute; inset: 0; color: #fff;
+  font-family: "Circular Std", "SpotifyMix", "Inter", -apple-system, "Roboto", "Segoe UI", "Noto Sans", "Noto Sans Hebrew", sans-serif;
+}
+#SpicyLyricsPage .LyricsContent { position: relative; }
+#SpicyLyricsPage .LyricsContent::-webkit-scrollbar { display: none; }
+/* Lines are positioned by spicy.js (like Spicy's virtualizer), one wrapper per line. */
+#SpicyLyricsPage .VirtualLyricsContainer .LineWrap { position: absolute; left: 0; width: 100%; top: 0; box-sizing: border-box; }
+#SpicyLyricsPage .LyricsContent .BottomSpacer { display: block; height: 50cqh; width: 100%; }

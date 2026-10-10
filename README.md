@@ -109,3 +109,17 @@ Never commit your `local.properties` or keystore files to git. A pre-configured 
 ## 📄 License
 
 This is a personal open-source project intended for home automation and dashboard customization. Feel free to fork and adapt it for your own home tablet setup.
+
+## Lyrics renderer and license
+
+Lyrics are drawn by a bundled copy of the Spicy Lyrics look (`app/src/main/assets/spicy/`): its
+stylesheet is used verbatim and `spicy.js` re-implements its renderer and animations inside a
+`WebView`. The previous native Compose renderer is still in the code and is used automatically if the
+device has no usable WebView, or when the `lyrics_spicy_web_renderer` preference (in `SpotifyPrefs`) is
+set to `false`.
+
+[Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics) is licensed under the **GNU AGPL v3**. The
+files in `assets/spicy/` are derived from it (see `NOTICE.txt` and `LICENSE-spicy-lyrics` there), so if
+you distribute this app to other people, the AGPL applies to those files and, as a combined work, to
+the app: you must offer the corresponding source under the same license. Using it privately on your own
+devices carries no such obligation.
