@@ -447,10 +447,20 @@
   function layout() {
     layoutDirty = false;
     var glide = nowMs() > glideBlockedUntil;
+
+    // Read row heights before writing styles. Interleaving style writes and offsetHeight reads
+    // forces WebView to synchronously recalculate layout repeatedly across the lyric list.
+    var heights = new Array(lines.length);
+    var gaps = new Array(lines.length);
+    for (var m = 0; m < lines.length; m++) {
+      heights[m] = lines[m].el.offsetHeight;
+      gaps[m] = gapFor(m);
+    }
+
     var y = 0;
     for (var i = 0; i < lines.length; i++) {
       var l = lines[i];
-      var gap = gapFor(i);
+      var gap = gaps[i];
       var pb = gap + "px";
       if (l.pb !== pb) { l.wrap.style.paddingBottom = pb; l.pb = pb; }
       var t = "translateY(" + Math.round(y) + "px)";
@@ -460,7 +470,7 @@
         l.t = t;
       }
       l.start_y = y;
-      y += l.wrap.offsetHeight;
+      y += heights[i] + gap;
     }
     virtual.style.height = y + "px";
   }
