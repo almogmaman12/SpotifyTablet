@@ -1193,7 +1193,7 @@ private fun RhythmLetterGroupSweepText(
             fontFamily = FontFamily.SansSerif,
             letterSpacing = 0.sp,
             lineHeight = lineHeight,
-            shadow = baseShadow
+            shadow = null
         )
     }
 
