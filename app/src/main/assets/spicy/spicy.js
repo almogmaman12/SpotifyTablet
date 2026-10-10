@@ -785,16 +785,26 @@
    * Public API
    * ---------------------------------------------------------------------------------------- */
   window.addEventListener("error", function (ev) { console.log("SpicyLyrics js error: " + ev.message + " @" + ev.lineno + ":" + ev.colno); });
+  // Some WebViews resolve the percentage-height chain to 0 at load; pin the page to the real viewport.
+  function pinViewport() {
+    var h = window.innerHeight || document.documentElement.clientHeight || 0;
+    var w = window.innerWidth || document.documentElement.clientWidth || 0;
+    if (h > 0) { page.style.height = h + "px"; page.style.width = w + "px"; }
+    return w + "x" + h;
+  }
+  window.addEventListener("resize", pinViewport);
+  pinViewport();
   window.SpicyLyrics = {
     setLyrics: function (data) {
       try {
+        var vp = pinViewport();
         if (typeof data === "string") data = JSON.parse(data);
         build(data || { lines: [] });
         idleFrames = 0;
         console.log("SpicyLyrics.setLyrics ok: lines=" + lines.length + " scroll=" + scrollEl.clientWidth + "x" + scrollEl.clientHeight +
           " content=" + (document.querySelector(".LyricsContent") || {}).clientHeight + " ua=" + navigator.userAgent);
         var dbg = document.getElementById("SpicyDebug");
-        if (dbg) dbg.textContent = "lines=" + lines.length + " pane=" + scrollEl.clientWidth + "x" + scrollEl.clientHeight + " " + (navigator.userAgent.match(/Chrome\/[\d.]+/) || [""])[0];
+        if (dbg) dbg.textContent = "vp=" + vp + " lines=" + lines.length + " pane=" + scrollEl.clientWidth + "x" + scrollEl.clientHeight + " " + (navigator.userAgent.match(/Chrome\/[\d.]+/) || [""])[0];
       } catch (e) {
         console.log("SpicyLyrics.setLyrics FAILED: " + e + " " + (e && e.stack));
         var d2 = document.getElementById("SpicyDebug");
