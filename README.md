@@ -123,3 +123,12 @@ files in `assets/spicy/` are derived from it (see `NOTICE.txt` and `LICENSE-spic
 you distribute this app to other people, the AGPL applies to those files and, as a combined work, to
 the app: you must offer the corresponding source under the same license. Using it privately on your own
 devices carries no such obligation.
+
+## Spicy Lyrics Mobile port (branch `spicy-mobile-port`)
+
+`app/src/main/java/com/almog/spotifytablet/lyrics/mobile/` contains code copied from
+[spicylyrics/mobile](https://github.com/spicylyrics/mobile) (AGPL-3.0, see `NOTICE.txt` there): the canvas lyrics
+renderer and animation, lyrics sources and blending, translation, and romanization. `MobileLyrics.kt`,
+`MobileLyricsSources.kt` and `MobileTranslation.kt` connect it to this app. Settings > "Lyrics renderer,
+romanization and translation" chooses the renderer (Spicy Mobile / Spicy web view / original native).
+Apple's SF fonts used by the original are not included; the system sans font is used instead.
