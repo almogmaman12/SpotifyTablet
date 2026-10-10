@@ -238,6 +238,7 @@
   var offsetMs = 0;
   var blurLast = null;
   var lastFrame = 0;
+  var frameScheduled = false;
   var idleFrames = 0;
   var layoutDirty = true;
   var glideBlockedUntil = 0;
@@ -515,6 +516,7 @@
     }
     userScrollUntil = now + USER_SCROLL_HOLD_MS;
     idleFrames = 0;
+    requestFrame();
   }
   ["wheel", "touchstart", "touchmove"].forEach(function (evt) {
     scrollEl.addEventListener(evt, markUserScroll, { passive: true });
@@ -747,8 +749,14 @@
   /* ------------------------------------------------------------------------------------------
    * Frame loop
    * ---------------------------------------------------------------------------------------- */
-  function frame(now) {
+  function requestFrame() {
+    if (frameScheduled) return;
+    frameScheduled = true;
     requestAnimationFrame(frame);
+  }
+
+  function frame(now) {
+    frameScheduled = false;
     var dt = lastFrame ? Math.min((now - lastFrame) / 1000, 0.1) : 1 / 60;
     lastFrame = now;
     if (!lines.length) return;
@@ -765,8 +773,11 @@
     animate(pos, dt);
     if (layoutDirty) layout();
     autoScroll(pos, dt, now);
+
+    // Don't keep waking the WebView at display refresh rate once paused animations settle.
+    // setAnchor/setLyrics, resize, and user interaction restart the loop when needed.
+    if (anchor.playing || idleFrames <= 120) requestFrame();
   }
-  requestAnimationFrame(frame);
 
   // Tap a line to seek to its start.
   scrollEl.addEventListener("click", function (e) {
@@ -792,7 +803,11 @@
     if (h > 0) { page.style.height = h + "px"; page.style.width = w + "px"; }
     return w + "x" + h;
   }
-  window.addEventListener("resize", pinViewport);
+  window.addEventListener("resize", function () {
+    pinViewport();
+    layoutDirty = true;
+    requestFrame();
+  });
   pinViewport();
   window.SpicyLyrics = {
     setLyrics: function (data) {
@@ -801,6 +816,8 @@
         if (typeof data === "string") data = JSON.parse(data);
         build(data || { lines: [] });
         idleFrames = 0;
+        lastFrame = 0;
+        requestFrame();
         console.log("SpicyLyrics.setLyrics ok: lines=" + lines.length + " scroll=" + scrollEl.clientWidth + "x" + scrollEl.clientHeight +
           " content=" + (document.querySelector(".LyricsContent") || {}).clientHeight + " ua=" + navigator.userAgent);
         var dbg = document.getElementById("SpicyDebug");
@@ -814,6 +831,7 @@
     setAnchor: function (positionMs, isPlaying, speed) {
       anchor = { pos: positionMs, perf: nowMs(), playing: !!isPlaying, speed: speed || 1 };
       idleFrames = 0;
+      requestFrame();
     },
     setFontSize: function (px) {
       if (px > 0) scrollEl.style.setProperty("--DefaultLyricsSize", px + "px");
@@ -821,8 +839,9 @@
       layoutDirty = true;
       scrollSnap = true;
       idleFrames = 0;
+      requestFrame();
     },
-    setOffsetMs: function (ms) { offsetMs = ms || 0; },
+    setOffsetMs: function (ms) { offsetMs = ms || 0; idleFrames = 0; requestFrame(); },
     // Test hook: how many lines / which are active.
     _debug: function () { return { lines: lines.length, type: lyricsType, scrollIdx: scrollIdx }; }
   };
