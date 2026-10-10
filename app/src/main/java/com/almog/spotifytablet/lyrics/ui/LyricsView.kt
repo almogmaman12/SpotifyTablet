@@ -948,27 +948,11 @@ private fun SpicyWord(
     visuals: WordVisuals,
     isAnimationEnabled: Boolean
 ) {
-    val duration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
-    val graphemes = word.graphemes
-    val useLetters = isAnimationEnabled &&
-            duration >= 1400L &&
-            graphemes.size in 2..12 &&
-            canSplitIntoLetters(word.text)
-
-    if (useLetters) {
-        val n = graphemes.size
-        val step = duration / n
-        Row(verticalAlignment = Alignment.Bottom) {
-            graphemes.forEachIndexed { i, g ->
-                val s = word.startTimeMs + i * step
-                // Slight overlap between neighbouring letters = fluid wave
-                val e = if (i == n - 1) word.endTimeMs else min(word.endTimeMs, s + (step * 1.4f).toLong())
-                SweepSegment(g, s, e, mode, positionProvider, rhythm, visuals)
-            }
-        }
-    } else {
-        SweepSegment(word.text, word.startTimeMs, word.endTimeMs, mode, positionProvider, rhythm, visuals)
-    }
+    // Keep each synchronized segment together. Splitting every long word into
+    // independently timed graphemes creates a stuttery, letter-by-letter effect
+    // for ordinary lyrics. Spicy only does this when the lyric source explicitly
+    // marks a letter group, which WordSync does not currently expose.
+    SweepSegment(word.text, word.startTimeMs, word.endTimeMs, mode, positionProvider, rhythm, visuals)
     if (word.trailingSpace) {
         Spacer(Modifier.width(visuals.spaceWidth))
     }
@@ -999,7 +983,7 @@ private fun SweepSegment(
                 LyricLineMode.Past -> PHASE_DONE
                 LyricLineMode.Upcoming -> PHASE_IDLE
                 LyricLineMode.Active -> {
-                    val p = positionProvider() + PRE_ROLL_OFFSET_MS
+                    val p = positionProvider()
                     if (p < startMs) PHASE_IDLE else if (p >= endMs) PHASE_DONE else PHASE_ACTIVE
                 }
             }
@@ -1018,11 +1002,11 @@ private fun SweepSegment(
                 val phase = phaseState.value
                 if (phase == PHASE_ACTIVE) {
                     val pos = positionProvider()
-                    val raw = ((pos + PRE_ROLL_OFFSET_MS - startMs).toFloat() / duration).coerceIn(0f, 1f)
-                    val s = 1f + (calculateRhythmWordScale(raw, duration, pos, rhythm) - 1f) * amplitude
+                    val raw = ((pos - startMs).toFloat() / duration).coerceIn(0f, 1f)
+                    val s = 1f + (calculateRhythmWordScale(raw, duration, pos, rhythm) - 1f) * amplitude * 0.35f
                     scaleX = s
                     scaleY = s
-                    translationY = calculateRhythmWordYOffset(raw, duration, rhythm) * amplitude * this.density
+                    translationY = calculateRhythmWordYOffset(raw, duration, rhythm) * amplitude * 0.35f * this.density
                 } else if (phase == PHASE_IDLE && mode == LyricLineMode.Active) {
                     scaleX = 0.95f
                     scaleY = 0.95f
@@ -1041,7 +1025,7 @@ private fun SweepSegment(
             .drawWithContent {
                 drawContent()
                 if (phaseState.value == PHASE_ACTIVE) {
-                    val raw = ((positionProvider() + PRE_ROLL_OFFSET_MS - startMs).toFloat() / duration).coerceIn(0f, 1f)
+                    val raw = ((positionProvider() - startMs).toFloat() / duration).coerceIn(0f, 1f)
                     // Spicy animates the gradient linearly: -20% + 120% * progress.
                     // These stops are the clipped equivalent of its CSS gradient.
                     val edge = raw * (1f + SWEEP_FEATHER)
