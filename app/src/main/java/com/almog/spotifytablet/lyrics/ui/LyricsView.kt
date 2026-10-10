@@ -949,78 +949,42 @@ fun RhythmWordHighlightText(
 ) {
     val currentPositionMs = positionProvider()
     val duration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
-
-    // Predictive Pre-Roll (starts anticipation 45ms before timestamp)
-    val rawWordProgress = if (isActiveLine) {
-        val elapsed = currentPositionMs + PRE_ROLL_OFFSET_MS - word.startTimeMs
-        when {
-            elapsed < 0L -> 0f
-            elapsed >= duration -> 1f
-            else -> (elapsed.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-        }
+    val rawProgress = if (isActiveLine) {
+        ((currentPositionMs + PRE_ROLL_OFFSET_MS - word.startTimeMs).toFloat() / duration)
+            .coerceIn(0f, 1f)
     } else {
         if (currentPositionMs >= word.endTimeMs) 1f else 0f
     }
-
-    val isWordActive = rawWordProgress > 0f && rawWordProgress < 1f
-    val isWordCompleted = rawWordProgress >= 1f
-
-    val wordPeakScale = if (isLetterCapableDuration(duration, word)) 1.175f else 1.0505f
-    val wordScale = if (isWordActive) {
-        val scale = spicyScale(rawWordProgress, wordPeakScale)
-        if (isSubduedBackground) 1f + (scale - 1f) * 0.55f else scale
-    } else if (isWordCompleted) {
-        1f
-    } else {
-        0.95f
+    val active = isActiveLine && rawProgress > 0f && rawProgress < 1f
+    val completed = rawProgress >= 1f
+    val scale = when {
+        !isAnimationEnabled || !active -> 1f
+        else -> spicyScale(rawProgress, 1.0505f)
     }
-
-    val wordOffsetY = if (isWordActive) {
-        val lift = spicyYOffset(rawWordProgress) * activeFontSizeSp
-        if (isSubduedBackground) lift * 0.5f else lift
-    } else {
-        0f
-    }
-
-    val isLetterCapable = isAnimationEnabled &&
-            duration >= 1400L &&
-            word.graphemes.size in 2..12 &&
-            canSplitIntoLetters(word.text)
+    val offsetY = if (isAnimationEnabled && active) {
+        spicyYOffset(rawProgress) * activeFontSizeSp * if (isSubduedBackground) 0.5f else 1f
+    } else 0f
 
     Box(
         modifier = modifier
-            .padding(horizontal = 0.dp, vertical = 0.dp)
             .graphicsLayer {
-                scaleX = wordScale
-                scaleY = wordScale
-                translationY = wordOffsetY * density
+                scaleX = scale
+                scaleY = scale
+                translationY = offsetY * density
             },
         contentAlignment = Alignment.CenterStart
     ) {
-        if (isLetterCapable && isActiveLine) {
-            RhythmLetterGroupSweepText(
-                word = word,
-                currentPositionMs = currentPositionMs,
-                isWordActive = isWordActive,
-                isWordCompleted = isWordCompleted,
-                isSubduedBackground = isSubduedBackground,
-                glowColor = glowColor,
-                rhythm = rhythm,
-                activeFontSizeSp = activeFontSizeSp
-            )
-        } else {
-            RhythmSingleSyllableSweepText(
-                word = word,
-                rawProgress = rawWordProgress,
-                durationMs = duration,
-                isWordActive = isWordActive,
-                isWordCompleted = isWordCompleted,
-                isSubduedBackground = isSubduedBackground,
-                glowColor = glowColor,
-                rhythm = rhythm,
-                activeFontSizeSp = activeFontSizeSp
-            )
-        }
+        RhythmSingleSyllableSweepText(
+            word = word,
+            rawProgress = rawProgress,
+            durationMs = duration,
+            isWordActive = active,
+            isWordCompleted = completed,
+            isSubduedBackground = isSubduedBackground,
+            glowColor = glowColor,
+            rhythm = rhythm,
+            activeFontSizeSp = activeFontSizeSp
+        )
     }
 }
 
@@ -1062,7 +1026,7 @@ private fun RhythmSingleSyllableSweepText(
             fontWeight = FontWeight.Bold,
             fontStyle = fontStyle,
             fontFamily = FontFamily.SansSerif,
-            letterSpacing = (-0.3).sp,
+            letterSpacing = 0.sp,
             lineHeight = lineHeight,
             shadow = baseShadow
         )
@@ -1091,24 +1055,35 @@ private fun RhythmSingleSyllableSweepText(
             val p = sweepProgress.coerceIn(0f, 1f)
             val featherFrac = SPICY_SWEEP_FEATHER
             val sweepEnd = (-0.20f + 1.20f * p).coerceIn(0f, 1f)
-            val textBrush = Brush.horizontalGradient(
-                0f to litColor,
-                (sweepEnd - featherFrac).coerceIn(0f, 1f) to litColor,
-                sweepEnd to dimColor,
-                1f to dimColor
-            )
+            val rtl = remember(word.text) { isRtlText(word.text) }
+            val textBrush = if (!rtl) {
+                Brush.horizontalGradient(
+                    0f to litColor,
+                    (sweepEnd - featherFrac).coerceIn(0f, 1f) to litColor,
+                    sweepEnd to dimColor,
+                    1f to dimColor
+                )
+            } else {
+                val reverseStart = (1f - sweepEnd).coerceIn(0f, 1f)
+                Brush.horizontalGradient(
+                    0f to dimColor,
+                    reverseStart to dimColor,
+                    (reverseStart + featherFrac).coerceIn(0f, 1f) to litColor,
+                    1f to litColor
+                )
+            }
             TextStyle(
                 brush = textBrush,
                 fontSize = fontSize,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.Bold,
                 fontStyle = fontStyle,
                 fontFamily = FontFamily.SansSerif,
                 letterSpacing = (-0.3).sp,
                 lineHeight = lineHeight,
                 shadow = Shadow(
-                    color = glowColor.copy(alpha = spicyGlow(rawProgress) * if (isSubduedBackground) 0.45f else 0.72f),
+                    color = glowColor.copy(alpha = spicyGlow(rawProgress) * if (isSubduedBackground) 0.30f else 0.45f),
                     offset = ShadowOffsetGlow,
-                    blurRadius = if (isSubduedBackground) 7f else 12f
+                    blurRadius = if (isSubduedBackground) 3f else 4f
                 )
             )
         }
