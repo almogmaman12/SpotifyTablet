@@ -74,7 +74,6 @@ import com.almog.spotifytablet.lyrics.model.TrackRhythmContext
 import com.almog.spotifytablet.lyrics.model.WordSync
 import com.almog.spotifytablet.lyrics.model.calculateRhythmWordScale
 import com.almog.spotifytablet.lyrics.model.calculateRhythmWordYOffset
-import com.almog.spotifytablet.lyrics.model.calculateWordProgressEasing
 import com.almog.spotifytablet.lyrics.viewmodel.LyricsUiState
 import com.almog.spotifytablet.lyrics.viewmodel.LyricsViewModel
 import com.almog.spotifytablet.lyrics.viewmodel.findActiveLineIndex
@@ -127,10 +126,10 @@ private const val PHASE_ACTIVE = 1
 private const val PHASE_DONE = 2
 
 /** Alpha of not-yet-sung text inside the active line. */
-private const val DIM_ALPHA = 0.38f
+private const val DIM_ALPHA = 0.50f
 
 /** Width (fraction of the word) of the soft leading edge of the gradient sweep. */
-private const val SWEEP_FEATHER = 0.28f
+private const val SWEEP_FEATHER = 0.20f
 
 /** Per-line blur (dp per line of distance from the active line). API 31+ only. */
 private const val LINE_BLUR_DP_PER_STEP = 1.5f
@@ -147,16 +146,17 @@ private data class PauseInfo(val pauseStartMs: Long, val nextStartMs: Long)
 private class WordVisuals(
     val textStyle: TextStyle,
     val baseAlpha: Float,
+    val dimAlpha: Float,
     val amplitude: Float,
     val rtl: Boolean,
     val spaceWidth: Dp
 ) {
-    /** Spicy-style soft WHITE bloom for sung/singing text. Static style -> no per-frame relayout. */
+    /** Keep a restrained bloom while the segment is active without rebuilding TextStyle every frame. */
     val litTextStyle: TextStyle = textStyle.copy(
         shadow = Shadow(
-            color = Color.White.copy(alpha = 0.30f * amplitude),
+            color = Color.White.copy(alpha = 0.12f * amplitude),
             offset = Offset.Zero,
-            blurRadius = 16f
+            blurRadius = 6f
         )
     )
 }
@@ -794,12 +794,13 @@ fun SingleLyricLineRow(
                 fontWeight = FontWeight.Bold,
                 fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal,
                 fontFamily = FontFamily.SansSerif,
-                letterSpacing = (-0.3).sp
+                letterSpacing = 0.sp
             ),
-            baseAlpha = if (isSubduedBackground) 0.55f else 1.0f,
+            baseAlpha = if (isSubduedBackground) 0.6f else 0.85f,
+            dimAlpha = if (isSubduedBackground) 0.3f else DIM_ALPHA,
             amplitude = if (isSubduedBackground) 0.6f else 1.0f,
             rtl = rtl,
-            spaceWidth = with(density) { (fontSizeSp * 0.28f).sp.toDp() }
+            spaceWidth = with(density) { (fontSizeSp * 0.18f).sp.toDp() }
         )
     }
 
@@ -1006,6 +1007,7 @@ private fun SweepSegment(
     }
 
     val baseAlpha = visuals.baseAlpha
+    val dimAlpha = visuals.dimAlpha
     val amplitude = visuals.amplitude
     val currentPhase by phaseState
     val rtl = visuals.rtl
@@ -1030,21 +1032,23 @@ private fun SweepSegment(
                 val phase = phaseState.value
                 if (phase == PHASE_ACTIVE) {
                     compositingStrategy = CompositingStrategy.Offscreen
-                    alpha = baseAlpha
+                    // The gradient supplies the exact Spicy opacity range. Do not multiply it again.
+                    alpha = 1f
                 } else {
-                    alpha = if (phase == PHASE_IDLE && mode == LyricLineMode.Active) baseAlpha * DIM_ALPHA else baseAlpha
+                    alpha = if (phase == PHASE_IDLE) dimAlpha else baseAlpha
                 }
             }
             .drawWithContent {
                 drawContent()
                 if (phaseState.value == PHASE_ACTIVE) {
                     val raw = ((positionProvider() + PRE_ROLL_OFFSET_MS - startMs).toFloat() / duration).coerceIn(0f, 1f)
-                    val sweep = calculateWordProgressEasing(raw, duration, rhythm).coerceIn(0f, 1f)
-                    val edge = sweep * (1f + SWEEP_FEATHER)
+                    // Spicy animates the gradient linearly: -20% + 120% * progress.
+                    // These stops are the clipped equivalent of its CSS gradient.
+                    val edge = raw * (1f + SWEEP_FEATHER)
                     val litEnd = (edge - SWEEP_FEATHER).coerceIn(0f, 1f)
                     val dimStart = edge.coerceIn(0f, 1f)
-                    val lit = Color.White
-                    val dim = Color.White.copy(alpha = DIM_ALPHA)
+                    val lit = Color.White.copy(alpha = baseAlpha)
+                    val dim = Color.White.copy(alpha = dimAlpha)
                     val brush = Brush.horizontalGradient(
                         0f to lit,
                         litEnd to lit,
@@ -1060,7 +1064,7 @@ private fun SweepSegment(
     ) {
         Text(
             text = text,
-            style = if (currentPhase == PHASE_IDLE) visuals.textStyle else visuals.litTextStyle,
+            style = if (currentPhase == PHASE_ACTIVE) visuals.litTextStyle else visuals.textStyle,
             softWrap = false,
             maxLines = 1
         )
