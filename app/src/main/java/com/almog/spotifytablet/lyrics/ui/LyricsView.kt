@@ -1171,14 +1171,6 @@ private fun RhythmLetterGroupSweepText(
     val litColor = Color.White.copy(alpha = baseAlpha * 0.85f)
     val dimColor = Color.White.copy(alpha = baseAlpha * 0.35f)
 
-    val baseShadow = remember {
-        Shadow(
-            color = Color(0x99000000),
-            offset = ShadowOffsetBase,
-            blurRadius = 6f
-        )
-    }
-
     val completedLetterStyle = remember(litColor, fontSize, lineHeight, fontStyle) {
         TextStyle(
             color = litColor,
@@ -1188,7 +1180,7 @@ private fun RhythmLetterGroupSweepText(
             fontFamily = FontFamily.SansSerif,
             letterSpacing = 0.sp,
             lineHeight = lineHeight,
-            shadow = baseShadow
+            shadow = null
         )
     }
 
@@ -1269,7 +1261,7 @@ private fun RhythmLetterGroupSweepText(
                         fontWeight = FontWeight.Bold,
                         fontStyle = fontStyle,
                         fontFamily = FontFamily.SansSerif,
-                        letterSpacing = (-0.2).sp,
+                        letterSpacing = 0.sp,
                         lineHeight = lineHeight,
                         shadow = Shadow(
                             color = glowColor.copy(alpha = letterGlow * if (isSubduedBackground) 0.30f else 0.45f),
