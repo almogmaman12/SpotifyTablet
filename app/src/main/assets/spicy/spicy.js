@@ -138,9 +138,9 @@
   var PRE_HIDDEN_DOT_LINE_MS = 500;
   var INTERLUDE_PADDING_MS = -(PRE_HIDDEN_DOT_LINE_MS + 50);
   var GAP_NORMAL = 1, GAP_LINE_TO_BG = 0.2;
-  var SCROLL_FREQUENCY = 1, SCROLL_DAMPING = 1, SCROLL_CENTER_OFFSET_PX = 30;
+  var SCROLL_FREQUENCY = 2.2, SCROLL_DAMPING = 1, SCROLL_CENTER_OFFSET_PX = 30;
   var USER_SCROLL_HOLD_MS = 3000;
-  var LAYOUT_GLIDE = "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)";
+  var LAYOUT_GLIDE = "transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)";
 
   function easeSinOut(x) { return Math.sin((Math.min(Math.max(x, 0), 1) * Math.PI) / 2); }
 
