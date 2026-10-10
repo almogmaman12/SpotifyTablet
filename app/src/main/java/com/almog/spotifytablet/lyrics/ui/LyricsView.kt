@@ -112,11 +112,8 @@ private const val WINDOW_BEHIND = 3
 private const val WINDOW_AHEAD = 4
 
 /** Scroll spring (tune here): higher stiffness = faster glide, lower damping = more overshoot. */
-private const val LINE_SPRING_STIFFNESS = 400f
+private const val LINE_SPRING_STIFFNESS = 650f
 private const val LINE_SPRING_DAMPING = 0.9f
-
-/** Extra delay per slot for lines BELOW the active one -> Spicy-style cascade. */
-private const val LINE_STAGGER_MS = 30
 
 private const val PHASE_IDLE = 0
 private const val PHASE_ACTIVE = 1
@@ -275,12 +272,9 @@ fun LyricsContent(
                 val newPos = anchor.positionMs + (elapsedMs * anchor.speed).toLong()
                 currentPositionMs.longValue = newPos
 
-                val diff = newPos - displayPositionMs.longValue
-                displayPositionMs.longValue += when {
-                    diff <= 0L -> diff
-                    diff > 1500L -> diff
-                    else -> (diff * 0.3).toLong().coerceAtLeast(1L)
-                }
+                // Use the playback clock directly. Low-pass smoothing made timed words
+                // trail the singer, especially when Spotify refreshed the anchor.
+                displayPositionMs.longValue = newPos
             }
         }
     }
@@ -362,7 +356,7 @@ fun LyricsContent(
         val propAnimSpec: AnimationSpec<Float> = if (isDiscontinuousSeek) {
             snap()
         } else {
-            tween(durationMillis = 260, easing = FastOutSlowInEasing)
+            tween(durationMillis = 150, easing = FastOutSlowInEasing)
         }
 
         // RenderEffect blur re-runs every frame on every blurred line -> opt-in (off by default).
@@ -474,20 +468,14 @@ fun LyricsContent(
 
                     val targetYPx = targetYOffsetsPx[offset] ?: (offset * (fallbackLineHeightPx + interLineGapPx))
 
-                    // Lines below the active one start a few ms later each -> cascade. The delay is applied to the
-                    // TARGET (not the spec) so the spring keeps its velocity when interrupted by a quick next line.
-                    val staggerMs = if (isDiscontinuousSeek) 0 else max(offset, 0) * LINE_STAGGER_MS
-                    var animTarget by remember { mutableFloatStateOf(targetYPx) }
-                    LaunchedEffect(targetYPx) {
-                        if (staggerMs > 0 && abs(targetYPx - animTarget) > 1f) delay(staggerMs.toLong())
-                        animTarget = targetYPx
-                    }
+                    // Keep line movement immediate on a new lyric timestamp. The spring smooths
+                    // the movement without delaying the next line behind a stagger timer.
                     val ySpec: AnimationSpec<Float> = if (isDiscontinuousSeek) {
                         snap()
                     } else {
                         spring(dampingRatio = LINE_SPRING_DAMPING, stiffness = LINE_SPRING_STIFFNESS)
                     }
-                    val yState = animateFloatAsState(animTarget, ySpec, label = "lineY")
+                    val yState = animateFloatAsState(targetYPx, ySpec, label = "lineY")
                     val alphaState = animateFloatAsState(
                         targetValue = when {
                             isActive -> 1.0f
