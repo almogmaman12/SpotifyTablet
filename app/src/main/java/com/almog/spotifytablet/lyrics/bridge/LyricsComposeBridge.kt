@@ -27,6 +27,7 @@ object LyricsComposeBridge {
         viewModel: LyricsViewModel,
         onSeekListener: OnSeekRequestedListener? = null
     ) {
+        com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.init(composeView.context)
         composeView.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )

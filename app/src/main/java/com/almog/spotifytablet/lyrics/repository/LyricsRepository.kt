@@ -189,6 +189,7 @@ class LyricsRepository(
                     wObj.put("startTimeMs", w.startTimeMs)
                     wObj.put("endTimeMs", w.endTimeMs)
                     wObj.put("trailingSpace", w.trailingSpace)
+                    w.romanized?.let { wObj.put("romanized", it) }
                     wordsArray.put(wObj)
                 }
                 lObj.put("words", wordsArray)
@@ -276,7 +277,8 @@ class LyricsRepository(
                             text = text,
                             startTimeMs = wObj.getLong("startTimeMs"),
                             endTimeMs = wObj.getLong("endTimeMs"),
-                            trailingSpace = wObj.optBoolean("trailingSpace", true)
+                            trailingSpace = wObj.optBoolean("trailingSpace", true),
+                            romanized = wObj.optString("romanized", "").ifEmpty { null }
                         )
                     )
                 }
@@ -385,6 +387,21 @@ class LyricsRepository(
             trackCache.put(cacheKey, diskTrack)
             return@withContext diskTrack
         }
+
+        // 0. Spicy Lyrics Mobile sources (Spicy Lyrics, AMLL, Unison, LRCLIB, Apple, ... with its own ranking)
+        com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.fetch(
+            artist = artist,
+            title = cleanTitle,
+            album = album,
+            durationMs = durationMs,
+            spotifyTrackId = trackId.takeIf { mediaSource != "jellyfin" }
+        )?.let { track ->
+            DebugLog.i(TAG, "✅ [Tier 0 WIN] SPICY MOBILE sources: ${track.lines.size} lines, wordSynced=${track.isWordSynced} (source=${track.source})")
+            val result = if (track.isWordSynced) track else track.synthesizeWordsIfMissing()
+            trackCache.put(cacheKey, result)
+            saveTrackToDisk(cacheKey, result)
+            return@withContext result
+        } ?: DebugLog.i(TAG, "⚠️ [Tier 0 MISS] Spicy Lyrics Mobile sources returned nothing")
 
         // 1. Spicy Lyrics Official API (Top priority — word-sync only)
         var spicyLineFallbackTrack: LyricTrack? = null

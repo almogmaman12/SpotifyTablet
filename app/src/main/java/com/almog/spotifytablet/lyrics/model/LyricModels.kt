@@ -37,7 +37,9 @@ data class WordSync(
     val endTimeMs: Long,
     val trailingSpace: Boolean = true,
     val graphemes: List<String> = extractGraphemeClusters(text),
-    val characters: List<Char> = text.toList()
+    val characters: List<Char> = text.toList(),
+    /** Romanization of [text] (from the Spicy Lyrics Mobile sources / on-device romanizer), if any. */
+    val romanized: String? = null
 )
 
 /**

@@ -359,11 +359,15 @@ SettingsActivity extends AppCompatActivity {
                         .setPositiveButton("Clear", (d, w) -> {
                             // Clears both disk cache (lyrics_cache/) and in-memory LruCache
                             com.almog.spotifytablet.lyrics.repository.LyricsRepository.clearAllCache();
+                            deleteRecursively(new java.io.File(getCacheDir(), "lyrics"));
+                            deleteRecursively(new java.io.File(getCacheDir(), "translations"));
                             Toast.makeText(this, "Lyrics cache cleared", Toast.LENGTH_SHORT).show();
                         })
                         .setNegativeButton("Cancel", null)
                         .show()
         );
+
+        setupSpicyMobileSettings();
 
         btnResetSettings = findViewById(R.id.btnResetSettings);
         btnResetSettings.setOnClickListener(v ->
@@ -400,5 +404,78 @@ SettingsActivity extends AppCompatActivity {
     /** Safe non-null text extractor from TextInputEditText. */
     private String str(TextInputEditText et) {
         return et.getText() != null ? et.getText().toString().trim() : "";
+    }
+
+    private static void deleteRecursively(java.io.File f) {
+        if (f == null || !f.exists()) return;
+        java.io.File[] children = f.listFiles();
+        if (children != null) for (java.io.File c : children) deleteRecursively(c);
+        //noinspection ResultOfMethodCallIgnored
+        f.delete();
+    }
+
+    // ===================================================================
+    // Spicy Lyrics Mobile renderer / romanization / translation (added programmatically)
+    // ===================================================================
+    private static final String[] RENDERER_IDS = {"mobile", "web", "native"};
+    private static final String[] RENDERER_NAMES = {
+            "Spicy Lyrics Mobile (native canvas)", "Spicy Lyrics (web view)", "Original native renderer"};
+    private static final String[] TRANSLATE_CODES = {"", "en", "he", "ar", "ru", "es", "fr", "de"};
+    private static final String[] TRANSLATE_NAMES = {
+            "Off", "English", "Hebrew", "Arabic", "Russian", "Spanish", "French", "German"};
+
+    private void setupSpicyMobileSettings() {
+        android.view.ViewGroup row = (android.view.ViewGroup) btnClearLyricsCache.getParent();
+        android.view.ViewGroup card = (android.view.ViewGroup) row.getParent();
+        MaterialButton open = new MaterialButton(this, null,
+                com.google.android.material.R.attr.materialButtonOutlinedStyle);
+        open.setText("Lyrics renderer, romanization and translation");
+        open.setAllCaps(false);
+        open.setOnClickListener(v -> showSpicyMobileDialog());
+        android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = (int) (16 * getResources().getDisplayMetrics().density);
+        card.addView(open, card.indexOfChild(row), lp);
+    }
+
+    private void showSpicyMobileDialog() {
+        final SharedPreferences p = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE);
+        String renderer = p.getString("lyrics_renderer", "mobile");
+        boolean romanize = p.getBoolean("lyrics_romanize", false);
+        String target = p.getString("lyrics_translate_target", "");
+        boolean replace = "replace".equals(p.getString("lyrics_translation_mode", "under"));
+        String[] items = {
+                "Renderer: " + RENDERER_NAMES[Math.max(0, java.util.Arrays.asList(RENDERER_IDS).indexOf(renderer))],
+                "Romanization: " + (romanize ? "On" : "Off"),
+                "Translation (Google): " + TRANSLATE_NAMES[Math.max(0, java.util.Arrays.asList(TRANSLATE_CODES).indexOf(target))],
+                "Translation style: " + (replace ? "Replace the line" : "Under each line")
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("Lyrics")
+                .setItems(items, (d, which) -> {
+                    if (which == 0) {
+                        new AlertDialog.Builder(this).setTitle("Renderer (applies after restarting the app)")
+                                .setSingleChoiceItems(RENDERER_NAMES, java.util.Arrays.asList(RENDERER_IDS).indexOf(renderer), (d2, i) -> {
+                                    p.edit().putString("lyrics_renderer", RENDERER_IDS[i]).apply();
+                                    d2.dismiss();
+                                    showSpicyMobileDialog();
+                                }).show();
+                    } else if (which == 1) {
+                        p.edit().putBoolean("lyrics_romanize", !romanize).apply();
+                        showSpicyMobileDialog();
+                    } else if (which == 2) {
+                        new AlertDialog.Builder(this).setTitle("Translate lyrics to (sends lyric text to Google)")
+                                .setSingleChoiceItems(TRANSLATE_NAMES, java.util.Arrays.asList(TRANSLATE_CODES).indexOf(target), (d2, i) -> {
+                                    p.edit().putString("lyrics_translate_target", TRANSLATE_CODES[i]).apply();
+                                    d2.dismiss();
+                                    showSpicyMobileDialog();
+                                }).show();
+                    } else {
+                        p.edit().putString("lyrics_translation_mode", replace ? "under" : "replace").apply();
+                        showSpicyMobileDialog();
+                    }
+                })
+                .setNegativeButton("Close", null)
+                .show();
     }
 }

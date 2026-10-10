@@ -62,8 +62,3 @@ internal fun plainTranslation(original: String, translation: String): String =
     if ('*' in original) translation else translation.replace(EMPHASIS, "$1").replace("*", "").trim()
 
 private val EMPHASIS = Regex("""\*+([^*]+)\*+""")
-
-enum class TranslationMode(val label: String) { UnderLine("Under each line"), Replace("Replace") }
-
-/** The lines' translated texts, index-aligned with the originals. Translation itself is not wired up in this app. */
-data class TranslationResult(val texts: List<String?>)

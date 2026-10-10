@@ -1,16 +1,29 @@
 package com.almog.spotifytablet.lyrics.mobile
 
+import android.content.Context
 import android.os.SystemClock
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.almog.spotifytablet.Constants
+import com.almog.spotifytablet.lyrics.mobile.romanization.RomanizationService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.almog.spotifytablet.lyrics.mobile.translation.TranslationMode
+import com.almog.spotifytablet.lyrics.mobile.translation.TranslationPresentation
+import com.almog.spotifytablet.lyrics.mobile.translation.TranslationResult
 import com.almog.spotifytablet.lyrics.mobile.canvas.LyricsView
 import com.almog.spotifytablet.lyrics.mobile.models.Line
 import com.almog.spotifytablet.lyrics.mobile.models.LineRole
@@ -31,9 +44,10 @@ import com.almog.spotifytablet.lyrics.web.SpicyLyricsJson
  */
 object MobileLyricsAdapter {
 
-    class Result(val lines: List<Line>, val type: LyricsType)
+    /** [original] are the lines before interludes (index-aligned with translations); [lines] the display timeline. */
+    class Result(val lines: List<Line>, val type: LyricsType, val original: List<Line>)
 
-    fun convert(track: LyricTrack): Result {
+    fun convert(track: LyricTrack, romanize: Boolean = false): Result {
         val syllable = SpicyLyricsJson.isSyllableSynced(track)
         val groups = if (syllable) {
             SpicyLyricsJson.groupBackground(track.lines)
@@ -68,8 +82,24 @@ object MobileLyricsAdapter {
                 )
             }
         }
-        val timeline = buildDisplayTimeline(lines, minimalMode = false)
-        return Result(timeline, if (syllable) LyricsType.Syllable else LyricsType.Line)
+        val original = if (romanize) withRomanization(lines) else lines
+        val timeline = buildDisplayTimeline(original, minimalMode = false)
+        return Result(timeline, if (syllable) LyricsType.Syllable else LyricsType.Line, original)
+    }
+
+    /** Fills in romanization for words the source did not romanize (Japanese, Chinese, Korean, Cyrillic, Greek). */
+    private fun withRomanization(lines: List<Line>): List<Line> {
+        val computed = try {
+            RomanizationService.romanize(lines.map { line -> line.words.map { it.text } })
+        } catch (t: Throwable) {
+            android.util.Log.w("MobileLyrics", "romanization failed", t)
+            return lines
+        }
+        return lines.mapIndexed { l, line ->
+            line.copy(words = line.words.mapIndexed { w, word ->
+                word.copy(romanizedText = word.romanizedText ?: computed.getOrNull(l)?.getOrNull(w))
+            })
+        }
     }
 
     private fun wordsOf(line: LyricLine, syllable: Boolean): List<Word> {
@@ -83,7 +113,10 @@ object MobileLyricsAdapter {
             val text = w.text.trim()
             if (text.isEmpty()) return@forEachIndexed
             val glued = i > 0 && !source[i - 1].trailingSpace
-            out += Word(text, w.startTimeMs, maxOf(w.endTimeMs, w.startTimeMs + 1), isPartOfWord = glued && out.isNotEmpty())
+            out += Word(
+                text, w.startTimeMs, maxOf(w.endTimeMs, w.startTimeMs + 1),
+                isPartOfWord = glued && out.isNotEmpty(), romanizedText = w.romanized
+            )
         }
         return out.ifEmpty { listOf(Word(line.rawText.trim(), line.startTimeMs, end)) }
     }
@@ -104,15 +137,56 @@ fun MobileLyricsContent(
     val anchorState by rememberUpdatedState(anchor)
     val onClick by rememberUpdatedState(onLineClicked)
 
-    val converted = remember(track) {
-        track?.takeIf { it.lines.isNotEmpty() }?.let { MobileLyricsAdapter.convert(it) }
+    // Settings (SharedPreferences): romanization on/off.
+    val context = LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences(Constants.PREF_NAME, Context.MODE_PRIVATE) }
+    val romanize = prefs.getBoolean(MobileTranslation.PREF_ROMANIZE, false)
+    // Converting (and romanizing, which loads a Japanese dictionary) happens off the main thread.
+    val converted by produceState<MobileLyricsAdapter.Result?>(null, track, romanize) {
+        value = withContext(Dispatchers.Default) {
+            track?.takeIf { it.lines.isNotEmpty() }?.let { MobileLyricsAdapter.convert(it, romanize) }
+        }
+    }
+    // The app's lyrics font size setting (sp, default 32) scales Spicy's own size.
+    val fontScale = if (prefs.contains(Constants.PREF_KEY_LYRICS_FONT_SIZE)) {
+        prefs.getInt(Constants.PREF_KEY_LYRICS_FONT_SIZE, 32) / 32f
+    } else {
+        1f
     }
     val documentId = remember(track) { (track?.lines?.hashCode() ?: 0).toString() }
 
+    // Translation target ("" = off) and mode.
+    val target = prefs.getString(MobileTranslation.PREF_TRANSLATE_TARGET, "").orEmpty()
+    val mode = if (prefs.getString(MobileTranslation.PREF_TRANSLATION_MODE, "under") == "replace") {
+        TranslationMode.Replace
+    } else {
+        TranslationMode.UnderLine
+    }
+    var translation by remember(converted, target) { mutableStateOf<TranslationResult?>(null) }
+    LaunchedEffect(converted, target) {
+        val c = converted
+        if (c != null && target.isNotBlank()) {
+            translation = try {
+                MobileTranslation.translate(context, documentId, c.original, target)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                android.util.Log.w("MobileTranslation", "translation failed", t)
+                null
+            }
+        }
+    }
+    val presentation = remember(converted, translation, mode) {
+        val c = converted
+        val r = translation
+        if (c != null && r != null) TranslationPresentation.forTimeline(c.original, c.lines, r, mode) else null
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
-        if (converted != null) {
+        val shown = converted
+        if (shown != null) {
             LyricsView(
-                lines = converted.lines,
+                lines = shown.lines,
                 documentId = documentId,
                 currentTimeMs = {
                     val a = anchorState
@@ -124,9 +198,12 @@ fun MobileLyricsContent(
                 },
                 onSeekWord = { ms -> onClick?.invoke(ms) },
                 modifier = Modifier.fillMaxSize(),
-                lyricsType = converted.type,
+                lyricsType = shown.type,
                 isPlaying = anchor.isPlaying,
-                focusAnchorFraction = 0.4f
+                focusAnchorFraction = 0.4f,
+                fontSizeScale = fontScale,
+                romanize = romanize,
+                translation = presentation
             )
         }
         track?.attribution?.let { attr ->
