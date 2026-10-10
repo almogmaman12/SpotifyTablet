@@ -103,7 +103,7 @@ import kotlin.math.sin
  */
 
 /** Start transitioning to the next lyric before its timestamp so the motion keeps up with the singer. */
-private const val LINE_LEAD_MS = 500L
+private const val LINE_LEAD_MS = 120L
 
 /** Lines kept composed behind / ahead of the centre line (outer ones are invisible, so nothing pops). */
 private const val WINDOW_BEHIND = 3
@@ -956,16 +956,13 @@ private fun SweepSegment(
 ) {
     val duration = (endMs - startMs).coerceAtLeast(1L)
 
-    val phaseState = remember(mode, startMs, endMs, positionProvider) {
+    // Line scrolling can move to the next line before this word's timestamp window ends.
+    // Word animation must follow the word's own timestamps, not the line's visual mode, or
+    // the last word freezes mid-sweep when the previous line becomes Past.
+    val phaseState = remember(startMs, endMs, positionProvider) {
         derivedStateOf {
-            when (mode) {
-                LyricLineMode.Past -> PHASE_DONE
-                LyricLineMode.Upcoming -> PHASE_IDLE
-                LyricLineMode.Active -> {
-                    val p = positionProvider()
-                    if (p < startMs) PHASE_IDLE else if (p >= endMs) PHASE_DONE else PHASE_ACTIVE
-                }
-            }
+            val p = positionProvider()
+            if (p < startMs) PHASE_IDLE else if (p >= endMs) PHASE_DONE else PHASE_ACTIVE
         }
     }
 
