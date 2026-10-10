@@ -30,7 +30,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -74,7 +73,6 @@ import com.almog.spotifytablet.lyrics.model.TrackRhythmContext
 import com.almog.spotifytablet.lyrics.model.WordSync
 import com.almog.spotifytablet.lyrics.model.calculateRhythmWordScale
 import com.almog.spotifytablet.lyrics.model.calculateRhythmWordYOffset
-import com.almog.spotifytablet.lyrics.model.calculateWordProgressEasing
 import com.almog.spotifytablet.lyrics.viewmodel.LyricsUiState
 import com.almog.spotifytablet.lyrics.viewmodel.LyricsViewModel
 import com.almog.spotifytablet.lyrics.viewmodel.findActiveLineIndex
@@ -82,7 +80,6 @@ import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
@@ -105,10 +102,7 @@ import kotlin.math.sin
  *     (intro without dots, outro, no lyrics) and stops entirely when paused.
  */
 
-/** Predictive vocal anticipation offset (ms). */
-private const val PRE_ROLL_OFFSET_MS = 45L
-
-/** Lines start gliding this much BEFORE their first word (feels snappier, like Spicy). */
+/** Start transitioning to the next lyric before its timestamp so the motion keeps up with the singer. */
 private const val LINE_LEAD_MS = 120L
 
 /** Lines kept composed behind / ahead of the centre line (outer ones are invisible, so nothing pops). */
@@ -116,21 +110,18 @@ private const val WINDOW_BEHIND = 3
 private const val WINDOW_AHEAD = 4
 
 /** Scroll spring (tune here): higher stiffness = faster glide, lower damping = more overshoot. */
-private const val LINE_SPRING_STIFFNESS = 400f
+private const val LINE_SPRING_STIFFNESS = 650f
 private const val LINE_SPRING_DAMPING = 0.9f
-
-/** Extra delay per slot for lines BELOW the active one -> Spicy-style cascade. */
-private const val LINE_STAGGER_MS = 30
 
 private const val PHASE_IDLE = 0
 private const val PHASE_ACTIVE = 1
 private const val PHASE_DONE = 2
 
 /** Alpha of not-yet-sung text inside the active line. */
-private const val DIM_ALPHA = 0.38f
+private const val DIM_ALPHA = 0.50f
 
 /** Width (fraction of the word) of the soft leading edge of the gradient sweep. */
-private const val SWEEP_FEATHER = 0.28f
+private const val SWEEP_FEATHER = 0.20f
 
 /** Per-line blur (dp per line of distance from the active line). API 31+ only. */
 private const val LINE_BLUR_DP_PER_STEP = 1.5f
@@ -147,16 +138,17 @@ private data class PauseInfo(val pauseStartMs: Long, val nextStartMs: Long)
 private class WordVisuals(
     val textStyle: TextStyle,
     val baseAlpha: Float,
+    val dimAlpha: Float,
     val amplitude: Float,
     val rtl: Boolean,
     val spaceWidth: Dp
 ) {
-    /** Spicy-style soft WHITE bloom for sung/singing text. Static style -> no per-frame relayout. */
+    /** Keep a restrained bloom while the segment is active without rebuilding TextStyle every frame. */
     val litTextStyle: TextStyle = textStyle.copy(
         shadow = Shadow(
-            color = Color.White.copy(alpha = 0.30f * amplitude),
+            color = Color.White.copy(alpha = 0.12f * amplitude),
             offset = Offset.Zero,
-            blurRadius = 16f
+            blurRadius = 6f
         )
     )
 }
@@ -278,12 +270,9 @@ fun LyricsContent(
                 val newPos = anchor.positionMs + (elapsedMs * anchor.speed).toLong()
                 currentPositionMs.longValue = newPos
 
-                val diff = newPos - displayPositionMs.longValue
-                displayPositionMs.longValue += when {
-                    diff <= 0L -> diff
-                    diff > 1500L -> diff
-                    else -> (diff * 0.3).toLong().coerceAtLeast(1L)
-                }
+                // Use the playback clock directly. Low-pass smoothing made timed words
+                // trail the singer, especially when Spotify refreshed the anchor.
+                displayPositionMs.longValue = newPos
             }
         }
     }
@@ -365,7 +354,7 @@ fun LyricsContent(
         val propAnimSpec: AnimationSpec<Float> = if (isDiscontinuousSeek) {
             snap()
         } else {
-            tween(durationMillis = 260, easing = FastOutSlowInEasing)
+            tween(durationMillis = 150, easing = FastOutSlowInEasing)
         }
 
         // RenderEffect blur re-runs every frame on every blurred line -> opt-in (off by default).
@@ -477,20 +466,14 @@ fun LyricsContent(
 
                     val targetYPx = targetYOffsetsPx[offset] ?: (offset * (fallbackLineHeightPx + interLineGapPx))
 
-                    // Lines below the active one start a few ms later each -> cascade. The delay is applied to the
-                    // TARGET (not the spec) so the spring keeps its velocity when interrupted by a quick next line.
-                    val staggerMs = if (isDiscontinuousSeek) 0 else max(offset, 0) * LINE_STAGGER_MS
-                    var animTarget by remember { mutableFloatStateOf(targetYPx) }
-                    LaunchedEffect(targetYPx) {
-                        if (staggerMs > 0 && abs(targetYPx - animTarget) > 1f) delay(staggerMs.toLong())
-                        animTarget = targetYPx
-                    }
+                    // Keep line movement immediate on a new lyric timestamp. The spring smooths
+                    // the movement without delaying the next line behind a stagger timer.
                     val ySpec: AnimationSpec<Float> = if (isDiscontinuousSeek) {
                         snap()
                     } else {
                         spring(dampingRatio = LINE_SPRING_DAMPING, stiffness = LINE_SPRING_STIFFNESS)
                     }
-                    val yState = animateFloatAsState(animTarget, ySpec, label = "lineY")
+                    val yState = animateFloatAsState(targetYPx, ySpec, label = "lineY")
                     val alphaState = animateFloatAsState(
                         targetValue = when {
                             isActive -> 1.0f
@@ -765,8 +748,6 @@ private fun isRtlText(s: String): Boolean {
 }
 
 /** Arabic / Syriac / Indic scripts join or reorder glyphs → never split into per-letter nodes. */
-private fun canSplitIntoLetters(text: String): Boolean = text.none { it.code in 0x0600..0x0DFF }
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SingleLyricLineRow(
@@ -794,12 +775,13 @@ fun SingleLyricLineRow(
                 fontWeight = FontWeight.Bold,
                 fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal,
                 fontFamily = FontFamily.SansSerif,
-                letterSpacing = (-0.3).sp
+                letterSpacing = 0.sp
             ),
-            baseAlpha = if (isSubduedBackground) 0.55f else 1.0f,
+            baseAlpha = if (isSubduedBackground) 0.6f else 0.85f,
+            dimAlpha = if (isSubduedBackground) 0.3f else DIM_ALPHA,
             amplitude = if (isSubduedBackground) 0.6f else 1.0f,
             rtl = rtl,
-            spaceWidth = with(density) { (fontSizeSp * 0.28f).sp.toDp() }
+            spaceWidth = with(density) { (fontSizeSp * 0.18f).sp.toDp() }
         )
     }
 
@@ -869,8 +851,7 @@ fun SingleLyricLineRow(
                                         mode = mode,
                                         positionProvider = positionProvider,
                                         rhythm = rhythm,
-                                        visuals = visuals,
-                                        isAnimationEnabled = isAnimationEnabled
+                                        visuals = visuals
                                     )
                                 }
                             }
@@ -944,30 +925,13 @@ private fun SpicyWord(
     mode: LyricLineMode,
     positionProvider: () -> Long,
     rhythm: TrackRhythmContext,
-    visuals: WordVisuals,
-    isAnimationEnabled: Boolean
+    visuals: WordVisuals
 ) {
-    val duration = (word.endTimeMs - word.startTimeMs).coerceAtLeast(1L)
-    val graphemes = word.graphemes
-    val useLetters = isAnimationEnabled &&
-            duration >= 1400L &&
-            graphemes.size in 2..12 &&
-            canSplitIntoLetters(word.text)
-
-    if (useLetters) {
-        val n = graphemes.size
-        val step = duration / n
-        Row(verticalAlignment = Alignment.Bottom) {
-            graphemes.forEachIndexed { i, g ->
-                val s = word.startTimeMs + i * step
-                // Slight overlap between neighbouring letters = fluid wave
-                val e = if (i == n - 1) word.endTimeMs else min(word.endTimeMs, s + (step * 1.4f).toLong())
-                SweepSegment(g, s, e, mode, positionProvider, rhythm, visuals)
-            }
-        }
-    } else {
-        SweepSegment(word.text, word.startTimeMs, word.endTimeMs, mode, positionProvider, rhythm, visuals)
-    }
+    // Keep each synchronized segment together. Splitting every long word into
+    // independently timed graphemes creates a stuttery, letter-by-letter effect
+    // for ordinary lyrics. Spicy only does this when the lyric source explicitly
+    // marks a letter group, which WordSync does not currently expose.
+    SweepSegment(word.text, word.startTimeMs, word.endTimeMs, mode, positionProvider, rhythm, visuals)
     if (word.trailingSpace) {
         Spacer(Modifier.width(visuals.spaceWidth))
     }
@@ -992,20 +956,18 @@ private fun SweepSegment(
 ) {
     val duration = (endMs - startMs).coerceAtLeast(1L)
 
-    val phaseState = remember(mode, startMs, endMs, positionProvider) {
+    // Line scrolling can move to the next line before this word's timestamp window ends.
+    // Word animation must follow the word's own timestamps, not the line's visual mode, or
+    // the last word freezes mid-sweep when the previous line becomes Past.
+    val phaseState = remember(startMs, endMs, positionProvider) {
         derivedStateOf {
-            when (mode) {
-                LyricLineMode.Past -> PHASE_DONE
-                LyricLineMode.Upcoming -> PHASE_IDLE
-                LyricLineMode.Active -> {
-                    val p = positionProvider() + PRE_ROLL_OFFSET_MS
-                    if (p < startMs) PHASE_IDLE else if (p >= endMs) PHASE_DONE else PHASE_ACTIVE
-                }
-            }
+            val p = positionProvider()
+            if (p < startMs) PHASE_IDLE else if (p >= endMs) PHASE_DONE else PHASE_ACTIVE
         }
     }
 
     val baseAlpha = visuals.baseAlpha
+    val dimAlpha = visuals.dimAlpha
     val amplitude = visuals.amplitude
     val currentPhase by phaseState
     val rtl = visuals.rtl
@@ -1016,11 +978,11 @@ private fun SweepSegment(
                 val phase = phaseState.value
                 if (phase == PHASE_ACTIVE) {
                     val pos = positionProvider()
-                    val raw = ((pos + PRE_ROLL_OFFSET_MS - startMs).toFloat() / duration).coerceIn(0f, 1f)
-                    val s = 1f + (calculateRhythmWordScale(raw, duration, pos, rhythm) - 1f) * amplitude
+                    val raw = ((pos - startMs).toFloat() / duration).coerceIn(0f, 1f)
+                    val s = 1f + (calculateRhythmWordScale(raw, duration, pos, rhythm) - 1f) * amplitude * 0.35f
                     scaleX = s
                     scaleY = s
-                    translationY = calculateRhythmWordYOffset(raw, duration, rhythm) * amplitude * this.density
+                    translationY = calculateRhythmWordYOffset(raw, duration, rhythm) * amplitude * 0.35f * this.density
                 } else if (phase == PHASE_IDLE && mode == LyricLineMode.Active) {
                     scaleX = 0.95f
                     scaleY = 0.95f
@@ -1030,21 +992,23 @@ private fun SweepSegment(
                 val phase = phaseState.value
                 if (phase == PHASE_ACTIVE) {
                     compositingStrategy = CompositingStrategy.Offscreen
-                    alpha = baseAlpha
+                    // The gradient supplies the exact Spicy opacity range. Do not multiply it again.
+                    alpha = 1f
                 } else {
-                    alpha = if (phase == PHASE_IDLE && mode == LyricLineMode.Active) baseAlpha * DIM_ALPHA else baseAlpha
+                    alpha = if (phase == PHASE_IDLE) dimAlpha else baseAlpha
                 }
             }
             .drawWithContent {
                 drawContent()
                 if (phaseState.value == PHASE_ACTIVE) {
-                    val raw = ((positionProvider() + PRE_ROLL_OFFSET_MS - startMs).toFloat() / duration).coerceIn(0f, 1f)
-                    val sweep = calculateWordProgressEasing(raw, duration, rhythm).coerceIn(0f, 1f)
-                    val edge = sweep * (1f + SWEEP_FEATHER)
+                    val raw = ((positionProvider() - startMs).toFloat() / duration).coerceIn(0f, 1f)
+                    // Spicy animates the gradient linearly: -20% + 120% * progress.
+                    // These stops are the clipped equivalent of its CSS gradient.
+                    val edge = raw * (1f + SWEEP_FEATHER)
                     val litEnd = (edge - SWEEP_FEATHER).coerceIn(0f, 1f)
                     val dimStart = edge.coerceIn(0f, 1f)
-                    val lit = Color.White
-                    val dim = Color.White.copy(alpha = DIM_ALPHA)
+                    val lit = Color.White.copy(alpha = baseAlpha)
+                    val dim = Color.White.copy(alpha = dimAlpha)
                     val brush = Brush.horizontalGradient(
                         0f to lit,
                         litEnd to lit,
@@ -1060,7 +1024,7 @@ private fun SweepSegment(
     ) {
         Text(
             text = text,
-            style = if (currentPhase == PHASE_IDLE) visuals.textStyle else visuals.litTextStyle,
+            style = if (currentPhase == PHASE_ACTIVE) visuals.litTextStyle else visuals.textStyle,
             softWrap = false,
             maxLines = 1
         )
