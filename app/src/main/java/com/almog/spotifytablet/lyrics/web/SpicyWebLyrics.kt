@@ -73,14 +73,28 @@ fun SpicyWebLyricsContent(
         view.evaluateJavascript("SpicyLyrics.setFontSize($fontSizeSp)", null) // 0 = Spicy's own default
     }
 
-    // Playback clock -> page. The page extrapolates from this while playing, so it only needs updates
-    // when the anchor changes (seek, pause/resume, periodic resync).
+    // The page has its own frame-driven playback clock. Avoid crossing the Kotlin/JS bridge
+    // for every playback tick: sync on play-state/speed changes, seeks, pauses, or meaningful drift.
+    var lastSentAnchor by remember(webView) { mutableStateOf<com.almog.spotifytablet.lyrics.viewmodel.PlaybackAnchor?>(null) }
     LaunchedEffect(webView, pageReady, anchor.positionMs, anchor.anchorRealtimeMs, anchor.isPlaying, anchor.speed) {
         val view = webView ?: return@LaunchedEffect
         if (!pageReady) return@LaunchedEffect
-        val elapsed = SystemClock.elapsedRealtime() - anchor.anchorRealtimeMs
-        val now = if (anchor.isPlaying) anchor.positionMs + (elapsed * anchor.speed).toLong() else anchor.positionMs
-        view.evaluateJavascript("SpicyLyrics.setAnchor($now,${anchor.isPlaying},${anchor.speed})", null)
+        val nowRealtime = SystemClock.elapsedRealtime()
+        val elapsed = nowRealtime - anchor.anchorRealtimeMs
+        val nowPosition = if (anchor.isPlaying) anchor.positionMs + (elapsed * anchor.speed).toLong() else anchor.positionMs
+        val previous = lastSentAnchor
+        val shouldSend = previous == null ||
+            previous.isPlaying != anchor.isPlaying ||
+            previous.speed != anchor.speed ||
+            (!anchor.isPlaying && previous.positionMs != anchor.positionMs) ||
+            (anchor.isPlaying && kotlin.math.abs(
+                nowPosition - (previous.positionMs +
+                    ((nowRealtime - previous.anchorRealtimeMs) * previous.speed).toLong())
+            ) >= 120L)
+        if (shouldSend) {
+            view.evaluateJavascript("SpicyLyrics.setAnchor($nowPosition,${anchor.isPlaying},${anchor.speed})", null)
+            lastSentAnchor = anchor.copy(positionMs = nowPosition, anchorRealtimeMs = nowRealtime)
+        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
