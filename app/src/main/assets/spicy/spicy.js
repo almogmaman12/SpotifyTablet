@@ -793,8 +793,12 @@
         idleFrames = 0;
         console.log("SpicyLyrics.setLyrics ok: lines=" + lines.length + " scroll=" + scrollEl.clientWidth + "x" + scrollEl.clientHeight +
           " content=" + (document.querySelector(".LyricsContent") || {}).clientHeight + " ua=" + navigator.userAgent);
+        var dbg = document.getElementById("SpicyDebug");
+        if (dbg) dbg.textContent = "lines=" + lines.length + " pane=" + scrollEl.clientWidth + "x" + scrollEl.clientHeight + " " + (navigator.userAgent.match(/Chrome\/[\d.]+/) || [""])[0];
       } catch (e) {
         console.log("SpicyLyrics.setLyrics FAILED: " + e + " " + (e && e.stack));
+        var d2 = document.getElementById("SpicyDebug");
+        if (d2) { d2.style.color = "#f77"; d2.textContent = "setLyrics FAILED: " + e; }
       }
     },
     setAnchor: function (positionMs, isPlaying, speed) {
