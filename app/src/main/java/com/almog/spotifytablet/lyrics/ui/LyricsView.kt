@@ -102,8 +102,8 @@ import kotlin.math.sin
  *     (intro without dots, outro, no lyrics) and stops entirely when paused.
  */
 
-/** Lines start gliding this much BEFORE their first word (feels snappier, like Spicy). */
-private const val LINE_LEAD_MS = 120L
+/** Start transitioning to the next lyric before its timestamp so the motion keeps up with the singer. */
+private const val LINE_LEAD_MS = 500L
 
 /** Lines kept composed behind / ahead of the centre line (outer ones are invisible, so nothing pops). */
 private const val WINDOW_BEHIND = 3
