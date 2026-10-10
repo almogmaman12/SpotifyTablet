@@ -49,6 +49,11 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.LinearGradientShader
+import androidx.compose.ui.graphics.Shader
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -93,6 +98,38 @@ import kotlinx.coroutines.delay
  */
 private const val PRE_ROLL_OFFSET_MS = 45L
 private const val SPICY_SWEEP_FEATHER = 0.20f
+
+/**
+ * Mirrors Spicy Lyrics' CSS gradient: the highlight edge moves vertically for LTR
+ * text and right-to-left horizontally for RTL text. The gradient extends beyond
+ * the glyph bounds, so the word starts dim and finishes fully lit.
+ */
+private class SpicySweepBrush(
+    private val progress: Float,
+    private val isRtl: Boolean,
+    private val litColor: Color,
+    private val dimColor: Color
+) : ShaderBrush() {
+    override fun createShader(size: Size): Shader {
+        val start = -0.20f + 1.20f * progress.coerceIn(0f, 1f)
+        val end = start + SPICY_SWEEP_FEATHER
+        val from: Offset
+        val to: Offset
+        if (isRtl) {
+            from = Offset(size.width * (1f - start), size.height * 0.5f)
+            to = Offset(size.width * (1f - end), size.height * 0.5f)
+        } else {
+            from = Offset(size.width * 0.5f, size.height * start)
+            to = Offset(size.width * 0.5f, size.height * end)
+        }
+        return LinearGradientShader(
+            from = from,
+            to = to,
+            colors = listOf(litColor, dimColor),
+            tileMode = TileMode.Clamp
+        )
+    }
+}
 
 private fun smoothStep(value: Float): Float {
     val x = value.coerceIn(0f, 1f)
@@ -814,7 +851,7 @@ fun SingleLyricLineRow(
 ) {
     val currentPositionMs = positionProvider()
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
-    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.875f).sp else (activeFontSizeSp * 1.1818f).sp
+    val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.69f * 1.1818f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
     val baseAlpha = if (isSubduedBackground) 0.60f else 1.0f
     val rtl = remember(line.rawText) { isRtlText(line.rawText) }
@@ -1053,25 +1090,12 @@ private fun RhythmSingleSyllableSweepText(
         else -> {
             val sweepProgress = calculateWordProgressEasing(rawProgress, durationMs, rhythm)
             val p = sweepProgress.coerceIn(0f, 1f)
-            val featherFrac = SPICY_SWEEP_FEATHER
-            val sweepEnd = (-0.20f + 1.20f * p).coerceIn(0f, 1f)
-            val rtl = remember(word.text) { isRtlText(word.text) }
-            val textBrush = if (!rtl) {
-                Brush.horizontalGradient(
-                    0f to litColor,
-                    (sweepEnd - featherFrac).coerceIn(0f, 1f) to litColor,
-                    sweepEnd to dimColor,
-                    1f to dimColor
-                )
-            } else {
-                val reverseStart = (1f - sweepEnd).coerceIn(0f, 1f)
-                Brush.horizontalGradient(
-                    0f to dimColor,
-                    reverseStart to dimColor,
-                    (reverseStart + featherFrac).coerceIn(0f, 1f) to litColor,
-                    1f to litColor
-                )
-            }
+            val textBrush = SpicySweepBrush(
+                progress = p,
+                isRtl = isRtlText(word.text),
+                litColor = litColor,
+                dimColor = dimColor
+            )
             TextStyle(
                 brush = textBrush,
                 fontSize = fontSize,
@@ -1179,13 +1203,11 @@ private fun RhythmLetterGroupSweepText(
                 else -> {
                     val letterProgress = calculateWordProgressEasing(rawLetterProgress, letterDuration, rhythm)
                     val p = letterProgress.coerceIn(0f, 1f)
-                    val featherFrac = SPICY_SWEEP_FEATHER
-                    val sweepEnd = (-0.20f + 1.20f * p).coerceIn(0f, 1f)
-                    val textBrush = Brush.horizontalGradient(
-                        0f to litColor,
-                        (sweepEnd - featherFrac).coerceIn(0f, 1f) to litColor,
-                        sweepEnd to dimColor,
-                        1f to dimColor
+                    val textBrush = SpicySweepBrush(
+                        progress = p,
+                        isRtl = isRtlText(word.text),
+                        litColor = litColor,
+                        dimColor = dimColor
                     )
                     TextStyle(
                         brush = textBrush,
