@@ -104,9 +104,6 @@ import kotlin.math.sin
  *     (intro without dots, outro, no lyrics) and stops entirely when paused.
  */
 
-/** Predictive vocal anticipation offset (ms). */
-private const val PRE_ROLL_OFFSET_MS = 45L
-
 /** Lines start gliding this much BEFORE their first word (feels snappier, like Spicy). */
 private const val LINE_LEAD_MS = 120L
 
@@ -765,8 +762,6 @@ private fun isRtlText(s: String): Boolean {
 }
 
 /** Arabic / Syriac / Indic scripts join or reorder glyphs → never split into per-letter nodes. */
-private fun canSplitIntoLetters(text: String): Boolean = text.none { it.code in 0x0600..0x0DFF }
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SingleLyricLineRow(
@@ -870,8 +865,7 @@ fun SingleLyricLineRow(
                                         mode = mode,
                                         positionProvider = positionProvider,
                                         rhythm = rhythm,
-                                        visuals = visuals,
-                                        isAnimationEnabled = isAnimationEnabled
+                                        visuals = visuals
                                     )
                                 }
                             }
@@ -945,8 +939,7 @@ private fun SpicyWord(
     mode: LyricLineMode,
     positionProvider: () -> Long,
     rhythm: TrackRhythmContext,
-    visuals: WordVisuals,
-    isAnimationEnabled: Boolean
+    visuals: WordVisuals
 ) {
     // Keep each synchronized segment together. Splitting every long word into
     // independently timed graphemes creates a stuttery, letter-by-letter effect
