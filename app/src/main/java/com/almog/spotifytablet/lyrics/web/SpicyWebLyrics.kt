@@ -11,6 +11,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import java.util.concurrent.atomic.AtomicReference
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -73,16 +74,18 @@ fun SpicyWebLyricsContent(
         view.evaluateJavascript("SpicyLyrics.setFontSize($fontSizeSp)", null) // 0 = Spicy's own default
     }
 
-    // The page has its own frame-driven playback clock. Avoid crossing the Kotlin/JS bridge
-    // for every playback tick: sync on play-state/speed changes, seeks, pauses, or meaningful drift.
-    var lastSentAnchor by remember(webView) { mutableStateOf<com.almog.spotifytablet.lyrics.viewmodel.PlaybackAnchor?>(null) }
+    // Keep the last JS clock anchor outside Compose state. Updating it must not recompose this
+    // entire WebView host, which can itself cause dropped frames and extra battery use.
+    val lastSentAnchor = remember(webView) {
+        AtomicReference<com.almog.spotifytablet.lyrics.viewmodel.PlaybackAnchor?>(null)
+    }
     LaunchedEffect(webView, pageReady, anchor.positionMs, anchor.anchorRealtimeMs, anchor.isPlaying, anchor.speed) {
         val view = webView ?: return@LaunchedEffect
         if (!pageReady) return@LaunchedEffect
         val nowRealtime = SystemClock.elapsedRealtime()
         val elapsed = nowRealtime - anchor.anchorRealtimeMs
         val nowPosition = if (anchor.isPlaying) anchor.positionMs + (elapsed * anchor.speed).toLong() else anchor.positionMs
-        val previous = lastSentAnchor
+        val previous = lastSentAnchor.get()
         val shouldSend = previous == null ||
             previous.isPlaying != anchor.isPlaying ||
             previous.speed != anchor.speed ||
@@ -90,10 +93,10 @@ fun SpicyWebLyricsContent(
             (anchor.isPlaying && kotlin.math.abs(
                 nowPosition - (previous.positionMs +
                     ((nowRealtime - previous.anchorRealtimeMs) * previous.speed).toLong())
-            ) >= 120L)
+            ) >= 40L)
         if (shouldSend) {
             view.evaluateJavascript("SpicyLyrics.setAnchor($nowPosition,${anchor.isPlaying},${anchor.speed})", null)
-            lastSentAnchor = anchor.copy(positionMs = nowPosition, anchorRealtimeMs = nowRealtime)
+            lastSentAnchor.set(anchor.copy(positionMs = nowPosition, anchorRealtimeMs = nowRealtime))
         }
     }
 
