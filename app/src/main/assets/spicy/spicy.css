@@ -223,6 +223,7 @@ body:has(.Root:not(.global-nav)) #SpicyLyricsPage.Fullscreen.MinimalLyricsMode
   cursor: pointer;
   font-weight: 700 !important;
   -webkit-text-fill-color: transparent;
+  -webkit-background-clip: text;
   background-clip: text;
   position: relative;
 }

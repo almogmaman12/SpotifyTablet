@@ -784,11 +784,18 @@
   /* ------------------------------------------------------------------------------------------
    * Public API
    * ---------------------------------------------------------------------------------------- */
+  window.addEventListener("error", function (ev) { console.log("SpicyLyrics js error: " + ev.message + " @" + ev.lineno + ":" + ev.colno); });
   window.SpicyLyrics = {
     setLyrics: function (data) {
-      if (typeof data === "string") data = JSON.parse(data);
-      build(data || { lines: [] });
-      idleFrames = 0;
+      try {
+        if (typeof data === "string") data = JSON.parse(data);
+        build(data || { lines: [] });
+        idleFrames = 0;
+        console.log("SpicyLyrics.setLyrics ok: lines=" + lines.length + " scroll=" + scrollEl.clientWidth + "x" + scrollEl.clientHeight +
+          " content=" + (document.querySelector(".LyricsContent") || {}).clientHeight + " ua=" + navigator.userAgent);
+      } catch (e) {
+        console.log("SpicyLyrics.setLyrics FAILED: " + e + " " + (e && e.stack));
+      }
     },
     setAnchor: function (positionMs, isPlaying, speed) {
       anchor = { pos: positionMs, perf: nowMs(), playing: !!isPlaying, speed: speed || 1 };

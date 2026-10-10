@@ -5,7 +5,10 @@ import android.graphics.Color as AndroidColor
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
+import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Box
@@ -66,7 +69,7 @@ fun SpicyWebLyricsContent(
         val view = webView ?: return@LaunchedEffect
         if (!pageReady) return@LaunchedEffect
         val json = if (track == null || track.lines.isEmpty()) "{\"type\":\"Line\",\"lines\":[]}" else SpicyLyricsJson.toJson(track)
-        view.evaluateJavascript("SpicyLyrics.setLyrics(${SpicyLyricsJson.quote(json)})", null)
+        view.evaluateJavascript("SpicyLyrics.setLyrics(${SpicyLyricsJson.quote(json)})") { Log.d("SpicyWeb", "setLyrics returned $it, jsonLen=${json.length}") }
         view.evaluateJavascript("SpicyLyrics.setFontSize($fontSizeSp)", null) // 0 = Spicy's own default
     }
 
@@ -107,8 +110,15 @@ fun SpicyWebLyricsContent(
                     ),
                     "Android"
                 )
+                view.webChromeClient = object : WebChromeClient() {
+                    override fun onConsoleMessage(m: ConsoleMessage): Boolean {
+                        Log.d("SpicyWeb", "${m.message()} (${m.sourceId()}:${m.lineNumber()})")
+                        return true
+                    }
+                }
                 view.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(v: WebView?, url: String?) {
+                        Log.d("SpicyWeb", "page finished: $url size=${v?.width}x${v?.height}")
                         pageReady = true
                     }
                 }
