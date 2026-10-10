@@ -97,14 +97,19 @@ object SpicyMotion {
     const val BlurMaxPx = 1.25f * 5.465f
 
     /**
-     * Sweep gradient alphas. Words and letters carry their own values (0.85 lit, 0.5 dim); the 0.35
-     * in Spicy's CSS only applies to the line element itself, which never paints text in syllable
-     * lyrics. Background vocals use 0.6 / 0.3.
+     * Sweep gradient alphas (white). Spicy's own values are 0.85 lit / 0.5 dim for words and
+     * 0.6 / 0.3 for background vocals, and it measures out the same in its preview GIFs: lit words
+     * about 0.9, words not yet sung about 0.55, upcoming lines about 0.25, sung lines about 0.4.
+     *
+     * Spicy paints those over a dark, dimmed backdrop. This app puts the lyrics over blurred,
+     * often bright album art, where the same alphas read as faint, so the dim and lit levels are
+     * raised here to keep Spicy's contrast (lit vs. unsung vs. upcoming) while staying readable.
+     * To get Spicy's literal values back, use 0.85 / 0.5 and 0.6 / 0.3.
      */
-    const val LitAlpha = 0.85f
-    const val DimAlpha = 0.5f
-    const val BgLitAlpha = 0.6f
-    const val BgDimAlpha = 0.3f
+    const val LitAlpha = 1.0f
+    const val DimAlpha = 0.72f
+    const val BgLitAlpha = 0.8f
+    const val BgDimAlpha = 0.5f
 
     /** Spicy springs are specified as frequency (Hz) and damping ratio; Compose wants stiffness. */
     private fun stiffness(frequencyHz: Float): Float {
