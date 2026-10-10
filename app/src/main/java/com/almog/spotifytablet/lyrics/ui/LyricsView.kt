@@ -853,7 +853,8 @@ fun SingleLyricLineRow(
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.69f * 1.1818f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
-    val baseAlpha = if (isSubduedBackground) 0.60f else 1.0f
+    val currentPositionMs = positionProvider()
+    val baseAlpha = if (isSubduedBackground) 0.60f else if (isActiveLine) 1.0f else if (currentPositionMs >= line.endTimeMs) 0.497f else 0.51f
     val rtl = remember(line.rawText) { isRtlText(line.rawText) }
 
     // Spicy uses white lyric fills; singer IDs must not tint the whole renderer green/cyan/orange.
@@ -1076,10 +1077,10 @@ private fun RhythmSingleSyllableSweepText(
     val fontSize = if (isSubduedBackground) (activeFontSizeSp * 0.69f).sp else activeFontSizeSp.sp
     val lineHeight = if (isSubduedBackground) (activeFontSizeSp * 0.69f * 1.1818f).sp else (activeFontSizeSp * 1.1818f).sp
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
-    val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
+    val baseAlpha = if (isSubduedBackground) 0.60f else 1.0f
 
-    val litColor = Color.White.copy(alpha = baseAlpha)
-    val dimColor = Color(0x66FFFFFF).copy(alpha = baseAlpha * 0.6f)
+    val litColor = Color.White.copy(alpha = baseAlpha * 0.85f)
+    val dimColor = Color.White.copy(alpha = baseAlpha * 0.35f)
 
     val baseShadow = remember {
         Shadow(
@@ -1098,7 +1099,7 @@ private fun RhythmSingleSyllableSweepText(
             fontFamily = FontFamily.SansSerif,
             letterSpacing = 0.sp,
             lineHeight = lineHeight,
-            shadow = baseShadow
+            shadow = null
         )
     }
 
@@ -1109,7 +1110,7 @@ private fun RhythmSingleSyllableSweepText(
             fontWeight = FontWeight.Bold,
             fontStyle = fontStyle,
             fontFamily = FontFamily.SansSerif,
-            letterSpacing = (-0.3).sp,
+            letterSpacing = 0.sp,
             lineHeight = lineHeight,
             shadow = baseShadow
         )
@@ -1168,8 +1169,8 @@ private fun RhythmLetterGroupSweepText(
     val fontStyle = if (isSubduedBackground) FontStyle.Italic else FontStyle.Normal
     val baseAlpha = if (isSubduedBackground) 0.55f else 1.0f
 
-    val litColor = Color.White.copy(alpha = baseAlpha)
-    val dimColor = Color(0x66FFFFFF).copy(alpha = baseAlpha * 0.6f)
+    val litColor = Color.White.copy(alpha = baseAlpha * 0.85f)
+    val dimColor = Color.White.copy(alpha = baseAlpha * 0.35f)
 
     val baseShadow = remember {
         Shadow(
@@ -1186,7 +1187,7 @@ private fun RhythmLetterGroupSweepText(
             fontWeight = FontWeight.Bold,
             fontStyle = fontStyle,
             fontFamily = FontFamily.SansSerif,
-            letterSpacing = (-0.2).sp,
+            letterSpacing = 0.sp,
             lineHeight = lineHeight,
             shadow = baseShadow
         )
@@ -1221,13 +1222,36 @@ private fun RhythmLetterGroupSweepText(
             val isLetterActive = rawLetterProgress > 0f && rawLetterProgress < 1f
             val isLetterDone = rawLetterProgress >= 1f
 
-            val letterScale = if (isLetterActive) {
-                spicyScale(rawLetterProgress, 1.175f)
-            } else if (isLetterDone || isWordCompleted) {
-                1f
-            } else {
-                0.95f
+            val letterScaleTarget = when {
+                isLetterActive -> spicyScale(rawLetterProgress, 1.175f)
+                isLetterDone || isWordCompleted -> 1f
+                else -> 0.95f
             }
+            val letterScale by animateFloatAsState(
+                targetValue = letterScaleTarget,
+                animationSpec = spring(
+                    dampingRatio = 0.64f,
+                    stiffness = (2f * Math.PI.toFloat() * 0.88f).let { it * it }
+                ),
+                label = "spicy-letter-scale"
+            )
+            val letterOffsetTarget = spicyYOffset(rawLetterProgress) * activeFontSizeSp
+            val letterOffsetY by animateFloatAsState(
+                targetValue = if (isLetterActive) letterOffsetTarget else 0f,
+                animationSpec = spring(
+                    dampingRatio = 0.4f,
+                    stiffness = (2f * Math.PI.toFloat() * 1.45f).let { it * it }
+                ),
+                label = "spicy-letter-lift"
+            )
+            val letterGlow by animateFloatAsState(
+                targetValue = spicyGlow(rawLetterProgress),
+                animationSpec = spring(
+                    dampingRatio = 0.56f,
+                    stiffness = (2f * Math.PI.toFloat() * 1.18f).let { it * it }
+                ),
+                label = "spicy-letter-glow"
+            )
 
             val letterStyle = when {
                 isLetterDone || isWordCompleted -> completedLetterStyle
@@ -1243,15 +1267,15 @@ private fun RhythmLetterGroupSweepText(
                     TextStyle(
                         brush = textBrush,
                         fontSize = fontSize,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = FontWeight.Bold,
                         fontStyle = fontStyle,
                         fontFamily = FontFamily.SansSerif,
                         letterSpacing = (-0.2).sp,
                         lineHeight = lineHeight,
                         shadow = Shadow(
-                            color = glowColor.copy(alpha = spicyGlow(rawLetterProgress) * if (isSubduedBackground) 0.45f else 0.72f),
+                            color = glowColor.copy(alpha = letterGlow * if (isSubduedBackground) 0.30f else 0.45f),
                             offset = ShadowOffsetGlow,
-                            blurRadius = if (isSubduedBackground) 7f else 12f
+                            blurRadius = if (isSubduedBackground) 3f else 4f
                         )
                     )
                 }
@@ -1261,6 +1285,7 @@ private fun RhythmLetterGroupSweepText(
                 modifier = Modifier.graphicsLayer {
                     scaleX = letterScale
                     scaleY = letterScale
+                    translationY = letterOffsetY * density
                 },
                 contentAlignment = Alignment.CenterStart
             ) {
