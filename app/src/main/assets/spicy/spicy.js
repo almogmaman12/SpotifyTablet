@@ -693,15 +693,31 @@
     var sleeping = true;
     for (var i = 0; i < l.words.length; i++) {
       var w = l.words[i];
+      var wordState = stateOf(pos, w.start, w.end);
+
+      // Words outside their active timing window only need to animate until their springs settle.
+      // Without this cache, every frame still stepped every word and letter in the active line,
+      // even though their target styles had stopped changing.
+      if (w.st !== wordState) {
+        w.st = wordState;
+        w.settled = false;
+      }
+      if (w.settled && wordState !== "Active") continue;
+
       stepWord(w, pos, dt);
-      if (sleeping) {
-        if (w.sp && !springsSleeping(w.sp)) sleeping = false;
-        if (sleeping && w.letters) {
-          for (var k = 0; k < w.letters.length; k++) {
-            if (w.letters[k].sp && !springsSleeping(w.letters[k].sp)) { sleeping = false; break; }
+
+      var wordSleeping = !w.sp || springsSleeping(w.sp);
+      if (wordSleeping && w.letters) {
+        for (var k = 0; k < w.letters.length; k++) {
+          var letter = w.letters[k];
+          if (letter.sp && !springsSleeping(letter.sp)) {
+            wordSleeping = false;
+            break;
           }
         }
       }
+      w.settled = wordState !== "Active" && wordSleeping;
+      if (!w.settled) sleeping = false;
     }
     return sleeping;
   }
