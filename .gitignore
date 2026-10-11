@@ -24,6 +24,8 @@ scratch/
 curl_out.json
 spicy.html
 *.html
+# ...except the bundled lyrics renderer page
+!app/src/main/assets/**/*.html
 
 # Keystore files (signing keys — never commit)
 *.jks

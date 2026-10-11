@@ -359,11 +359,15 @@ SettingsActivity extends AppCompatActivity {
                         .setPositiveButton("Clear", (d, w) -> {
                             // Clears both disk cache (lyrics_cache/) and in-memory LruCache
                             com.almog.spotifytablet.lyrics.repository.LyricsRepository.clearAllCache();
+                            deleteRecursively(new java.io.File(getCacheDir(), "lyrics"));
+                            deleteRecursively(new java.io.File(getCacheDir(), "translations"));
                             Toast.makeText(this, "Lyrics cache cleared", Toast.LENGTH_SHORT).show();
                         })
                         .setNegativeButton("Cancel", null)
                         .show()
         );
+
+        setupSpicyMobileSettings();
 
         btnResetSettings = findViewById(R.id.btnResetSettings);
         btnResetSettings.setOnClickListener(v ->
@@ -400,5 +404,116 @@ SettingsActivity extends AppCompatActivity {
     /** Safe non-null text extractor from TextInputEditText. */
     private String str(TextInputEditText et) {
         return et.getText() != null ? et.getText().toString().trim() : "";
+    }
+
+    private static void deleteRecursively(java.io.File f) {
+        if (f == null || !f.exists()) return;
+        java.io.File[] children = f.listFiles();
+        if (children != null) for (java.io.File c : children) deleteRecursively(c);
+        //noinspection ResultOfMethodCallIgnored
+        f.delete();
+    }
+
+    // ===================================================================
+    // Spicy Lyrics Mobile renderer / romanization / translation (added programmatically)
+    // ===================================================================
+    private static final String[] RENDERER_IDS = {"mobile", "web", "native"};
+    private static final String[] RENDERER_NAMES = {
+            "Spicy Lyrics Mobile (native)", "Spicy Lyrics (web view)", "Original native renderer"};
+    private static final String[] TRANSLATE_CODES = {"", "en", "he", "ar", "ru", "es", "fr", "de"};
+    private static final String[] TRANSLATE_NAMES = {
+            "Off", "English", "Hebrew", "Arabic", "Russian", "Spanish", "French", "German"};
+
+    private void setupSpicyMobileSettings() {
+        final SharedPreferences p = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE);
+        com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.init(this);
+
+        final TextView tvRenderer = findViewById(R.id.tvLyricsRendererValue);
+        final TextView tvSources = findViewById(R.id.tvLyricSourcesValue);
+        final SwitchMaterial swRoman = findViewById(R.id.switchRomanize);
+        final TextView tvLang = findViewById(R.id.tvTranslateLangValue);
+        final TextView tvStyle = findViewById(R.id.tvTranslateStyleValue);
+
+        final Runnable refresh = () -> {
+            int r = Math.max(0, java.util.Arrays.asList(RENDERER_IDS).indexOf(p.getString("lyrics_renderer", "mobile")));
+            tvRenderer.setText(RENDERER_NAMES[r]);
+            int on = 0, total = 0;
+            for (com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo s
+                    : com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.sources()) {
+                total++;
+                if (s.getEnabled()) on++;
+            }
+            tvSources.setText(on + "/" + total + " on");
+            int t = Math.max(0, java.util.Arrays.asList(TRANSLATE_CODES).indexOf(p.getString("lyrics_translate_target", "")));
+            tvLang.setText(TRANSLATE_NAMES[t]);
+            tvStyle.setText("replace".equals(p.getString("lyrics_translation_mode", "under")) ? "Replace" : "Under line");
+        };
+
+        swRoman.setChecked(p.getBoolean("lyrics_romanize", false));
+        swRoman.setOnCheckedChangeListener((b, on) -> p.edit().putBoolean("lyrics_romanize", on).apply());
+        findViewById(R.id.rowRomanize).setOnClickListener(v -> swRoman.toggle());
+
+        findViewById(R.id.rowLyricsRenderer).setOnClickListener(v ->
+                new AlertDialog.Builder(this).setTitle("Lyrics renderer (restart the app to apply)")
+                        .setSingleChoiceItems(RENDERER_NAMES,
+                                java.util.Arrays.asList(RENDERER_IDS).indexOf(p.getString("lyrics_renderer", "mobile")),
+                                (d, i) -> {
+                                    p.edit().putString("lyrics_renderer", RENDERER_IDS[i]).apply();
+                                    d.dismiss();
+                                    refresh.run();
+                                }).show());
+
+        findViewById(R.id.rowTranslateLang).setOnClickListener(v ->
+                new AlertDialog.Builder(this).setTitle("Translate lyrics to (sends lyric text to Google)")
+                        .setSingleChoiceItems(TRANSLATE_NAMES,
+                                java.util.Arrays.asList(TRANSLATE_CODES).indexOf(p.getString("lyrics_translate_target", "")),
+                                (d, i) -> {
+                                    p.edit().putString("lyrics_translate_target", TRANSLATE_CODES[i]).apply();
+                                    d.dismiss();
+                                    refresh.run();
+                                }).show());
+
+        findViewById(R.id.rowTranslateStyle).setOnClickListener(v -> {
+            boolean replace = "replace".equals(p.getString("lyrics_translation_mode", "under"));
+            p.edit().putString("lyrics_translation_mode", replace ? "under" : "replace").apply();
+            refresh.run();
+        });
+
+        findViewById(R.id.rowLyricSources).setOnClickListener(v -> {
+            final java.util.List<com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo> list =
+                    com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.sources();
+            if (list.isEmpty()) {
+                Toast.makeText(this, "Sources are not ready yet", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            final String[] names = new String[list.size()];
+            final boolean[] checked = new boolean[list.size()];
+            for (int i = 0; i < list.size(); i++) {
+                names[i] = list.get(i).getName();
+                checked[i] = list.get(i).getEnabled();
+            }
+            new AlertDialog.Builder(this)
+                    .setTitle("Lyric sources (asked in this order)")
+                    .setMultiChoiceItems(names, checked, (d, which, isChecked) -> checked[which] = isChecked)
+                    .setPositiveButton("Save", (d, w) -> {
+                        for (int i = 0; i < list.size(); i++) {
+                            com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.setSourceEnabled(list.get(i).getId(), checked[i]);
+                        }
+                        refresh.run();
+                    })
+                    .setNeutralButton("About", (d, w) -> {
+                        StringBuilder sb = new StringBuilder();
+                        for (com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo s : list) {
+                            if (s.getNote() != null) sb.append("• ").append(s.getName()).append(": ").append(s.getNote()).append("\n\n");
+                        }
+                        new AlertDialog.Builder(this).setTitle("What turning sources on sends")
+                                .setMessage(sb.length() == 0 ? "The default sources only receive the song title, artist and length." : sb.toString())
+                                .setPositiveButton("OK", null).show();
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        });
+
+        refresh.run();
     }
 }

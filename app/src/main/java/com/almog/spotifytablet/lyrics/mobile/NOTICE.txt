@@ -1,0 +1,7 @@
+The code in this directory (package com.almog.spotifytablet.lyrics.mobile) is copied and adapted from
+Spicy Lyrics Mobile, https://github.com/spicylyrics/mobile
+Copyright (C) its contributors. Licensed under the GNU Affero General Public License v3 (see
+LICENSE-spicy-lyrics-mobile). It in turn adapts Spicy Lyrics (https://github.com/Spikerko/spicy-lyrics, AGPL-3.0),
+cubic-spline (MIT) and spr (MIT); see https://github.com/spicylyrics/mobile/blob/main/THIRD_PARTY_NOTICES.md.
+Changes: package renamed, translation/footer/control dependencies replaced by small stand-ins, Apple SF fonts
+dropped in favour of the system sans font. Fonts in res/font (Vazirmatn, Noto Sans Georgian) are SIL OFL 1.1.
