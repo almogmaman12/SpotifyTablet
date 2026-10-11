@@ -7,21 +7,21 @@ import java.util.Locale
 
 enum class TranslationMode(val label: String) { UnderLine("Under each line"), Replace("Replace") }
 enum class TranslationProvider(val label: String) {
-    Google("Google Translate"), DeepL("DeepL");
+    Google("Google Translate");
 
     companion object {
         fun stored(value: String?): TranslationProvider = entries.firstOrNull { it.name == value } ?: Google
     }
 }
 
-enum class TranslationOrigin { Genius, Google, DeepL }
+enum class TranslationOrigin { Google }
 
 object TranslationConsent {
     fun id(provider: TranslationProvider, human: Boolean): String =
         "translation_${provider.name.lowercase(Locale.ROOT)}" + if (human) "_genius" else ""
 
     fun covered(disclosed: Set<String>, provider: TranslationProvider, human: Boolean): Boolean =
-        id(provider, human) in disclosed || (!human && (id(provider, true) in disclosed || provider == TranslationProvider.DeepL && "DeepL" in disclosed))
+        id(provider, human) in disclosed || (!human && id(provider, true) in disclosed)
 }
 
 data class TranslationPreferences(
@@ -29,7 +29,7 @@ data class TranslationPreferences(
     val automatic: Boolean = false,
     val provider: TranslationProvider = TranslationProvider.Google,
     val excludedLanguages: Set<String> = emptySet(),
-    val humanTranslations: Boolean = true,
+    val humanTranslations: Boolean = false,
 )
 
 /** A main line and each of its background voices have distinct, stable addresses. */
@@ -120,12 +120,6 @@ data class TranslationResult(
         val order = TranslationOrigin.entries.map { it.name } + "none"
         return order.mapNotNull { name -> counts[name]?.let { "$name $it" } }.joinToString(", ")
     }
-
-    fun geniusCredit(): String? {
-        if (TranslationOrigin.Genius !in origins) return null
-        val machine = origins.filterNotNull().firstOrNull { it != TranslationOrigin.Genius }
-        return "Translation: Genius" + (machine?.let { " + ${it.name}" } ?: "")
-    }
 }
 
 /** A generation also rejects an old request after off/on, even when its document is identical. */
@@ -153,12 +147,6 @@ class TranslationFailure(message: String) : IllegalArgumentException(message)
 class ProviderBusy(val retryAfterMs: Long? = null) : java.io.IOException("Translation is busy.")
 
 fun interface SongLanguageDetector { fun detect(originalLyrics: String): String? }
-
-object DeepLKey {
-    fun valid(input: String): Boolean = KEY.matches(input.trim())
-    fun host(key: String): String = if (key.trim().endsWith(":fx")) "https://api-free.deepl.com" else "https://api.deepl.com"
-    private val KEY = Regex("[A-Za-z0-9_-]{16,}(?::fx)?")
-}
 
 object TranslationLanguages {
     val common = linkedMapOf(

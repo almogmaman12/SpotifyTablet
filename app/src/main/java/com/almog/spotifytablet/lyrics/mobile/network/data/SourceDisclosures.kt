@@ -30,19 +30,14 @@ private const val TITLE_ARTIST = "the song's title and artist"
 private const val WITH_LENGTH = "the song's title, artist and length"
 
 object SourceDisclosures {
-    fun translation(provider: com.almog.spotifytablet.lyrics.mobile.translation.TranslationProvider, human: Boolean = true): SourceDisclosure {
-        val deepL = provider == com.almog.spotifytablet.lyrics.mobile.translation.TranslationProvider.DeepL
-        val recipient = if (deepL) "DeepL" else "Google Translate"
-        return SourceDisclosure(
+    fun translation(provider: com.almog.spotifytablet.lyrics.mobile.translation.TranslationProvider, human: Boolean = false): SourceDisclosure =
+        SourceDisclosure(
             id = com.almog.spotifytablet.lyrics.mobile.translation.TranslationConsent.id(provider, human),
-            name = "translation", recipient = recipient + if (human) " and Genius" else "",
-            descriptionOverride = "Translation sends the song's original lyric lines, including background vocals, to $recipient. " +
-                "Your target and lyrics languages are sent too. " +
-                (if (deepL) "Your DeepL API key authenticates requests to DeepL. " else "This uses Google's free web service, not a paid API; no API key is needed. ") +
-                (if (human) "Human translations are checked first: the song's title and artist are sent to Genius, and its original and translated lyric pages are fetched. Only songs with gaps in the human translation need $recipient. " else "") +
-                "Their own terms and privacy policies apply. You can turn translation off at any time.",
+            name = "translation", recipient = "Google Translate",
+            descriptionOverride = "Translation sends the song's original lyric lines, including background vocals, to Google Translate. " +
+                "Your target and lyrics languages are sent too. This uses Google's free web service, not a paid API; no API key is needed. " +
+                "Its own terms and privacy policy apply. You can turn translation off at any time.",
         )
-    }
     /** The setting that lays human-written romanizations from Genius over the lyrics. */
     const val GENIUS_ROMANIZATION_ID = "genius_romanization"
 

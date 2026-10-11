@@ -124,7 +124,6 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
     fun clearCache() {
         diskCache.deleteRecursively()
         romanCache.deleteRecursively()
-        humanTranslationCache.clear()
     }
 
     private fun enabledOrder(): List<String> = policy().let { p ->
@@ -330,12 +329,6 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
 
     private val geniusRomanization = GeniusRomanizationSource(client, gson)
     private val romanCache = File(context.cacheDir, "genius-roman")
-    private val geniusTranslation = GeniusTranslationSource(client, gson)
-    private val humanTranslationCache = com.almog.spotifytablet.lyrics.mobile.translation.DiskGeniusTranslationCache(File(context.cacheDir, "genius-translations"))
-
-    suspend fun humanTranslation(title: String, artist: String, target: String): com.almog.spotifytablet.lyrics.mobile.translation.GeniusTranslationPair? =
-        humanTranslationCache.find(title, artist, target) { geniusTranslation.find(title, artist, target) }
-
     /**
      * Genius's romanization of the song as lyric lines, or null when it has none. Kept on disk a
      * week when found and a day when not, so a replayed song asks once.
@@ -356,7 +349,6 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
 
     fun forgetRomanization(title: String, artist: String) {
         File(romanCache, cacheKey(title, artist) + ".json").delete()
-        humanTranslationCache.forget(title, artist)
     }
 
     private data class StoredRoman(val expiresAt: Long, val lines: List<String>?)
