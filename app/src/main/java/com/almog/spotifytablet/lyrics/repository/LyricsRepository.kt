@@ -389,23 +389,29 @@ class LyricsRepository(
         }
 
         // 0. Spicy Lyrics Mobile sources (Spicy Lyrics, AMLL, Unison, LRCLIB, Apple, ... with its own ranking)
-        com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.fetch(
+        val mobile = com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.fetchOutcome(
             artist = artist,
             title = cleanTitle,
             album = album,
             durationMs = durationMs,
             spotifyTrackId = trackId.takeIf { mediaSource != "jellyfin" }
-        )?.let { track ->
-            DebugLog.i(TAG, "✅ [Tier 0 WIN] SPICY MOBILE sources: ${track.lines.size} lines, wordSynced=${track.isWordSynced} (source=${track.source})")
+        )
+        mobile.track?.let { track ->
+            DebugLog.i(TAG, "✅ [Tier 0 WIN] SPICY MOBILE sources: ${track.lines.size} lines, wordSynced=${track.isWordSynced} (source=${track.source}, complete=${mobile.complete})")
             val result = if (track.isWordSynced) track else track.synthesizeWordsIfMissing()
-            trackCache.put(cacheKey, result)
-            saveTrackToDisk(cacheKey, result)
+            // A pick shown at its time budget is not cached: the next play asks the slow sources again.
+            if (mobile.complete) {
+                trackCache.put(cacheKey, result)
+                saveTrackToDisk(cacheKey, result)
+            }
             return@withContext result
-        } ?: DebugLog.i(TAG, "⚠️ [Tier 0 MISS] Spicy Lyrics Mobile sources returned nothing")
+        } ?: DebugLog.i(TAG, "⚠️ [Tier 0 MISS] Spicy Lyrics Mobile sources returned nothing (definitive=${mobile.definitive})")
+        // Every source already said no: the older tiers below ask the same ones again, so skip them.
+        val skipOldTiers = mobile.definitive
 
         // 1. Spicy Lyrics Official API (Top priority — word-sync only)
         var spicyLineFallbackTrack: LyricTrack? = null
-        if (trackId.isNotEmpty() && !isCircuitOpen("spicylyrics")) {
+        if (!skipOldTiers && trackId.isNotEmpty() && !isCircuitOpen("spicylyrics")) {
             DebugLog.i(TAG, "━━━ [Tier 1] Trying Spicy Lyrics API for trackId='$trackId'")
             fetchFromSpicyLyrics(trackId, durationMs)?.let { track ->
                 if (track.isWordSynced) {
@@ -423,7 +429,7 @@ class LyricsRepository(
         }
 
         // 2. Lrcmux Word-Sync Mirror (Native Word Timestamps)
-        if (!isCircuitOpen("lrcmux")) {
+        if (!skipOldTiers && !isCircuitOpen("lrcmux")) {
             DebugLog.i(TAG, "━━━ [Tier 2] Trying Lrcmux Word-Sync Mirror")
             fetchFromLrcmux(artist, title, album, isrc, durationMs, requireWordSync = true)?.let { track ->
                 if (track.isWordSynced) {
@@ -441,7 +447,7 @@ class LyricsRepository(
 
         // 3. LRCLIB
         DebugLog.i(TAG, "━━━ [Tier 3] Trying LRCLIB for '$cleanTitle' by '$artist'")
-        fetchFromLrclib(artist, title, album, durationMs)?.let { track ->
+        (if (skipOldTiers) null else fetchFromLrclib(artist, title, album, durationMs))?.let { track ->
             val synthesized = track.synthesizeWordsIfMissing()
             DebugLog.i(TAG, "✅ [Tier 3 WIN] LRCLIB: ${synthesized.lines.size} lines, wordSynced=${synthesized.isWordSynced}")
             trackCache.put(cacheKey, synthesized)
@@ -464,7 +470,7 @@ class LyricsRepository(
         }
 
         // 5. Lrcmux Line-Level Fallback
-        if (!isCircuitOpen("lrcmux")) {
+        if (!skipOldTiers && !isCircuitOpen("lrcmux")) {
             DebugLog.i(TAG, "━━━ [Tier 5] Trying Lrcmux Line-Level Fallback")
             fetchFromLrcmux(artist, title, album, isrc, durationMs, requireWordSync = false)?.let { lineTrack ->
                 val synthesized = lineTrack.synthesizeWordsIfMissing()

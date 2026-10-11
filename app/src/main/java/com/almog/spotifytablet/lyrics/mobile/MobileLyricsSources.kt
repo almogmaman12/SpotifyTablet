@@ -15,6 +15,7 @@ import com.almog.spotifytablet.lyrics.model.LyricLine
 import com.almog.spotifytablet.lyrics.model.LyricTrack
 import com.almog.spotifytablet.lyrics.model.WordSync
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Lyrics sources of Spicy Lyrics Mobile (Spicy Lyrics, LRCLIB, AMLL TTML DB, Unison, Apple, NetEase,
@@ -63,14 +64,35 @@ object MobileLyricsSources {
         b.setPolicy(policy.sourceOrder, disabled)
     }
 
+    /**
+     * [track] is what was found (null for nothing). [complete] is false when the lookup stopped at its
+     * time budget with a not-yet-final pick: show it, but do not cache it as the answer.
+     * [definitive] is true when every source answered and none had lyrics, so asking the app's older
+     * fallback sources the same questions again would only waste time.
+     */
+    class Outcome(val track: LyricTrack?, val complete: Boolean, val definitive: Boolean)
+
+    /** Shows the best answer so far once this long has passed, if any source has found lyrics. */
+    private const val SOFT_BUDGET_MS = 3_500L
+    /** Gives up on slow sources entirely after this long. */
+    private const val HARD_BUDGET_MS = 9_000L
+
     suspend fun fetch(
         artist: String,
         title: String,
         album: String,
         durationMs: Int,
         spotifyTrackId: String?
-    ): LyricTrack? {
-        val backend = backend ?: return null
+    ): LyricTrack? = fetchOutcome(artist, title, album, durationMs, spotifyTrackId).track
+
+    suspend fun fetchOutcome(
+        artist: String,
+        title: String,
+        album: String,
+        durationMs: Int,
+        spotifyTrackId: String?
+    ): Outcome {
+        val backend = backend ?: return Outcome(null, complete = true, definitive = false)
         val request = LyricsLookupRequest(
             artist = artist,
             title = title,
@@ -80,19 +102,39 @@ object MobileLyricsSources {
         )
         return try {
             val cached = backend.cachedResolution(request)
+            var complete = true
             val resolution = if (cached != null && cached.settled) {
                 cached.resolution
             } else {
-                backend.resolve(request, cached?.answers?.toMutableMap() ?: mutableMapOf()).also { backend.store(request, it) }
+                // Answers that land stay in [known], so a second ask below never repeats them.
+                val known = cached?.answers?.toMutableMap() ?: mutableMapOf()
+                var best: RemoteLyricsResolution? = cached?.resolution
+                val first = withTimeoutOrNull(SOFT_BUDGET_MS) {
+                    backend.resolve(request, known) { best = it }
+                }
+                val final = when {
+                    first != null -> first
+                    best is RemoteLyricsResolution.Found -> {
+                        // Good enough to show now; a better source may still be out.
+                        complete = false
+                        best!!
+                    }
+                    else -> withTimeoutOrNull(HARD_BUDGET_MS - SOFT_BUDGET_MS) {
+                        backend.resolve(request, known)
+                    } ?: best.also { complete = false } ?: return Outcome(null, complete = false, definitive = false)
+                }
+                if (final is RemoteLyricsResolution.Found || complete) backend.store(request, final)
+                final
             }
-            val found = resolution as? RemoteLyricsResolution.Found ?: return null
+            val found = resolution as? RemoteLyricsResolution.Found
+                ?: return Outcome(null, complete = complete, definitive = complete && resolution is RemoteLyricsResolution.NotFound)
             val ready = RemoteLyricsAdapter.render(found.selection, durationMs.toLong())
-            toTrack(ready)
+            Outcome(toTrack(ready), complete, definitive = false)
         } catch (c: CancellationException) {
             throw c
         } catch (t: Throwable) {
             android.util.Log.w("MobileLyricsSources", "lookup failed", t)
-            null
+            Outcome(null, complete = false, definitive = false)
         }
     }
 
