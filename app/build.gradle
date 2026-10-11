@@ -14,6 +14,12 @@ if (localPropsFile.exists()) {
 }
 
 android {
+    packaging {
+        resources {
+            // Both Kuromoji jars carry the same license/notes files.
+            pickFirsts += ['META-INF/CONTRIBUTORS.md', 'META-INF/LICENSE.md', 'META-INF/LICENSE', 'META-INF/NOTICE', 'META-INF/NOTICE.md', 'META-INF/DEPENDENCIES']
+        }
+    }
     namespace 'com.almog.spotifytablet'
     compileSdk 35
 
