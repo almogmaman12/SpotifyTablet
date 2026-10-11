@@ -1,12 +1,22 @@
 package com.almog.spotifytablet;
 
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.graphics.Color;
+import android.graphics.Typeface;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.TextWatcher;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.EditText;
 import android.widget.ImageButton;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -14,506 +24,748 @@ import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.google.android.material.button.MaterialButton;
 import com.google.android.material.switchmaterial.SwitchMaterial;
-import com.google.android.material.textfield.TextInputEditText;
 
-public class
-SettingsActivity extends AppCompatActivity {
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.function.IntConsumer;
+import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
+/**
+ * Settings: a category list on the left, the open category's rows on the right, and a search box
+ * that finds any setting. Rows are plain data (title, subtitle, a view factory), and only the open
+ * section's views exist, so the screen opens instantly and stays light.
+ */
+public class SettingsActivity extends AppCompatActivity {
+
+    // Keys other classes read (kept from the previous settings screen).
     public static final String PREF_HOME_STYLE = "home_screen_style";
     public static final String STYLE_OLD = "old";
     public static final String STYLE_NEW = "new";
-
     public static final String PREF_KEEP_SCREEN_ON = "keep_screen_on";
     public static final String PREF_DYNAMIC_SPACING = "lyrics_dynamic_spacing";
     public static final String PREF_PAUSE_DOTS = "lyrics_pause_dots_enabled";
 
-    // -----------------------------------------------------------------------
-    // Views
-    // -----------------------------------------------------------------------
+    private static final String PREF_LYRICS_ANIMATION = "lyrics_animation_enabled";
+    private static final String PREF_RENDERER = "lyrics_renderer";
+    private static final String PREF_ROMANIZE = "lyrics_romanize";
+    private static final String PREF_TRANSLATE_TARGET = "lyrics_translate_target";
+    private static final String PREF_TRANSLATION_MODE = "lyrics_translation_mode";
 
-    // Display & Dashboard
-    private RadioGroup radioGroupHomeScreen;
-    private RadioButton radioHomeScreenNew;
-    private RadioButton radioHomeScreenOld;
-    private SwitchMaterial switchKeepScreenOn;
-    private SeekBar seekBlurIntensity;
-    private TextView tvBlurValue;
-    private SwitchMaterial switchAodShowSong;
+    private static final int ACCENT = Color.parseColor("#1DB954");
+    private static final int TEXT = Color.WHITE;
+    private static final int TEXT_DIM = Color.parseColor("#9AA3B2");
+    private static final int DIVIDER = Color.parseColor("#1F2430");
 
-    // Lyrics Engine
-    private SwitchMaterial switchLyricsAnimation;
-    private SwitchMaterial switchDynamicSpacing;
-    private SwitchMaterial switchPauseDots;
-    private SeekBar seekLyricsFontSize;
-    private TextView tvLyricsFontValue;
+    // ---------------------------------------------------------------------
+    // Model
+    // ---------------------------------------------------------------------
 
-    // Playback & Sources
-    private RadioGroup radioGroupMediaSource;
-    private RadioButton radioSourceAuto;
-    private RadioButton radioSourceSpotify;
-    private RadioButton radioSourceJellyfin;
-    private SwitchMaterial switchSpotifyUpdates;
-    private SeekBar seekPollPlaying;
-    private TextView tvPollPlayingValue;
-    private SeekBar seekPollPaused;
-    private TextView tvPollPausedValue;
-    private SeekBar seekVolumeStep;
-    private TextView tvVolumeStepValue;
+    private static final class Row {
+        final String title;
+        final String subtitle;
+        final Supplier<View> make;
 
-    // Jellyfin
-    private TextInputEditText etJellyfinUrl;
-    private TextInputEditText etJellyfinApiKey;
-    private TextInputEditText etJellyfinTargetUser;
-    private TextInputEditText etJellyfinClient;
-    private MaterialButton btnSaveJellyfin;
+        Row(String title, String subtitle, Supplier<View> make) {
+            this.title = title;
+            this.subtitle = subtitle == null ? "" : subtitle;
+            this.make = make;
+        }
+    }
 
-    // Home Assistant
-    private TextInputEditText etHaUrl;
-    private TextInputEditText etHaToken;
-    private TextInputEditText etHaLightEntity;
-    private TextInputEditText etVolUpWebhook;
-    private TextInputEditText etVolDownWebhook;
-    private MaterialButton btnSaveHa;
+    /** A titled card of rows. */
+    private static final class Group {
+        final String label;
+        final List<Row> rows = new ArrayList<>();
 
-    // Weather
-    private TextInputEditText etWeatherCity;
-    private MaterialButton btnSaveWeather;
+        Group(String label) {
+            this.label = label;
+        }
+    }
 
-    // Cache & Account
-    private MaterialButton btnClearLyricsCache;
-    private MaterialButton btnResetSettings;
-    private MaterialButton btnReauthorizeSpotify;
+    private static final class Section {
+        final String name;
+        final List<Group> groups = new ArrayList<>();
 
-    // -----------------------------------------------------------------------
+        Section(String name) {
+            this.name = name;
+        }
+    }
+
+    private SharedPreferences prefs;
+    private float density;
+    private final List<Section> sections = new ArrayList<>();
+    private final List<TextView> navItems = new ArrayList<>();
+    private int selected = 0;
+    private LinearLayout content;
+    private ScrollView contentScroll;
+    private TextView tvSectionTitle;
+
+    // ---------------------------------------------------------------------
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-                | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-                | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
-                | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true);
-            setTurnScreenOn(true);
-        }
+                        | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                        | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                        | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        setShowWhenLocked(true);
+        setTurnScreenOn(true);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                         | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_FULLSCREEN
-        );
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN);
         if (getSupportActionBar() != null) getSupportActionBar().hide();
 
         setContentView(R.layout.activity_settings);
+        prefs = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE);
+        density = getResources().getDisplayMetrics().density;
+        if (savedInstanceState != null) selected = savedInstanceState.getInt("section", 0);
 
-        ImageButton btnBack = findViewById(R.id.btnBack);
-        btnBack.setOnClickListener(v -> finish());
+        ImageButton back = findViewById(R.id.btnBack);
+        back.setOnClickListener(v -> finish());
+        content = findViewById(R.id.content);
+        contentScroll = findViewById(R.id.contentScroll);
+        tvSectionTitle = findViewById(R.id.tvSectionTitle);
 
-        SharedPreferences prefs = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE);
+        try {
+            PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            ((TextView) findViewById(R.id.tvVersion)).setText("Version " + info.versionName);
+        } catch (Exception ignored) {
+        }
 
-        // ===================================================================
-        // 1. DISPLAY & DASHBOARD
-        // ===================================================================
-        radioGroupHomeScreen = findViewById(R.id.radioGroupHomeScreen);
-        radioHomeScreenNew   = findViewById(R.id.radioHomeScreenNew);
-        radioHomeScreenOld   = findViewById(R.id.radioHomeScreenOld);
+        buildSections();
+        buildNav();
+        if (selected < 0 || selected >= sections.size()) selected = 0;
+        showSection(selected);
 
-        String currentStyle = prefs.getString(PREF_HOME_STYLE, STYLE_NEW);
-        if (STYLE_OLD.equals(currentStyle)) radioHomeScreenOld.setChecked(true);
-        else                                 radioHomeScreenNew.setChecked(true);
+        EditText search = findViewById(R.id.etSearch);
+        search.addTextChangedListener(new SimpleWatcher(text -> {
+            String q = text.trim();
+            if (q.isEmpty()) showSection(selected);
+            else showSearch(q);
+        }));
+    }
 
-        radioGroupHomeScreen.setOnCheckedChangeListener((g, id) -> {
-            String s = (id == R.id.radioHomeScreenOld) ? STYLE_OLD : STYLE_NEW;
-            prefs.edit().putString(PREF_HOME_STYLE, s).apply();
-            Toast.makeText(this, "Dashboard layout updated", Toast.LENGTH_SHORT).show();
-        });
+    @Override
+    protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        out.putInt("section", selected);
+    }
 
-        // Keep Screen On
-        switchKeepScreenOn = findViewById(R.id.switchKeepScreenOn);
-        switchKeepScreenOn.setChecked(prefs.getBoolean(PREF_KEEP_SCREEN_ON, true));
-        switchKeepScreenOn.setOnCheckedChangeListener((b, on) -> {
-            prefs.edit().putBoolean(PREF_KEEP_SCREEN_ON, on).apply();
-            if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            else    getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        });
+    // ---------------------------------------------------------------------
+    // Sections (the whole settings catalogue lives here)
+    // ---------------------------------------------------------------------
 
-        // Background Blur Intensity
-        seekBlurIntensity = findViewById(R.id.seekBlurIntensity);
-        tvBlurValue        = findViewById(R.id.tvBlurValue);
-        int blurSaved = prefs.getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100);
-        seekBlurIntensity.setProgress(blurSaved - 10); // seekBar min=10 stored as progress offset
-        tvBlurValue.setText(String.valueOf(blurSaved));
-        seekBlurIntensity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar s, int p, boolean u) {
-                int v = p + 10;
-                tvBlurValue.setText(String.valueOf(v));
-                prefs.edit().putInt(Constants.PREF_KEY_BLUR_INTENSITY, v).apply();
-            }
-            @Override public void onStartTrackingTouch(SeekBar s) {}
-            @Override public void onStopTrackingTouch(SeekBar s) {}
-        });
+    private void buildSections() {
+        // ---- Display ----
+        Section display = new Section("Display");
+        Group layout = new Group("Layout");
+        layout.rows.add(segmentRow("Home layout",
+                "Modern Split has the lyrics stage with controls and clock on the left.",
+                PREF_HOME_STYLE, STYLE_NEW,
+                new String[]{"Modern Split", "Classic"}, new String[]{STYLE_NEW, STYLE_OLD}));
+        display.groups.add(layout);
+        Group screen = new Group("Screen");
+        screen.rows.add(switchRow("Keep screen on",
+                "Stops the tablet display from sleeping.", PREF_KEEP_SCREEN_ON, true, on -> {
+                    if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                }));
+        screen.rows.add(sliderRow("Background blur",
+                "How strongly the album art is blurred behind the player.",
+                10, 190, prefs.getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100),
+                v -> String.valueOf(v), v -> prefs.edit().putInt(Constants.PREF_KEY_BLUR_INTENSITY, v).apply()));
+        screen.rows.add(switchRow("Show song when paused",
+                "Always-on clock keeps showing the last song's title.",
+                Constants.PREF_KEY_AOD_SHOW_SONG, true, null));
+        display.groups.add(screen);
+        sections.add(display);
 
-        // AOD show song on pause
-        switchAodShowSong = findViewById(R.id.switchAodShowSong);
-        switchAodShowSong.setChecked(prefs.getBoolean(Constants.PREF_KEY_AOD_SHOW_SONG, true));
-        switchAodShowSong.setOnCheckedChangeListener((b, on) ->
-                prefs.edit().putBoolean(Constants.PREF_KEY_AOD_SHOW_SONG, on).apply());
+        // ---- Lyrics ----
+        Section lyrics = new Section("Lyrics");
+        Group look = new Group("Look");
+        look.rows.add(choiceRow("Renderer",
+                "Restart the app after changing.",
+                PREF_RENDERER, "mobile",
+                new String[]{"Spicy Lyrics Mobile", "Spicy Lyrics (web view)", "Original"},
+                new String[]{"mobile", "web", "native"}));
+        look.rows.add(sliderRow("Lyrics size",
+                "Size of the active line. Bigger reads better from a distance.",
+                24, 48, prefs.getInt(Constants.PREF_KEY_LYRICS_FONT_SIZE, 32),
+                v -> v + " sp", v -> prefs.edit().putInt(Constants.PREF_KEY_LYRICS_FONT_SIZE, v).apply()));
+        look.rows.add(switchRow("Word animations",
+                "Smooth word-by-word highlighting and movement.", PREF_LYRICS_ANIMATION, true, null));
+        look.rows.add(switchRow("Dynamic line spacing",
+                "Keeps multi-line lyrics evenly spaced (original renderer).", PREF_DYNAMIC_SPACING, true, null));
+        look.rows.add(switchRow("Interlude dots",
+                "Pulsing dots during instrumental gaps (original renderer).", PREF_PAUSE_DOTS, true, null));
+        lyrics.groups.add(look);
 
-        // ===================================================================
-        // 2. LYRICS ENGINE
-        // ===================================================================
-        switchLyricsAnimation = findViewById(R.id.switchLyricsAnimation);
-        switchLyricsAnimation.setChecked(prefs.getBoolean("lyrics_animation_enabled", true));
-        switchLyricsAnimation.setOnCheckedChangeListener((b, on) -> {
-            prefs.edit().putBoolean("lyrics_animation_enabled", on).apply();
-            Toast.makeText(this, on ? "Lyrics animation enabled" : "Disabled", Toast.LENGTH_SHORT).show();
-        });
+        Group source = new Group("Sources");
+        source.rows.add(sourcesRow());
+        lyrics.groups.add(source);
 
-        switchDynamicSpacing = findViewById(R.id.switchDynamicSpacing);
-        switchDynamicSpacing.setChecked(prefs.getBoolean(PREF_DYNAMIC_SPACING, true));
-        switchDynamicSpacing.setOnCheckedChangeListener((b, on) ->
-                prefs.edit().putBoolean(PREF_DYNAMIC_SPACING, on).apply());
+        Group lang = new Group("Translation & romanization");
+        lang.rows.add(switchRow("Romanization",
+                "Latin letters for Japanese, Chinese, Korean, Cyrillic and Greek lyrics.",
+                PREF_ROMANIZE, false, null));
+        lang.rows.add(choiceRow("Translate to",
+                "Uses Google Translate and sends the lyric text to Google.",
+                PREF_TRANSLATE_TARGET, "",
+                new String[]{"Off", "English", "Hebrew", "Arabic", "Russian", "Spanish", "French", "German"},
+                new String[]{"", "en", "he", "ar", "ru", "es", "fr", "de"}));
+        lang.rows.add(segmentRow("Translation style",
+                "Show the translation under each line, or replace the original.",
+                PREF_TRANSLATION_MODE, "under",
+                new String[]{"Under line", "Replace"}, new String[]{"under", "replace"}));
+        lyrics.groups.add(lang);
+        sections.add(lyrics);
 
-        switchPauseDots = findViewById(R.id.switchPauseDots);
-        switchPauseDots.setChecked(prefs.getBoolean(PREF_PAUSE_DOTS, true));
-        switchPauseDots.setOnCheckedChangeListener((b, on) ->
-                prefs.edit().putBoolean(PREF_PAUSE_DOTS, on).apply());
+        // ---- Playback ----
+        Section playback = new Section("Playback");
+        Group src = new Group("Source");
+        src.rows.add(segmentRow("Media source",
+                "Which player the tablet follows. Auto picks whichever is playing.",
+                Constants.PREF_KEY_MEDIA_SOURCE, "auto",
+                new String[]{"Auto", "Spotify", "Jellyfin"}, new String[]{"auto", "spotify", "jellyfin"}));
+        playback.groups.add(src);
+        Group updates = new Group("Updates");
+        updates.rows.add(switchRow("Live track updates",
+                "Keeps checking what is playing. Turn off to save battery and API quota.",
+                Constants.PREF_KEY_SPOTIFY_UPDATES_ENABLED, true, null));
+        updates.rows.add(sliderRow("Check every (playing)",
+                "How often to check the track while music plays.",
+                1, 56, (int) (prefs.getLong(Constants.PREF_KEY_SONG_POLL_INTERVAL, 5000L) / 1000L),
+                v -> v + " s", v -> prefs.edit().putLong(Constants.PREF_KEY_SONG_POLL_INTERVAL, v * 1000L).apply()));
+        updates.rows.add(sliderRow("Check every (paused)",
+                "Slower checks while paused, to save resources.",
+                1, 56, (int) (prefs.getLong(Constants.PREF_KEY_PAUSED_POLL_INTERVAL, 15000L) / 1000L),
+                v -> v + " s", v -> prefs.edit().putLong(Constants.PREF_KEY_PAUSED_POLL_INTERVAL, v * 1000L).apply()));
+        playback.groups.add(updates);
+        Group volume = new Group("Volume");
+        volume.rows.add(sliderRow("Volume step",
+                "How much one button press or hold tick changes the volume.",
+                1, 20, prefs.getInt(Constants.PREF_KEY_VOLUME_STEP, Constants.VOLUME_STEP),
+                v -> v + "%", v -> prefs.edit().putInt(Constants.PREF_KEY_VOLUME_STEP, v).apply()));
+        playback.groups.add(volume);
+        sections.add(playback);
 
-        // Lyrics Font Size: seekBar progress 0..24 → sp 24..48
-        seekLyricsFontSize = findViewById(R.id.seekLyricsFontSize);
-        tvLyricsFontValue  = findViewById(R.id.tvLyricsFontValue);
-        int savedFontSp = prefs.getInt(Constants.PREF_KEY_LYRICS_FONT_SIZE, 32);
-        int fontProgress = Math.max(0, Math.min(24, savedFontSp - 24));
-        seekLyricsFontSize.setProgress(fontProgress);
-        tvLyricsFontValue.setText(savedFontSp + "sp");
-        seekLyricsFontSize.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar s, int p, boolean u) {
-                int sp = p + 24;
-                tvLyricsFontValue.setText(sp + "sp");
-                prefs.edit().putInt(Constants.PREF_KEY_LYRICS_FONT_SIZE, sp).apply();
-            }
-            @Override public void onStartTrackingTouch(SeekBar s) {}
-            @Override public void onStopTrackingTouch(SeekBar s) {}
-        });
+        // ---- Jellyfin ----
+        Section jelly = new Section("Jellyfin");
+        Group js = new Group("Server");
+        js.rows.add(textRow("Server URL", "Address of your Jellyfin server.",
+                Constants.PREF_KEY_JELLYFIN_SERVER_URL, Constants.DEFAULT_JELLYFIN_URL, "http://192.168.1.100:8096", false));
+        js.rows.add(textRow("API key", "Created in Jellyfin under Dashboard, API keys.",
+                Constants.PREF_KEY_JELLYFIN_API_KEY, Constants.DEFAULT_JELLYFIN_API_KEY, "API key", true));
+        jelly.groups.add(js);
+        Group jf = new Group("Which session to follow");
+        jf.rows.add(textRow("User", "Leave empty to follow any active user.",
+                Constants.PREF_KEY_JELLYFIN_TARGET_USER, Constants.DEFAULT_JELLYFIN_TARGET_USER, "Any user", false));
+        jf.rows.add(textRow("Device name", "Leave empty to match any Jellyfin device.",
+                Constants.PREF_KEY_JELLYFIN_CLIENT_NAME, "", "Any device", false));
+        jelly.groups.add(jf);
+        sections.add(jelly);
 
-        // ===================================================================
-        // 3. PLAYBACK & SOURCES
-        // ===================================================================
-        radioGroupMediaSource = findViewById(R.id.radioGroupMediaSource);
-        radioSourceAuto       = findViewById(R.id.radioSourceAuto);
-        radioSourceSpotify    = findViewById(R.id.radioSourceSpotify);
-        radioSourceJellyfin   = findViewById(R.id.radioSourceJellyfin);
+        // ---- Smart home ----
+        Section home = new Section("Smart home");
+        Group ha = new Group("Home Assistant");
+        ha.rows.add(textRow("Server URL", "Address of Home Assistant.",
+                Constants.PREF_KEY_HA_URL, Constants.DEFAULT_HA_URL, "http://homeassistant.local:8123", false));
+        ha.rows.add(textRow("Access token", "A long-lived access token from your Home Assistant profile.",
+                Constants.PREF_KEY_HA_TOKEN, "", "Token", true));
+        ha.rows.add(textRow("Light entities", "Lights the light button controls, separated by commas.",
+                Constants.PREF_KEY_LIGHT_ENTITY_ID, "light.lmvg_1, light.lmvg_2", "light.living_room, light.kitchen", false));
+        home.groups.add(ha);
+        Group wh = new Group("Volume webhooks");
+        wh.rows.add(textRow("Volume up webhook", "Called when you raise the volume.",
+                Constants.PREF_KEY_VOL_UP_WEBHOOK, "", "https://", false));
+        wh.rows.add(textRow("Volume down webhook", "Called when you lower the volume.",
+                Constants.PREF_KEY_VOL_DOWN_WEBHOOK, "", "https://", false));
+        home.groups.add(wh);
+        sections.add(home);
 
-        String src = prefs.getString(Constants.PREF_KEY_MEDIA_SOURCE, "auto");
-        if ("spotify".equals(src))   radioSourceSpotify.setChecked(true);
-        else if ("jellyfin".equals(src)) radioSourceJellyfin.setChecked(true);
-        else                          radioSourceAuto.setChecked(true);
+        // ---- Weather ----
+        Section weather = new Section("Weather");
+        Group wl = new Group("Location");
+        wl.rows.add(textRow("Location",
+                "A city name like Tel Aviv, or coordinates as lat,lon. Restart the app to apply.",
+                Constants.PREF_KEY_WEATHER_CITY, Constants.DEFAULT_WEATHER_CITY, "32.0853,34.7818", false));
+        weather.groups.add(wl);
+        sections.add(weather);
 
-        radioGroupMediaSource.setOnCheckedChangeListener((g, id) -> {
-            String s = "auto";
-            if (id == R.id.radioSourceSpotify) s = "spotify";
-            else if (id == R.id.radioSourceJellyfin) s = "jellyfin";
-            prefs.edit().putString(Constants.PREF_KEY_MEDIA_SOURCE, s).apply();
-            Toast.makeText(this, "Active source: " + s, Toast.LENGTH_SHORT).show();
-        });
-
-        switchSpotifyUpdates = findViewById(R.id.switchSpotifyUpdates);
-        switchSpotifyUpdates.setChecked(prefs.getBoolean(Constants.PREF_KEY_SPOTIFY_UPDATES_ENABLED, true));
-        switchSpotifyUpdates.setOnCheckedChangeListener((b, on) ->
-                prefs.edit().putBoolean(Constants.PREF_KEY_SPOTIFY_UPDATES_ENABLED, on).apply());
-
-        // Polling interval — playing (seekBar: 0..55 → 1..56 s)
-        seekPollPlaying    = findViewById(R.id.seekPollPlaying);
-        tvPollPlayingValue = findViewById(R.id.tvPollPlayingValue);
-        long savedPollPlay = prefs.getLong(Constants.PREF_KEY_SONG_POLL_INTERVAL, 5000L);
-        int playProgress   = (int) Math.max(0, Math.min(55, savedPollPlay / 1000L - 1));
-        seekPollPlaying.setProgress(playProgress);
-        tvPollPlayingValue.setText((playProgress + 1) + "s");
-        seekPollPlaying.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar s, int p, boolean u) {
-                long ms = (p + 1) * 1000L;
-                tvPollPlayingValue.setText((p + 1) + "s");
-                prefs.edit().putLong(Constants.PREF_KEY_SONG_POLL_INTERVAL, ms).apply();
-            }
-            @Override public void onStartTrackingTouch(SeekBar s) {}
-            @Override public void onStopTrackingTouch(SeekBar s) {}
-        });
-
-        // Polling interval — paused
-        seekPollPaused    = findViewById(R.id.seekPollPaused);
-        tvPollPausedValue = findViewById(R.id.tvPollPausedValue);
-        long savedPollPaused = prefs.getLong(Constants.PREF_KEY_PAUSED_POLL_INTERVAL, 15000L);
-        int pausedProgress   = (int) Math.max(0, Math.min(55, savedPollPaused / 1000L - 1));
-        seekPollPaused.setProgress(pausedProgress);
-        tvPollPausedValue.setText((pausedProgress + 1) + "s");
-        seekPollPaused.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar s, int p, boolean u) {
-                long ms = (p + 1) * 1000L;
-                tvPollPausedValue.setText((p + 1) + "s");
-                prefs.edit().putLong(Constants.PREF_KEY_PAUSED_POLL_INTERVAL, ms).apply();
-            }
-            @Override public void onStartTrackingTouch(SeekBar s) {}
-            @Override public void onStopTrackingTouch(SeekBar s) {}
-        });
-
-        // Volume Step (seekBar: 0..19 → 1..20 %)
-        seekVolumeStep    = findViewById(R.id.seekVolumeStep);
-        tvVolumeStepValue = findViewById(R.id.tvVolumeStepValue);
-        int savedStep     = prefs.getInt(Constants.PREF_KEY_VOLUME_STEP, Constants.VOLUME_STEP);
-        int stepProgress  = Math.max(0, Math.min(19, savedStep - 1));
-        seekVolumeStep.setProgress(stepProgress);
-        tvVolumeStepValue.setText(savedStep + "%");
-        seekVolumeStep.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar s, int p, boolean u) {
-                int v = p + 1;
-                tvVolumeStepValue.setText(v + "%");
-                prefs.edit().putInt(Constants.PREF_KEY_VOLUME_STEP, v).apply();
-            }
-            @Override public void onStartTrackingTouch(SeekBar s) {}
-            @Override public void onStopTrackingTouch(SeekBar s) {}
-        });
-
-        // ===================================================================
-        // 4. JELLYFIN
-        // ===================================================================
-        etJellyfinUrl        = findViewById(R.id.etJellyfinUrl);
-        etJellyfinApiKey     = findViewById(R.id.etJellyfinApiKey);
-        etJellyfinTargetUser = findViewById(R.id.etJellyfinTargetUser);
-        etJellyfinClient     = findViewById(R.id.etJellyfinClient);
-        btnSaveJellyfin      = findViewById(R.id.btnSaveJellyfin);
-
-        etJellyfinUrl.setText(prefs.getString(Constants.PREF_KEY_JELLYFIN_SERVER_URL, Constants.DEFAULT_JELLYFIN_URL));
-        etJellyfinApiKey.setText(prefs.getString(Constants.PREF_KEY_JELLYFIN_API_KEY, Constants.DEFAULT_JELLYFIN_API_KEY));
-        etJellyfinTargetUser.setText(prefs.getString(Constants.PREF_KEY_JELLYFIN_TARGET_USER, Constants.DEFAULT_JELLYFIN_TARGET_USER));
-        etJellyfinClient.setText(prefs.getString(Constants.PREF_KEY_JELLYFIN_CLIENT_NAME, ""));
-
-        btnSaveJellyfin.setOnClickListener(v -> {
-            String url    = str(etJellyfinUrl);
-            String key    = str(etJellyfinApiKey);
-            String user   = str(etJellyfinTargetUser);
-            String client = str(etJellyfinClient);
-            prefs.edit()
-                    .putString(Constants.PREF_KEY_JELLYFIN_SERVER_URL, url)
-                    .putString(Constants.PREF_KEY_JELLYFIN_API_KEY, key)
-                    .putString(Constants.PREF_KEY_JELLYFIN_TARGET_USER, user)
-                    .putString(Constants.PREF_KEY_JELLYFIN_CLIENT_NAME, client)
-                    .apply();
-            Toast.makeText(this, "Jellyfin settings saved", Toast.LENGTH_SHORT).show();
-        });
-
-        // ===================================================================
-        // 5. HOME ASSISTANT
-        // ===================================================================
-        etHaUrl        = findViewById(R.id.etHaUrl);
-        etHaToken      = findViewById(R.id.etHaToken);
-        etHaLightEntity = findViewById(R.id.etHaLightEntity);
-        etVolUpWebhook  = findViewById(R.id.etVolUpWebhook);
-        etVolDownWebhook = findViewById(R.id.etVolDownWebhook);
-        btnSaveHa       = findViewById(R.id.btnSaveHa);
-
-        etHaUrl.setText(prefs.getString(Constants.PREF_KEY_HA_URL, Constants.DEFAULT_HA_URL));
-        etHaToken.setText(prefs.getString(Constants.PREF_KEY_HA_TOKEN, ""));
-        etHaLightEntity.setText(prefs.getString(Constants.PREF_KEY_LIGHT_ENTITY_ID,
-                "light.lmvg_1, light.lmvg_2"));
-        etVolUpWebhook.setText(prefs.getString(Constants.PREF_KEY_VOL_UP_WEBHOOK, ""));
-        etVolDownWebhook.setText(prefs.getString(Constants.PREF_KEY_VOL_DOWN_WEBHOOK, ""));
-
-        btnSaveHa.setOnClickListener(v -> {
-            prefs.edit()
-                    .putString(Constants.PREF_KEY_HA_URL, str(etHaUrl))
-                    .putString(Constants.PREF_KEY_HA_TOKEN, str(etHaToken))
-                    .putString(Constants.PREF_KEY_LIGHT_ENTITY_ID, str(etHaLightEntity))
-                    .putString(Constants.PREF_KEY_VOL_UP_WEBHOOK, str(etVolUpWebhook))
-                    .putString(Constants.PREF_KEY_VOL_DOWN_WEBHOOK, str(etVolDownWebhook))
-                    .apply();
-            Toast.makeText(this, "Smart Home settings saved", Toast.LENGTH_SHORT).show();
-        });
-
-        // ===================================================================
-        // 6. WEATHER & LOCATION
-        // ===================================================================
-        etWeatherCity  = findViewById(R.id.etWeatherCity);
-        btnSaveWeather = findViewById(R.id.btnSaveWeather);
-
-        etWeatherCity.setText(prefs.getString(Constants.PREF_KEY_WEATHER_CITY,
-                Constants.DEFAULT_WEATHER_CITY));
-
-        btnSaveWeather.setOnClickListener(v -> {
-            prefs.edit().putString(Constants.PREF_KEY_WEATHER_CITY, str(etWeatherCity)).apply();
-            Toast.makeText(this, "Location saved — restart app to apply", Toast.LENGTH_SHORT).show();
-        });
-
-        // ===================================================================
-        // 7. ACCOUNT & CACHE
-        // ===================================================================
-        btnClearLyricsCache = findViewById(R.id.btnClearLyricsCache);
-        btnClearLyricsCache.setOnClickListener(v ->
-                new AlertDialog.Builder(this)
-                        .setTitle("Clear Lyrics Cache?")
-                        .setMessage("This will delete all cached lyrics from disk and memory. They will be re-fetched from the network next time each song plays.")
-                        .setPositiveButton("Clear", (d, w) -> {
-                            // Clears both disk cache (lyrics_cache/) and in-memory LruCache
+        // ---- Data & account ----
+        Section data = new Section("Data & account");
+        Group cache = new Group("Cache");
+        cache.rows.add(actionRow("Clear lyrics cache",
+                "Deletes saved lyrics and translations. They are fetched again next time a song plays.",
+                "Clear", false, () -> confirm("Clear lyrics cache?",
+                        "All cached lyrics are deleted and fetched again as songs play.", "Clear", () -> {
                             com.almog.spotifytablet.lyrics.repository.LyricsRepository.clearAllCache();
-                            deleteRecursively(new java.io.File(getCacheDir(), "lyrics"));
-                            deleteRecursively(new java.io.File(getCacheDir(), "translations"));
-                            Toast.makeText(this, "Lyrics cache cleared", Toast.LENGTH_SHORT).show();
-                        })
-                        .setNegativeButton("Cancel", null)
-                        .show()
-        );
-
-        setupSpicyMobileSettings();
-
-        btnResetSettings = findViewById(R.id.btnResetSettings);
-        btnResetSettings.setOnClickListener(v ->
-                new AlertDialog.Builder(this)
-                        .setTitle("Reset All Settings?")
-                        .setMessage("This will erase all API keys, credentials, and preferences. Are you sure?")
-                        .setPositiveButton("Reset", (d, w) -> {
-                            prefs.edit().clear().apply();
-                            Toast.makeText(this, "All settings reset to defaults", Toast.LENGTH_LONG).show();
-                            finish();
-                        })
-                        .setNegativeButton("Cancel", null)
-                        .show()
-        );
-
-        btnReauthorizeSpotify = findViewById(R.id.btnReauthorizeSpotify);
-        btnReauthorizeSpotify.setOnClickListener(v ->
-                new AlertDialog.Builder(this)
-                        .setTitle("Log Out of Spotify?")
-                        .setMessage("Clears saved OAuth tokens. You will need to log in again on the next launch.")
-                        .setPositiveButton("Log Out", (d, w) -> {
+                            deleteRecursively(new File(getCacheDir(), "lyrics"));
+                            deleteRecursively(new File(getCacheDir(), "translations"));
+                            toast("Lyrics cache cleared");
+                        })));
+        data.groups.add(cache);
+        Group acct = new Group("Account");
+        acct.rows.add(actionRow("Log out of Spotify",
+                "Clears the saved login. You sign in again on the next launch.",
+                "Log out", false, () -> confirm("Log out of Spotify?",
+                        "You will need to sign in again on the next launch.", "Log out", () -> {
                             prefs.edit()
                                     .remove(Constants.PREF_KEY_ACCESS_TOKEN)
                                     .remove(Constants.PREF_KEY_REFRESH_TOKEN)
                                     .remove(Constants.PREF_KEY_EXPIRES_AT)
                                     .apply();
-                            Toast.makeText(this, "Spotify session cleared", Toast.LENGTH_SHORT).show();
-                        })
-                        .setNegativeButton("Cancel", null)
-                        .show()
-        );
+                            toast("Spotify session cleared");
+                        })));
+        data.groups.add(acct);
+        Group reset = new Group("Reset");
+        reset.rows.add(actionRow("Reset all settings",
+                "Erases every setting, including API keys and tokens you typed in.",
+                "Reset", true, () -> confirm("Reset all settings?",
+                        "This erases all saved settings, keys and logins.", "Reset", () -> {
+                            prefs.edit().clear().apply();
+                            toast("All settings reset");
+                            finish();
+                        })));
+        data.groups.add(reset);
+        sections.add(data);
     }
 
-    /** Safe non-null text extractor from TextInputEditText. */
-    private String str(TextInputEditText et) {
-        return et.getText() != null ? et.getText().toString().trim() : "";
+    // ---------------------------------------------------------------------
+    // Navigation + rendering
+    // ---------------------------------------------------------------------
+
+    private void buildNav() {
+        LinearLayout nav = findViewById(R.id.navList);
+        for (int i = 0; i < sections.size(); i++) {
+            final int index = i;
+            TextView item = new TextView(this);
+            item.setText(sections.get(i).name);
+            item.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            item.setTextColor(TEXT_DIM);
+            item.setGravity(Gravity.CENTER_VERTICAL);
+            item.setPadding(dp(16), 0, dp(12), 0);
+            item.setClickable(true);
+            item.setOnClickListener(v -> {
+                selected = index;
+                ((EditText) findViewById(R.id.etSearch)).setText("");
+                showSection(index);
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
+            lp.bottomMargin = dp(2);
+            nav.addView(item, lp);
+            navItems.add(item);
+        }
     }
 
-    private static void deleteRecursively(java.io.File f) {
+    private void markNav(int index) {
+        for (int i = 0; i < navItems.size(); i++) {
+            TextView t = navItems.get(i);
+            boolean on = i == index;
+            t.setBackgroundResource(on ? R.drawable.bg_nav_selected : 0);
+            t.setTextColor(on ? TEXT : TEXT_DIM);
+            t.setTypeface(null, on ? Typeface.BOLD : Typeface.NORMAL);
+        }
+    }
+
+    private void showSection(int index) {
+        markNav(index);
+        Section s = sections.get(index);
+        tvSectionTitle.setText(s.name);
+        content.removeAllViews();
+        for (Group g : s.groups) {
+            addLabel(g.label);
+            LinearLayout card = newCard();
+            for (int i = 0; i < g.rows.size(); i++) {
+                if (i > 0) card.addView(divider());
+                card.addView(g.rows.get(i).make.get());
+            }
+            content.addView(card);
+        }
+        contentScroll.scrollTo(0, 0);
+    }
+
+    private void showSearch(String query) {
+        markNav(-1);
+        tvSectionTitle.setText("Search");
+        content.removeAllViews();
+        String q = query.toLowerCase(Locale.ROOT);
+        LinearLayout card = newCard();
+        int found = 0;
+        for (Section s : sections) {
+            for (Group g : s.groups) {
+                for (Row r : g.rows) {
+                    String hay = (r.title + " " + r.subtitle + " " + s.name + " " + g.label).toLowerCase(Locale.ROOT);
+                    if (!hay.contains(q)) continue;
+                    if (found++ > 0) card.addView(divider());
+                    card.addView(r.make.get());
+                }
+            }
+        }
+        if (found == 0) {
+            TextView none = new TextView(this);
+            none.setText("No settings match \"" + query + "\"");
+            none.setTextColor(TEXT_DIM);
+            none.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            none.setPadding(dp(20), dp(20), dp(20), dp(20));
+            card.addView(none);
+        }
+        content.addView(card);
+        contentScroll.scrollTo(0, 0);
+    }
+
+    private void addLabel(String label) {
+        TextView t = new TextView(this);
+        t.setText(label.toUpperCase(Locale.ROOT));
+        t.setTextColor(ACCENT);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        t.setLetterSpacing(0.08f);
+        t.setTypeface(null, Typeface.BOLD);
+        t.setPadding(dp(6), dp(20), 0, dp(8));
+        content.addView(t);
+    }
+
+    private LinearLayout newCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackgroundResource(R.drawable.bg_settings_card);
+        return card;
+    }
+
+    private View divider() {
+        View v = new View(this);
+        v.setBackgroundColor(DIVIDER);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 1);
+        lp.setMarginStart(dp(20));
+        v.setLayoutParams(lp);
+        return v;
+    }
+
+    // ---------------------------------------------------------------------
+    // Row builders
+    // ---------------------------------------------------------------------
+
+    private LinearLayout rowShell() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(20), dp(14), dp(20), dp(14));
+        row.setMinimumHeight(dp(64));
+        return row;
+    }
+
+    /** Title over subtitle, taking the free width. */
+    private LinearLayout titleBlock(String title, String subtitle) {
+        LinearLayout block = new LinearLayout(this);
+        block.setOrientation(LinearLayout.VERTICAL);
+        TextView t = new TextView(this);
+        t.setText(title);
+        t.setTextColor(TEXT);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        block.addView(t);
+        if (!subtitle.isEmpty()) {
+            TextView s = new TextView(this);
+            s.setText(subtitle);
+            s.setTextColor(TEXT_DIM);
+            s.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            s.setPadding(0, dp(2), 0, 0);
+            block.addView(s);
+        }
+        block.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        return block;
+    }
+
+    private Row switchRow(String title, String sub, String key, boolean def,
+                          java.util.function.Consumer<Boolean> extra) {
+        return new Row(title, sub, () -> {
+            LinearLayout row = rowShell();
+            row.addView(titleBlock(title, sub));
+            SwitchMaterial sw = new SwitchMaterial(this);
+            sw.setChecked(prefs.getBoolean(key, def));
+            sw.setOnCheckedChangeListener((b, on) -> {
+                prefs.edit().putBoolean(key, on).apply();
+                if (extra != null) extra.accept(on);
+            });
+            row.addView(sw);
+            row.setOnClickListener(v -> sw.toggle());
+            return row;
+        });
+    }
+
+    /** Inline pill buttons for two or three short options. */
+    private Row segmentRow(String title, String sub, String key, String def,
+                           String[] names, String[] values) {
+        return new Row(title, sub, () -> {
+            LinearLayout row = rowShell();
+            row.addView(titleBlock(title, sub));
+            LinearLayout pills = new LinearLayout(this);
+            pills.setOrientation(LinearLayout.HORIZONTAL);
+            final List<TextView> views = new ArrayList<>();
+            Runnable paint = () -> {
+                String cur = prefs.getString(key, def);
+                for (int i = 0; i < views.size(); i++) {
+                    boolean on = values[i].equals(cur);
+                    views.get(i).setBackgroundResource(on ? R.drawable.bg_pill_selected : R.drawable.bg_pill);
+                    views.get(i).setTextColor(on ? Color.BLACK : TEXT);
+                }
+            };
+            for (int i = 0; i < names.length; i++) {
+                final int idx = i;
+                TextView p = new TextView(this);
+                p.setText(names[i]);
+                p.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+                p.setGravity(Gravity.CENTER);
+                p.setPadding(dp(16), dp(9), dp(16), dp(9));
+                p.setOnClickListener(v -> {
+                    prefs.edit().putString(key, values[idx]).apply();
+                    paint.run();
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                if (i > 0) lp.setMarginStart(dp(8));
+                pills.addView(p, lp);
+                views.add(p);
+            }
+            paint.run();
+            row.addView(pills);
+            return row;
+        });
+    }
+
+    /** One row showing the current choice; tapping opens a list. For longer option lists. */
+    private Row choiceRow(String title, String sub, String key, String def,
+                          String[] names, String[] values) {
+        return new Row(title, sub, () -> {
+            LinearLayout row = rowShell();
+            row.addView(titleBlock(title, sub));
+            TextView value = new TextView(this);
+            value.setTextColor(ACCENT);
+            value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            value.setPadding(dp(12), 0, 0, 0);
+            Runnable paint = () -> {
+                String cur = prefs.getString(key, def);
+                int i = java.util.Arrays.asList(values).indexOf(cur);
+                value.setText(names[Math.max(0, i)] + "  ›");
+            };
+            paint.run();
+            row.addView(value);
+            row.setOnClickListener(v -> {
+                int cur = Math.max(0, java.util.Arrays.asList(values).indexOf(prefs.getString(key, def)));
+                new AlertDialog.Builder(this).setTitle(title)
+                        .setSingleChoiceItems(names, cur, (d, i) -> {
+                            prefs.edit().putString(key, values[i]).apply();
+                            d.dismiss();
+                            paint.run();
+                        }).show();
+            });
+            return row;
+        });
+    }
+
+    /** Title and live value on top, slider under; the value is saved when the finger lifts. */
+    private Row sliderRow(String title, String sub, int min, int max, int current,
+                          IntFunction<String> format, IntConsumer save) {
+        return new Row(title, sub, () -> {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(dp(20), dp(14), dp(20), dp(10));
+            LinearLayout top = new LinearLayout(this);
+            top.setGravity(Gravity.CENTER_VERTICAL);
+            top.addView(titleBlock(title, sub));
+            TextView value = new TextView(this);
+            value.setTextColor(ACCENT);
+            value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            value.setTypeface(null, Typeface.BOLD);
+            int start = Math.max(min, Math.min(max, current));
+            value.setText(format.apply(start));
+            top.addView(value);
+            row.addView(top);
+            SeekBar bar = new SeekBar(this);
+            bar.setMax(max - min);
+            bar.setProgress(start - min);
+            bar.setProgressTintList(android.content.res.ColorStateList.valueOf(ACCENT));
+            bar.setThumbTintList(android.content.res.ColorStateList.valueOf(ACCENT));
+            bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override public void onProgressChanged(SeekBar s, int p, boolean user) {
+                    value.setText(format.apply(p + min));
+                }
+                @Override public void onStartTrackingTouch(SeekBar s) {}
+                @Override public void onStopTrackingTouch(SeekBar s) {
+                    save.accept(s.getProgress() + min);
+                }
+            });
+            row.addView(bar, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(36)));
+            return row;
+        });
+    }
+
+    /** Label over a text field that saves as you type. */
+    private Row textRow(String title, String sub, String key, String def, String hint, boolean secret) {
+        return new Row(title, sub, () -> {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(dp(20), dp(14), dp(20), dp(16));
+            LinearLayout head = titleBlock(title, sub);
+            head.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            row.addView(head);
+            EditText et = new EditText(this);
+            et.setBackgroundResource(R.drawable.bg_input);
+            et.setTextColor(TEXT);
+            et.setHintTextColor(Color.parseColor("#5B6270"));
+            et.setHint(hint);
+            et.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            et.setSingleLine(true);
+            et.setPadding(dp(14), 0, dp(14), 0);
+            et.setInputType(secret
+                    ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD
+                    : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+            et.setText(prefs.getString(key, def));
+            et.addTextChangedListener(new SimpleWatcher(text ->
+                    prefs.edit().putString(key, text.trim()).apply()));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
+            lp.topMargin = dp(10);
+            row.addView(et, lp);
+            return row;
+        });
+    }
+
+    private Row actionRow(String title, String sub, String button, boolean danger, Runnable action) {
+        return new Row(title, sub, () -> {
+            LinearLayout row = rowShell();
+            row.addView(titleBlock(title, sub));
+            TextView b = new TextView(this);
+            b.setText(button);
+            b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            b.setTextColor(danger ? Color.parseColor("#FF6B6B") : TEXT);
+            b.setBackgroundResource(danger ? R.drawable.bg_btn_danger : R.drawable.bg_btn);
+            b.setPadding(dp(18), dp(10), dp(18), dp(10));
+            b.setOnClickListener(v -> action.run());
+            row.addView(b);
+            return row;
+        });
+    }
+
+    /** Which lyric sites are asked, with how many are on. Opens a checklist. */
+    private Row sourcesRow() {
+        return new Row("Lyric sources",
+                "Choose which sites are asked for lyrics (Spicy Lyrics, LRCLIB, AMLL, Unison, Apple, NetEase and more).",
+                () -> {
+                    com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.init(this);
+                    LinearLayout row = rowShell();
+                    row.addView(titleBlock("Lyric sources",
+                            "Choose which sites are asked for lyrics (Spicy Lyrics, LRCLIB, AMLL, Unison, Apple, NetEase and more)."));
+                    TextView value = new TextView(this);
+                    value.setTextColor(ACCENT);
+                    value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+                    value.setPadding(dp(12), 0, 0, 0);
+                    Runnable paint = () -> {
+                        int on = 0, total = 0;
+                        for (com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo s
+                                : com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.sources()) {
+                            total++;
+                            if (s.getEnabled()) on++;
+                        }
+                        value.setText(on + "/" + total + " on  ›");
+                    };
+                    paint.run();
+                    row.addView(value);
+                    row.setOnClickListener(v -> showSourcesDialog(paint));
+                    return row;
+                });
+    }
+
+    private void showSourcesDialog(Runnable done) {
+        final List<com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo> list =
+                com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.sources();
+        if (list.isEmpty()) {
+            toast("Sources are not ready yet");
+            return;
+        }
+        final String[] names = new String[list.size()];
+        final boolean[] checked = new boolean[list.size()];
+        for (int i = 0; i < list.size(); i++) {
+            names[i] = list.get(i).getName();
+            checked[i] = list.get(i).getEnabled();
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Lyric sources (asked in this order)")
+                .setMultiChoiceItems(names, checked, (d, which, on) -> checked[which] = on)
+                .setPositiveButton("Save", (d, w) -> {
+                    for (int i = 0; i < list.size(); i++) {
+                        com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources
+                                .setSourceEnabled(list.get(i).getId(), checked[i]);
+                    }
+                    done.run();
+                })
+                .setNeutralButton("What they send", (d, w) -> {
+                    StringBuilder sb = new StringBuilder();
+                    for (com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo s : list) {
+                        if (s.getNote() != null) {
+                            sb.append("• ").append(s.getName()).append(": ").append(s.getNote()).append("\n\n");
+                        }
+                    }
+                    new AlertDialog.Builder(this).setTitle("What turning sources on sends")
+                            .setMessage(sb.length() == 0
+                                    ? "The default sources only receive the song title, artist and length."
+                                    : sb.toString())
+                            .setPositiveButton("OK", null).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    // ---------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------
+
+    private void confirm(String title, String message, String yes, Runnable onYes) {
+        new AlertDialog.Builder(this).setTitle(title).setMessage(message)
+                .setPositiveButton(yes, (d, w) -> onYes.run())
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    private void toast(String text) {
+        Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
+    }
+
+    private int dp(int v) {
+        return Math.round(v * density);
+    }
+
+    private static void deleteRecursively(File f) {
         if (f == null || !f.exists()) return;
-        java.io.File[] children = f.listFiles();
-        if (children != null) for (java.io.File c : children) deleteRecursively(c);
+        File[] children = f.listFiles();
+        if (children != null) for (File c : children) deleteRecursively(c);
         //noinspection ResultOfMethodCallIgnored
         f.delete();
     }
 
-    // ===================================================================
-    // Spicy Lyrics Mobile renderer / romanization / translation (added programmatically)
-    // ===================================================================
-    private static final String[] RENDERER_IDS = {"mobile", "web", "native"};
-    private static final String[] RENDERER_NAMES = {
-            "Spicy Lyrics Mobile (native)", "Spicy Lyrics (web view)", "Original native renderer"};
-    private static final String[] TRANSLATE_CODES = {"", "en", "he", "ar", "ru", "es", "fr", "de"};
-    private static final String[] TRANSLATE_NAMES = {
-            "Off", "English", "Hebrew", "Arabic", "Russian", "Spanish", "French", "German"};
+    /** TextWatcher that only reports the new text. */
+    private static final class SimpleWatcher implements TextWatcher {
+        private final java.util.function.Consumer<String> onText;
 
-    private void setupSpicyMobileSettings() {
-        final SharedPreferences p = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE);
-        com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.init(this);
+        SimpleWatcher(java.util.function.Consumer<String> onText) {
+            this.onText = onText;
+        }
 
-        final TextView tvRenderer = findViewById(R.id.tvLyricsRendererValue);
-        final TextView tvSources = findViewById(R.id.tvLyricSourcesValue);
-        final SwitchMaterial swRoman = findViewById(R.id.switchRomanize);
-        final TextView tvLang = findViewById(R.id.tvTranslateLangValue);
-        final TextView tvStyle = findViewById(R.id.tvTranslateStyleValue);
-
-        final Runnable refresh = () -> {
-            int r = Math.max(0, java.util.Arrays.asList(RENDERER_IDS).indexOf(p.getString("lyrics_renderer", "mobile")));
-            tvRenderer.setText(RENDERER_NAMES[r]);
-            int on = 0, total = 0;
-            for (com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo s
-                    : com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.sources()) {
-                total++;
-                if (s.getEnabled()) on++;
-            }
-            tvSources.setText(on + "/" + total + " on");
-            int t = Math.max(0, java.util.Arrays.asList(TRANSLATE_CODES).indexOf(p.getString("lyrics_translate_target", "")));
-            tvLang.setText(TRANSLATE_NAMES[t]);
-            tvStyle.setText("replace".equals(p.getString("lyrics_translation_mode", "under")) ? "Replace" : "Under line");
-        };
-
-        swRoman.setChecked(p.getBoolean("lyrics_romanize", false));
-        swRoman.setOnCheckedChangeListener((b, on) -> p.edit().putBoolean("lyrics_romanize", on).apply());
-        findViewById(R.id.rowRomanize).setOnClickListener(v -> swRoman.toggle());
-
-        findViewById(R.id.rowLyricsRenderer).setOnClickListener(v ->
-                new AlertDialog.Builder(this).setTitle("Lyrics renderer (restart the app to apply)")
-                        .setSingleChoiceItems(RENDERER_NAMES,
-                                java.util.Arrays.asList(RENDERER_IDS).indexOf(p.getString("lyrics_renderer", "mobile")),
-                                (d, i) -> {
-                                    p.edit().putString("lyrics_renderer", RENDERER_IDS[i]).apply();
-                                    d.dismiss();
-                                    refresh.run();
-                                }).show());
-
-        findViewById(R.id.rowTranslateLang).setOnClickListener(v ->
-                new AlertDialog.Builder(this).setTitle("Translate lyrics to (sends lyric text to Google)")
-                        .setSingleChoiceItems(TRANSLATE_NAMES,
-                                java.util.Arrays.asList(TRANSLATE_CODES).indexOf(p.getString("lyrics_translate_target", "")),
-                                (d, i) -> {
-                                    p.edit().putString("lyrics_translate_target", TRANSLATE_CODES[i]).apply();
-                                    d.dismiss();
-                                    refresh.run();
-                                }).show());
-
-        findViewById(R.id.rowTranslateStyle).setOnClickListener(v -> {
-            boolean replace = "replace".equals(p.getString("lyrics_translation_mode", "under"));
-            p.edit().putString("lyrics_translation_mode", replace ? "under" : "replace").apply();
-            refresh.run();
-        });
-
-        findViewById(R.id.rowLyricSources).setOnClickListener(v -> {
-            final java.util.List<com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo> list =
-                    com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.sources();
-            if (list.isEmpty()) {
-                Toast.makeText(this, "Sources are not ready yet", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            final String[] names = new String[list.size()];
-            final boolean[] checked = new boolean[list.size()];
-            for (int i = 0; i < list.size(); i++) {
-                names[i] = list.get(i).getName();
-                checked[i] = list.get(i).getEnabled();
-            }
-            new AlertDialog.Builder(this)
-                    .setTitle("Lyric sources (asked in this order)")
-                    .setMultiChoiceItems(names, checked, (d, which, isChecked) -> checked[which] = isChecked)
-                    .setPositiveButton("Save", (d, w) -> {
-                        for (int i = 0; i < list.size(); i++) {
-                            com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.setSourceEnabled(list.get(i).getId(), checked[i]);
-                        }
-                        refresh.run();
-                    })
-                    .setNeutralButton("About", (d, w) -> {
-                        StringBuilder sb = new StringBuilder();
-                        for (com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo s : list) {
-                            if (s.getNote() != null) sb.append("• ").append(s.getName()).append(": ").append(s.getNote()).append("\n\n");
-                        }
-                        new AlertDialog.Builder(this).setTitle("What turning sources on sends")
-                                .setMessage(sb.length() == 0 ? "The default sources only receive the song title, artist and length." : sb.toString())
-                                .setPositiveButton("OK", null).show();
-                    })
-                    .setNegativeButton("Cancel", null)
-                    .show();
-        });
-
-        refresh.run();
+        @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+        @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+        @Override public void afterTextChanged(Editable s) {
+            onText.accept(s.toString());
+        }
     }
 }
