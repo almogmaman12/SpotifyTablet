@@ -117,7 +117,7 @@ class MotionCoverFinder(
             .build()
         client.newCall(request).awaitResponse().use { response ->
             if (!response.isSuccessful) throw java.io.IOException("HTTP ${response.code}")
-            return withContext(Dispatchers.IO) { response.body.string() }
+            return withContext(Dispatchers.IO) { response.body?.string().orEmpty() }
         }
     }
 

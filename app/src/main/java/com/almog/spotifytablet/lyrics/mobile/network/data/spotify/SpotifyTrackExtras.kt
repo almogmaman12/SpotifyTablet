@@ -133,7 +133,7 @@ class SpotifyTrackExtras(
                         response.code == 401 -> Fetched.Rejected
                         response.code == 404 -> Fetched.Missing
                         !response.isSuccessful -> null
-                        else -> withContext(Dispatchers.IO) { response.body.string() }.let { Fetched.Body(it) }
+                        else -> withContext(Dispatchers.IO) { response.body?.string().orEmpty() }.let { Fetched.Body(it) }
                     }
                 }
             }
@@ -164,7 +164,7 @@ class SpotifyTrackExtras(
                 when {
                     response.code == 401 -> Fetched.Rejected
                     !response.isSuccessful -> null
-                    else -> Fetched.Body(withContext(Dispatchers.IO) { response.body.string() })
+                    else -> Fetched.Body(withContext(Dispatchers.IO) { response.body?.string().orEmpty() })
                 }
             }
         }
@@ -184,7 +184,7 @@ class SpotifyTrackExtras(
         val request = Request.Builder().url(url).header("User-Agent", BROWSER_UA).build()
         client.newCall(request).awaitResponse().use { response ->
             if (!response.isSuccessful) throw java.io.IOException("HTTP ${response.code}")
-            return withContext(Dispatchers.IO) { response.body.string() }
+            return withContext(Dispatchers.IO) { response.body?.string().orEmpty() }
         }
     }
 

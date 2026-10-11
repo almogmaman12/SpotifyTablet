@@ -30,7 +30,7 @@ class ItunesReleaseYear(private val client: OkHttpClient) {
     private suspend fun get(url: String): String {
         client.newCall(Request.Builder().url(url).build()).awaitResponse().use { response ->
             if (!response.isSuccessful) throw java.io.IOException("HTTP ${response.code}")
-            return withContext(Dispatchers.IO) { response.body.string() }
+            return withContext(Dispatchers.IO) { response.body?.string().orEmpty() }
         }
     }
 
