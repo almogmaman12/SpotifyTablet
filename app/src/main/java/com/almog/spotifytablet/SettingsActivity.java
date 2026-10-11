@@ -419,63 +419,101 @@ SettingsActivity extends AppCompatActivity {
     // ===================================================================
     private static final String[] RENDERER_IDS = {"mobile", "web", "native"};
     private static final String[] RENDERER_NAMES = {
-            "Spicy Lyrics Mobile (native canvas)", "Spicy Lyrics (web view)", "Original native renderer"};
+            "Spicy Lyrics Mobile (native)", "Spicy Lyrics (web view)", "Original native renderer"};
     private static final String[] TRANSLATE_CODES = {"", "en", "he", "ar", "ru", "es", "fr", "de"};
     private static final String[] TRANSLATE_NAMES = {
             "Off", "English", "Hebrew", "Arabic", "Russian", "Spanish", "French", "German"};
 
     private void setupSpicyMobileSettings() {
-        android.view.ViewGroup row = (android.view.ViewGroup) btnClearLyricsCache.getParent();
-        android.view.ViewGroup card = (android.view.ViewGroup) row.getParent();
-        MaterialButton open = new MaterialButton(this, null,
-                com.google.android.material.R.attr.materialButtonOutlinedStyle);
-        open.setText("Lyrics renderer, romanization and translation");
-        open.setAllCaps(false);
-        open.setOnClickListener(v -> showSpicyMobileDialog());
-        android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = (int) (16 * getResources().getDisplayMetrics().density);
-        card.addView(open, card.indexOfChild(row), lp);
-    }
-
-    private void showSpicyMobileDialog() {
         final SharedPreferences p = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE);
-        String renderer = p.getString("lyrics_renderer", "mobile");
-        boolean romanize = p.getBoolean("lyrics_romanize", false);
-        String target = p.getString("lyrics_translate_target", "");
-        boolean replace = "replace".equals(p.getString("lyrics_translation_mode", "under"));
-        String[] items = {
-                "Renderer: " + RENDERER_NAMES[Math.max(0, java.util.Arrays.asList(RENDERER_IDS).indexOf(renderer))],
-                "Romanization: " + (romanize ? "On" : "Off"),
-                "Translation (Google): " + TRANSLATE_NAMES[Math.max(0, java.util.Arrays.asList(TRANSLATE_CODES).indexOf(target))],
-                "Translation style: " + (replace ? "Replace the line" : "Under each line")
+        com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.init(this);
+
+        final TextView tvRenderer = findViewById(R.id.tvLyricsRendererValue);
+        final TextView tvSources = findViewById(R.id.tvLyricSourcesValue);
+        final SwitchMaterial swRoman = findViewById(R.id.switchRomanize);
+        final TextView tvLang = findViewById(R.id.tvTranslateLangValue);
+        final TextView tvStyle = findViewById(R.id.tvTranslateStyleValue);
+
+        final Runnable refresh = () -> {
+            int r = Math.max(0, java.util.Arrays.asList(RENDERER_IDS).indexOf(p.getString("lyrics_renderer", "mobile")));
+            tvRenderer.setText(RENDERER_NAMES[r]);
+            int on = 0, total = 0;
+            for (com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo s
+                    : com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.sources()) {
+                total++;
+                if (s.getEnabled()) on++;
+            }
+            tvSources.setText(on + "/" + total + " on");
+            int t = Math.max(0, java.util.Arrays.asList(TRANSLATE_CODES).indexOf(p.getString("lyrics_translate_target", "")));
+            tvLang.setText(TRANSLATE_NAMES[t]);
+            tvStyle.setText("replace".equals(p.getString("lyrics_translation_mode", "under")) ? "Replace" : "Under line");
         };
-        new AlertDialog.Builder(this)
-                .setTitle("Lyrics")
-                .setItems(items, (d, which) -> {
-                    if (which == 0) {
-                        new AlertDialog.Builder(this).setTitle("Renderer (applies after restarting the app)")
-                                .setSingleChoiceItems(RENDERER_NAMES, java.util.Arrays.asList(RENDERER_IDS).indexOf(renderer), (d2, i) -> {
+
+        swRoman.setChecked(p.getBoolean("lyrics_romanize", false));
+        swRoman.setOnCheckedChangeListener((b, on) -> p.edit().putBoolean("lyrics_romanize", on).apply());
+        findViewById(R.id.rowRomanize).setOnClickListener(v -> swRoman.toggle());
+
+        findViewById(R.id.rowLyricsRenderer).setOnClickListener(v ->
+                new AlertDialog.Builder(this).setTitle("Lyrics renderer (restart the app to apply)")
+                        .setSingleChoiceItems(RENDERER_NAMES,
+                                java.util.Arrays.asList(RENDERER_IDS).indexOf(p.getString("lyrics_renderer", "mobile")),
+                                (d, i) -> {
                                     p.edit().putString("lyrics_renderer", RENDERER_IDS[i]).apply();
-                                    d2.dismiss();
-                                    showSpicyMobileDialog();
-                                }).show();
-                    } else if (which == 1) {
-                        p.edit().putBoolean("lyrics_romanize", !romanize).apply();
-                        showSpicyMobileDialog();
-                    } else if (which == 2) {
-                        new AlertDialog.Builder(this).setTitle("Translate lyrics to (sends lyric text to Google)")
-                                .setSingleChoiceItems(TRANSLATE_NAMES, java.util.Arrays.asList(TRANSLATE_CODES).indexOf(target), (d2, i) -> {
+                                    d.dismiss();
+                                    refresh.run();
+                                }).show());
+
+        findViewById(R.id.rowTranslateLang).setOnClickListener(v ->
+                new AlertDialog.Builder(this).setTitle("Translate lyrics to (sends lyric text to Google)")
+                        .setSingleChoiceItems(TRANSLATE_NAMES,
+                                java.util.Arrays.asList(TRANSLATE_CODES).indexOf(p.getString("lyrics_translate_target", "")),
+                                (d, i) -> {
                                     p.edit().putString("lyrics_translate_target", TRANSLATE_CODES[i]).apply();
-                                    d2.dismiss();
-                                    showSpicyMobileDialog();
-                                }).show();
-                    } else {
-                        p.edit().putString("lyrics_translation_mode", replace ? "under" : "replace").apply();
-                        showSpicyMobileDialog();
-                    }
-                })
-                .setNegativeButton("Close", null)
-                .show();
+                                    d.dismiss();
+                                    refresh.run();
+                                }).show());
+
+        findViewById(R.id.rowTranslateStyle).setOnClickListener(v -> {
+            boolean replace = "replace".equals(p.getString("lyrics_translation_mode", "under"));
+            p.edit().putString("lyrics_translation_mode", replace ? "under" : "replace").apply();
+            refresh.run();
+        });
+
+        findViewById(R.id.rowLyricSources).setOnClickListener(v -> {
+            final java.util.List<com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo> list =
+                    com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.sources();
+            if (list.isEmpty()) {
+                Toast.makeText(this, "Sources are not ready yet", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            final String[] names = new String[list.size()];
+            final boolean[] checked = new boolean[list.size()];
+            for (int i = 0; i < list.size(); i++) {
+                names[i] = list.get(i).getName();
+                checked[i] = list.get(i).getEnabled();
+            }
+            new AlertDialog.Builder(this)
+                    .setTitle("Lyric sources (asked in this order)")
+                    .setMultiChoiceItems(names, checked, (d, which, isChecked) -> checked[which] = isChecked)
+                    .setPositiveButton("Save", (d, w) -> {
+                        for (int i = 0; i < list.size(); i++) {
+                            com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.setSourceEnabled(list.get(i).getId(), checked[i]);
+                        }
+                        refresh.run();
+                    })
+                    .setNeutralButton("About", (d, w) -> {
+                        StringBuilder sb = new StringBuilder();
+                        for (com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo s : list) {
+                            if (s.getNote() != null) sb.append("• ").append(s.getName()).append(": ").append(s.getNote()).append("\n\n");
+                        }
+                        new AlertDialog.Builder(this).setTitle("What turning sources on sends")
+                                .setMessage(sb.length() == 0 ? "The default sources only receive the song title, artist and length." : sb.toString())
+                                .setPositiveButton("OK", null).show();
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        });
+
+        refresh.run();
     }
 }

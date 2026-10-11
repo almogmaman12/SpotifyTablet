@@ -34,6 +34,35 @@ object MobileLyricsSources {
         }
     }
 
+    class SourceInfo(val id: String, val name: String, val enabled: Boolean, val note: String?)
+
+    /** The lyric sources the app can ask, in rank order, with whether each is on. Empty before [init]. */
+    @JvmStatic
+    fun sources(): List<SourceInfo> {
+        val b = backend ?: return emptyList()
+        val policy = b.policy()
+        val byId = b.descriptors.associateBy { it.id }
+        return policy.sourceOrder.mapNotNull { id -> byId[id] }
+            .filterNot { it.rankOnly }
+            .map { d ->
+                SourceInfo(
+                    id = d.id,
+                    name = d.displayName,
+                    enabled = d.id !in policy.disabledSourceIds,
+                    note = com.almog.spotifytablet.lyrics.mobile.network.data.SourceDisclosures.forSource(d)?.description
+                )
+            }
+    }
+
+    /** Switches one source on or off. Picks cached under another set of sources are ignored automatically. */
+    @JvmStatic
+    fun setSourceEnabled(id: String, enabled: Boolean) {
+        val b = backend ?: return
+        val policy = b.policy()
+        val disabled = if (enabled) policy.disabledSourceIds - id else policy.disabledSourceIds + id
+        b.setPolicy(policy.sourceOrder, disabled)
+    }
+
     suspend fun fetch(
         artist: String,
         title: String,
