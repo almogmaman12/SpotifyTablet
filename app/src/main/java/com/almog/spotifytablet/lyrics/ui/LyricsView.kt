@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.almog.spotifytablet.SettingsActivity
+import com.almog.spotifytablet.lyrics.model.displayAttribution
 import com.almog.spotifytablet.lyrics.model.LyricLine
 import com.almog.spotifytablet.lyrics.model.TrackRhythmContext
 import com.almog.spotifytablet.lyrics.model.WordSync
@@ -678,8 +679,9 @@ fun NativeLyricsContent(
         }
 
         // Attribution badge (required by provider terms)
-        if (track.attribution != null) {
-            val attr = track.attribution
+        val attribution = track.displayAttribution()
+        if (attribution != null) {
+            val attr = attribution
             val openUrl = { url: String? ->
                 if (!url.isNullOrBlank()) {
                     try {

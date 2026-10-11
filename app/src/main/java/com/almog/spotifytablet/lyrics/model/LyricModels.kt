@@ -120,6 +120,19 @@ data class LyricTrack(
 )
 
 /**
+ * What the lyrics badge shows: the provider's own attribution when there is one, otherwise just the
+ * source the track came from ("LRCLIB", "Apple Music", ...), so every source is credited.
+ */
+fun LyricTrack.displayAttribution(): LyricAttribution? {
+    attribution?.let { return it }
+    val name = source
+        .removePrefix("Spicy Lyrics Mobile:")
+        .replace("(Synthesized)", "")
+        .trim()
+    return if (name.isEmpty()) null else LyricAttribution(provider = name)
+}
+
+/**
  * Estimates word-level timing for plain LRC lines based on character length.
  */
 fun LyricTrack.withSynthesizedWordSync(): LyricTrack {

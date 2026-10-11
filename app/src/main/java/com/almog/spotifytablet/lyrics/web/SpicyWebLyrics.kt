@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.almog.spotifytablet.Constants
+import com.almog.spotifytablet.lyrics.model.displayAttribution
 import com.almog.spotifytablet.lyrics.ui.LyricsAttributionBadge
 import com.almog.spotifytablet.lyrics.viewmodel.LyricsUiState
 
@@ -138,7 +139,7 @@ fun SpicyWebLyricsContent(
             }
         )
 
-        track?.attribution?.let { attr ->
+        track?.displayAttribution()?.let { attr ->
             LyricsAttributionBadge(
                 attr = attr,
                 modifier = Modifier

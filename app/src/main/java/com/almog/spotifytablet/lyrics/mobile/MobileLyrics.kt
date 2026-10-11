@@ -33,6 +33,7 @@ import com.almog.spotifytablet.lyrics.mobile.models.buildDisplayTimeline
 import com.almog.spotifytablet.lyrics.model.LyricLine
 import com.almog.spotifytablet.lyrics.model.LyricTrack
 import com.almog.spotifytablet.lyrics.model.WordSync
+import com.almog.spotifytablet.lyrics.model.displayAttribution
 import com.almog.spotifytablet.lyrics.ui.LyricsAttributionBadge
 import com.almog.spotifytablet.lyrics.viewmodel.LyricsUiState
 import com.almog.spotifytablet.lyrics.web.SpicyLyricsJson
@@ -228,7 +229,7 @@ fun MobileLyricsContent(
                 translation = presentation
             )
         }
-        track?.attribution?.let { attr ->
+        track?.displayAttribution()?.let { attr ->
             LyricsAttributionBadge(
                 attr = attr,
                 modifier = Modifier

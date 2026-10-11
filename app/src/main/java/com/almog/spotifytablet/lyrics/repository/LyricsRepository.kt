@@ -1028,7 +1028,7 @@ class LyricsRepository(
             }
             line.copy(endTimeMs = lineEnd, words = words, isSynthesized = true)
         }
-        return LyricTrack(isWordSynced = true, lines = updatedLines, source = "${this.source} (Synthesized)")
+        return LyricTrack(isWordSynced = true, lines = updatedLines, source = "${this.source} (Synthesized)", bpm = this.bpm, attribution = this.attribution)
     }
 
     private fun cleanTrackTitle(title: String): String {
