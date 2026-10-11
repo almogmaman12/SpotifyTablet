@@ -105,7 +105,7 @@ object MobileLyricsAdapter {
     private fun wordsOf(line: LyricLine, syllable: Boolean): List<Word> {
         val end = maxOf(line.endTimeMs, line.startTimeMs + 1)
         if (!syllable || line.words.isEmpty()) {
-            return listOf(Word(line.rawText.trim(), line.startTimeMs, end))
+            return wrappable(line.rawText.trim(), line.startTimeMs, end)
         }
         val source: List<WordSync> = line.words
         val out = ArrayList<Word>(source.size)
@@ -118,7 +118,29 @@ object MobileLyricsAdapter {
                 isPartOfWord = glued && out.isNotEmpty(), romanizedText = w.romanized
             )
         }
-        return out.ifEmpty { listOf(Word(line.rawText.trim(), line.startTimeMs, end)) }
+        return out.ifEmpty { wrappable(line.rawText.trim(), line.startTimeMs, end) }
+    }
+
+    /**
+     * A line-timed line is one block of text; the layout can only wrap between pieces, so it is cut
+     * at spaces (and per CJK character, glued) into pieces that all share the line's timing, like
+     * the reference's own `wrappable`.
+     */
+    private fun wrappable(text: String, start: Long, end: Long): List<Word> {
+        val out = ArrayList<Word>()
+        text.split(Regex("\\s+")).filter { it.isNotEmpty() }.forEach { token ->
+            var runStart = 0
+            for (i in 1..token.length) {
+                if (i == token.length ||
+                    com.almog.spotifytablet.lyrics.mobile.canvas.LyricsLayoutCalculator.isCjk(token[i]) ||
+                    com.almog.spotifytablet.lyrics.mobile.canvas.LyricsLayoutCalculator.isCjk(token[i - 1])
+                ) {
+                    out += Word(token.substring(runStart, i), start, end, isPartOfWord = runStart > 0)
+                    runStart = i
+                }
+            }
+        }
+        return out.ifEmpty { listOf(Word(text, start, end)) }
     }
 }
 
