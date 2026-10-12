@@ -364,7 +364,8 @@ class LyricsRepository(
         trackId: String = "",
         isrc: String = "",
         jellyfinUrl: String = "",
-        jellyfinApiKey: String = ""
+        jellyfinApiKey: String = "",
+        onUpgrade: ((LyricTrack) -> Unit)? = null
     ): LyricTrack? = withContext(Dispatchers.IO) {
         if (artist.isBlank() || title.isBlank()) return@withContext null
 
@@ -394,7 +395,16 @@ class LyricsRepository(
             title = cleanTitle,
             album = album,
             durationMs = durationMs,
-            spotifyTrackId = trackId.takeIf { mediaSource != "jellyfin" }
+            spotifyTrackId = trackId.takeIf { mediaSource != "jellyfin" },
+            // The lookup went on after a first pick was shown: cache what it ends with, and hand a
+            // better pick (word-synced lyrics from a slower source) to the screen.
+            onSettled = { settled, isUpgrade ->
+                val result = if (settled.isWordSynced) settled else settled.synthesizeWordsIfMissing()
+                trackCache.put(cacheKey, result)
+                saveTrackToDisk(cacheKey, result)
+                DebugLog.i(TAG, "⬆️ [Tier 0 SETTLED] ${result.source} wordSynced=${result.isWordSynced} upgrade=$isUpgrade")
+                if (isUpgrade) onUpgrade?.invoke(result)
+            }
         )
         mobile.track?.let { track ->
             DebugLog.i(TAG, "✅ [Tier 0 WIN] SPICY MOBILE sources: ${track.lines.size} lines, wordSynced=${track.isWordSynced} (source=${track.source}, complete=${mobile.complete})")

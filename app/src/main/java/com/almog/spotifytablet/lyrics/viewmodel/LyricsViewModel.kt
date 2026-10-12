@@ -245,7 +245,16 @@ class LyricsViewModel(
                     trackId = trackId,
                     isrc = isrc,
                     jellyfinUrl = jellyfinUrl,
-                    jellyfinApiKey = jellyfinApiKey
+                    jellyfinApiKey = jellyfinApiKey,
+                    onUpgrade = { better ->
+                        // A slower source finished with better lyrics (e.g. word-synced): swap them in
+                        // while the same song is still showing.
+                        viewModelScope.launch {
+                            if (currentSongKey == songKey) {
+                                _uiState.value = _uiState.value.copy(track = better.withSynthesizedWordSync())
+                            }
+                        }
+                    }
                 )
                 val displayTrack = track?.withSynthesizedWordSync()
                 if (displayTrack != null) {

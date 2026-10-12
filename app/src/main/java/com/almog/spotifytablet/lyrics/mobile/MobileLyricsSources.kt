@@ -15,7 +15,13 @@ import com.almog.spotifytablet.lyrics.model.LyricLine
 import com.almog.spotifytablet.lyrics.model.LyricTrack
 import com.almog.spotifytablet.lyrics.model.WordSync
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Lyrics sources of Spicy Lyrics Mobile (Spicy Lyrics, LRCLIB, AMLL TTML DB, Unison, Apple, NetEase,
@@ -66,7 +72,8 @@ object MobileLyricsSources {
 
     /**
      * [track] is what was found (null for nothing). [complete] is false when the lookup stopped at its
-     * time budget with a not-yet-final pick: show it, but do not cache it as the answer.
+     * time budget with a not-yet-final pick: show it, but do not cache it as the answer. The lookup
+     * then keeps going in the background and reports its final answer through `onSettled`.
      * [definitive] is true when every source answered and none had lyrics, so asking the app's older
      * fallback sources the same questions again would only waste time.
      */
@@ -74,8 +81,13 @@ object MobileLyricsSources {
 
     /** Shows the best answer so far once this long has passed, if any source has found lyrics. */
     private const val SOFT_BUDGET_MS = 3_500L
-    /** Gives up on slow sources entirely after this long. */
+    /** With nothing found yet, waits this long in all before showing "no lyrics". */
     private const val HARD_BUDGET_MS = 9_000L
+    /** A lookup that outlives the screen's wait (slow word-synced source) is given this long to finish. */
+    private const val BACKGROUND_CAP_MS = 20_000L
+
+    /** Lookups run here, not in the caller, so a slow better source can finish after the first answer is shown. */
+    private val lookupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     suspend fun fetch(
         artist: String,
@@ -85,12 +97,18 @@ object MobileLyricsSources {
         spotifyTrackId: String?
     ): LyricTrack? = fetchOutcome(artist, title, album, durationMs, spotifyTrackId).track
 
+    /**
+     * @param onSettled called later, from a background thread, with the lookup's final lyrics when the
+     * outcome returned was not final (`complete == false`). `isUpgrade` says whether they differ from
+     * what was returned, e.g. word-synced lyrics arriving after line-synced ones were shown.
+     */
     suspend fun fetchOutcome(
         artist: String,
         title: String,
         album: String,
         durationMs: Int,
-        spotifyTrackId: String?
+        spotifyTrackId: String?,
+        onSettled: ((track: LyricTrack, isUpgrade: Boolean) -> Unit)? = null
     ): Outcome {
         val backend = backend ?: return Outcome(null, complete = true, definitive = false)
         val request = LyricsLookupRequest(
@@ -103,28 +121,43 @@ object MobileLyricsSources {
         return try {
             val cached = backend.cachedResolution(request)
             var complete = true
-            val resolution = if (cached != null && cached.settled) {
+            val resolution: RemoteLyricsResolution = if (cached != null && cached.settled) {
                 cached.resolution
             } else {
-                // Answers that land stay in [known], so a second ask below never repeats them.
+                // Answers that land stay in [known]; [best] is the pick so far, readable at any moment.
                 val known = cached?.answers?.toMutableMap() ?: mutableMapOf()
-                var best: RemoteLyricsResolution? = cached?.resolution
-                val first = withTimeoutOrNull(SOFT_BUDGET_MS) {
-                    backend.resolve(request, known) { best = it }
+                val best = AtomicReference<RemoteLyricsResolution?>(cached?.resolution)
+                val job = lookupScope.async {
+                    val r = withTimeoutOrNull(BACKGROUND_CAP_MS) { backend.resolve(request, known) { best.set(it) } }
+                    if (r != null) backend.store(request, r)
+                    r
                 }
-                val final = when {
-                    first != null -> first
-                    best is RemoteLyricsResolution.Found -> {
-                        // Good enough to show now; a better source may still be out.
-                        complete = false
-                        best!!
+                var answered = withTimeoutOrNull(SOFT_BUDGET_MS) { job.await() }
+                if (answered == null && best.get() !is RemoteLyricsResolution.Found) {
+                    answered = withTimeoutOrNull(HARD_BUDGET_MS - SOFT_BUDGET_MS) { job.await() }
+                }
+                if (answered != null) {
+                    answered
+                } else {
+                    // Show what there is; a better source (word timing) may still answer.
+                    complete = false
+                    val shown = best.get()
+                    val shownSource = (shown as? RemoteLyricsResolution.Found)?.selection?.source?.id
+                    if (onSettled != null) {
+                        lookupScope.launch {
+                            val done = job.await() as? RemoteLyricsResolution.Found ?: return@launch
+                            val track: LyricTrack? = try {
+                                toTrack(RemoteLyricsAdapter.render(done.selection, durationMs.toLong()))
+                            } catch (c: CancellationException) {
+                                throw c
+                            } catch (t: Throwable) {
+                                null
+                            }
+                            if (track != null) onSettled(track, done.selection.source.id != shownSource)
+                        }
                     }
-                    else -> withTimeoutOrNull(HARD_BUDGET_MS - SOFT_BUDGET_MS) {
-                        backend.resolve(request, known)
-                    } ?: best.also { complete = false } ?: return Outcome(null, complete = false, definitive = false)
+                    shown ?: return Outcome(null, complete = false, definitive = false)
                 }
-                if (final is RemoteLyricsResolution.Found || complete) backend.store(request, final)
-                final
             }
             val found = resolution as? RemoteLyricsResolution.Found
                 ?: return Outcome(null, complete = complete, definitive = complete && resolution is RemoteLyricsResolution.NotFound)
