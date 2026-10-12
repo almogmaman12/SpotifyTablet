@@ -122,6 +122,10 @@ object MobileLyricsSources {
             val cached = backend.cachedResolution(request)
             var complete = true
             val resolution: RemoteLyricsResolution = if (cached != null && cached.settled) {
+                com.almog.spotifytablet.DebugLog.i("LyricSources",
+                    "${request.title}: using stored pick " +
+                        ((cached.resolution as? RemoteLyricsResolution.Found)?.selection?.let { "${it.source.id} (${it.quality})" } ?: "no lyrics") +
+                        "; " + cached.resolution.attempts.joinToString(", ") { "${it.sourceId}=${it.outcome}" })
                 cached.resolution
             } else {
                 // Answers that land stay in [known]; [best] is the pick so far, readable at any moment.
