@@ -344,13 +344,15 @@ class LyricsRepository(
         title: String,
         album: String = "",
         isrc: String = "",
-        durationMs: Int = 0
+        durationMs: Int = 0,
+        trackId: String = ""
     ) = withContext(Dispatchers.IO) {
         fetchLyrics(
             artist = artist,
             title = title,
             album = album,
             durationMs = durationMs,
+            trackId = trackId,
             isrc = isrc,
             reportStatus = false
         )
@@ -413,7 +415,9 @@ class LyricsRepository(
         val cleanTitle = cleanTrackTitle(title)
         DebugLog.d(TAG, "=== LYRICS FETCH START === artist='$artist' title='$cleanTitle' trackId='$trackId' isrc='$isrc' durationMs=$durationMs")
 
-        val cacheKey = "$artist|$cleanTitle|${if (durationMs > 0) durationMs / 1000 else ""}|$isrc"
+        // Song and length only: a lookup made ahead of time (from the queue) and the real play must share
+        // one entry, and one may know the ISRC code where the other does not.
+        val cacheKey = "$artist|$cleanTitle|${if (durationMs > 0) durationMs / 1000 else ""}"
         trackCache.get(cacheKey)?.let { cached ->
             if (durationMs > 0 && !LyricsMatchVerifier.validateLyricTrackTimeline(cached, durationMs).isValid) {
                 DebugLog.w(TAG, "Memory cached track failed validation, evicting")

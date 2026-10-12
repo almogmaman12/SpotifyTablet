@@ -1174,6 +1174,11 @@ private void fetchJellyfinVolume() {
         lyricsViewModel.loadLyrics(artist, title, currentAlbumName, durationMs, activeSource, lastBlurredTrackId, isrc, jellyfinServerUrl, jellyfinApiKey);
     }
 
+    /** How many songs ahead in the queue get their lyrics fetched early. */
+    private static final int PREFETCH_AHEAD = 3;
+    /** Queue songs whose lyrics were already requested, so each is fetched once. */
+    private final java.util.LinkedHashSet<String> prefetchedTrackIds = new java.util.LinkedHashSet<>();
+
     private void fetchNextTrackQueue() {
         if ("auto".equals(mediaSource) && !"spotify".equals(currentAutoEffectiveSource)) {
             return;
@@ -1204,41 +1209,41 @@ private void fetchJellyfinVolume() {
                             JSONArray queue = json.getJSONArray("queue");
                             DebugLog.d(TAG, "[LyricsPrefetch] Queue fetched — " + queue.length() + " item(s) ahead");
                             if (queue.length() > 0) {
-                                JSONObject nextItem = queue.getJSONObject(0);
-                                String nextType = nextItem.optString("type", "");
-                                boolean nextIsPodcast = "episode".equals(nextType) || nextItem.has("show");
-
-                                if (nextIsPodcast) {
-                                    DebugLog.d(TAG, "[LyricsPrefetch] Next item is a podcast/episode — skipping prefetch");
-                                } else {
-                                    String nextId = nextItem.optString("id", "");
-                                    String nextTitle = nextItem.optString("name", "");
-                                    String nextArtist = "";
-                                    if (nextItem.has("artists") && nextItem.getJSONArray("artists").length() > 0) {
-                                        nextArtist = nextItem.getJSONArray("artists").getJSONObject(0).optString("name", "");
-                                    } else if (nextItem.has("show")) {
-                                        nextArtist = nextItem.getJSONObject("show").optString("name", "");
+                                // The next few songs, so skipping or a short song still starts with lyrics ready.
+                                int limit = Math.min(queue.length(), PREFETCH_AHEAD);
+                                for (int i = 0; i < limit; i++) {
+                                    JSONObject item = queue.getJSONObject(i);
+                                    if ("episode".equals(item.optString("type", "")) || item.has("show")) {
+                                        DebugLog.d(TAG, "[LyricsPrefetch] Queue item " + i + " is a podcast/episode — skipping");
+                                        continue;
                                     }
-                                    int nextDurMs = nextItem.optInt("duration_ms", 0);
-                                    String nextAlbum = nextItem.has("album") ? nextItem.getJSONObject("album").optString("name", "") : "";
-
-                                    if (!nextId.isEmpty() && !nextTitle.isEmpty() && !nextArtist.isEmpty()) {
-                                        if (!nextId.equals(cachedNextTrackId)) {
-                                            cachedNextTrackId = nextId;
-                                            DebugLog.d(TAG, "[LyricsPrefetch] New next track detected: \"" + nextTitle + "\" by " + nextArtist + " — starting lyrics prefetch");
-                                            if (lyricsViewModel != null) {
-                                                String prefetchArtist = nextArtist;
-                                                String prefetchTitle = nextTitle;
-                                                String prefetchAlbum = nextAlbum;
-                                                int prefetchDur = nextDurMs;
-                                                runOnUiThread(() -> lyricsViewModel.prefetchQueueTrack(prefetchArtist, prefetchTitle, prefetchAlbum, prefetchDur, ""));
-                                            }
-                                        } else {
-                                            DebugLog.d(TAG, "[LyricsPrefetch] Next track unchanged (\"" + nextTitle + "\") — skipping prefetch, lyrics already cached");
-                                            cachedNextTrackId = nextId;
+                                    final String id = item.optString("id", "");
+                                    final String title = item.optString("name", "");
+                                    final String artist = item.has("artists") && item.getJSONArray("artists").length() > 0
+                                            ? item.getJSONArray("artists").getJSONObject(0).optString("name", "") : "";
+                                    final int durMs = item.optInt("duration_ms", 0);
+                                    final String album = item.has("album")
+                                            ? item.getJSONObject("album").optString("name", "") : "";
+                                    JSONObject ext = item.optJSONObject("external_ids");
+                                    final String isrc = ext != null ? ext.optString("isrc", "") : "";
+                                    if (i == 0) cachedNextTrackId = id;
+                                    if (id.isEmpty() || title.isEmpty() || artist.isEmpty()) {
+                                        DebugLog.w(TAG, "[LyricsPrefetch] Queue item " + i + " missing fields — id='" + id + "' title='" + title + "' artist='" + artist + "'");
+                                        continue;
+                                    }
+                                    boolean fresh;
+                                    synchronized (prefetchedTrackIds) {
+                                        fresh = prefetchedTrackIds.add(id);
+                                        while (prefetchedTrackIds.size() > 30) {
+                                            java.util.Iterator<String> it = prefetchedTrackIds.iterator();
+                                            it.next();
+                                            it.remove();
                                         }
-                                    } else {
-                                        DebugLog.w(TAG, "[LyricsPrefetch] Next track missing fields — id='" + nextId + "' title='" + nextTitle + "' artist='" + nextArtist + "'");
+                                    }
+                                    if (!fresh) continue;
+                                    DebugLog.d(TAG, "[LyricsPrefetch] Prefetching #" + (i + 1) + " in queue: \"" + title + "\" by " + artist);
+                                    if (lyricsViewModel != null) {
+                                        runOnUiThread(() -> lyricsViewModel.prefetchQueueTrack(artist, title, album, durMs, isrc, id));
                                     }
                                 }
                             } else {

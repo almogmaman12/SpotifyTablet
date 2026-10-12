@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Anchor for smooth frame-driven position interpolation in Compose.
@@ -287,14 +288,21 @@ class LyricsViewModel(
         title: String,
         album: String = "",
         durationMs: Int = 0,
-        isrc: String = ""
+        isrc: String = "",
+        trackId: String = ""
     ) {
         viewModelScope.launch {
-            try {
-                repository.preloadUpcomingLyrics(artist, title, album, isrc, durationMs)
-            } catch (_: Exception) {}
+            // One at a time, in the order asked (next song first), so they don't crowd each other
+            // or the song that is showing.
+            prefetchLock.withLock {
+                try {
+                    repository.preloadUpcomingLyrics(artist, title, album, isrc, durationMs, trackId)
+                } catch (_: Exception) {}
+            }
         }
     }
+
+    private val prefetchLock = kotlinx.coroutines.sync.Mutex()
 
     fun clearLyrics() {
         currentSongKey = ""

@@ -36,7 +36,7 @@ public class DebugActivity extends AppCompatActivity {
     private static final int BAD = Color.parseColor("#FF6B6B");
     private static final int WARN = Color.parseColor("#F5B041");
 
-    private static final String[] TABS = {"Lyrics", "Network", "Log"};
+    private static final String[] TABS = {"Lyrics", "Network", "Log", "Crash"};
     private int tab = 0;
     private float density;
     private LinearLayout list;
@@ -84,7 +84,7 @@ public class DebugActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         copyLp.setMarginStart(dp(8));
         bar.addView(copy, copyLp);
-        TextView clear = button("Clear", v -> { DiagLog.clearAll(); render(); });
+        TextView clear = button("Clear", v -> { if (tab == 3) CrashReporter.clear(this); else DiagLog.clearAll(); render(); });
         LinearLayout.LayoutParams clearLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         clearLp.setMarginStart(dp(8));
@@ -118,7 +118,8 @@ public class DebugActivity extends AppCompatActivity {
         list.removeAllViews();
         if (tab == 0) renderFetches();
         else if (tab == 1) renderNet();
-        else renderLog();
+        else if (tab == 2) renderLog();
+        else renderCrash();
         scroll.scrollTo(0, 0);
     }
 
@@ -164,6 +165,16 @@ public class DebugActivity extends AppCompatActivity {
         }
     }
 
+    private void renderCrash() {
+        String crash = CrashReporter.read(this);
+        if (crash == null) { empty("No crash recorded. Good."); return; }
+        TextView t = text(crash, 12, BAD);
+        t.setTypeface(Typeface.MONOSPACE);
+        t.setTextIsSelectable(true);
+        t.setPadding(0, dp(8), 0, dp(8));
+        list.addView(t);
+    }
+
     private void renderLog() {
         List<DiagLog.Entry> items = DiagLog.logs();
         if (items.isEmpty()) { empty("Nothing logged yet."); return; }
@@ -189,6 +200,9 @@ public class DebugActivity extends AppCompatActivity {
                         .append(' ').append(n.ms).append(" ms ").append(n.host).append(n.path)
                         .append(n.error != null ? " " + n.error : "").append('\n');
             }
+        } else if (tab == 3) {
+            String crash = CrashReporter.read(this);
+            if (crash != null) sb.append(crash);
         } else {
             for (DiagLog.Entry e : DiagLog.logs()) {
                 sb.append(clock.format(new Date(e.time))).append(' ').append(e.level).append(' ')
