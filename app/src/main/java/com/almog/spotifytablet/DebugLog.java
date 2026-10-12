@@ -18,6 +18,7 @@ public final class DebugLog {
     }
 
     public static void e(String tag, String msg) {
+        DiagLog.log('E', tag, msg);
         if (!DEBUG) return;
         try {
             Log.e(tag, msg);
@@ -27,6 +28,7 @@ public final class DebugLog {
     }
 
     public static void w(String tag, String msg) {
+        DiagLog.log('W', tag, msg);
         if (!DEBUG) return;
         try {
             Log.w(tag, msg);
@@ -36,6 +38,7 @@ public final class DebugLog {
     }
 
     public static void i(String tag, String msg) {
+        DiagLog.log('I', tag, msg);
         if (!DEBUG) return;
         try {
             Log.i(tag, msg);

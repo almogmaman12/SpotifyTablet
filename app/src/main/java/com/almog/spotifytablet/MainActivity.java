@@ -236,6 +236,8 @@ public class MainActivity extends AppCompatActivity {
             getSupportActionBar().hide();
         }
         DebugLog.i(TAG, "onCreate: Initializing Spotify Tablet Dashboard");
+        StatusBanner.attach(this);
+        AppStatus.startNetworkWatch(this);
 
         authManager = new AuthManager(this);
         com.almog.spotifytablet.lyrics.repository.LyricsRepository.setDefaultDiskCacheDir(getCacheDir());
@@ -889,6 +891,8 @@ private void fetchJellyfinVolume() {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        AppStatus.stopNetworkWatch(this);
+        StatusBanner.detach();
         if (aodController != null) {
             aodController.cleanup();
         }

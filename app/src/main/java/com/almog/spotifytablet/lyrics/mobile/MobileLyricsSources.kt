@@ -129,7 +129,11 @@ object MobileLyricsSources {
                 val best = AtomicReference<RemoteLyricsResolution?>(cached?.resolution)
                 val job = lookupScope.async {
                     val r = withTimeoutOrNull(BACKGROUND_CAP_MS) { backend.resolve(request, known) { best.set(it) } }
-                    if (r != null) backend.store(request, r)
+                    if (r != null) {
+                        backend.store(request, r)
+                        com.almog.spotifytablet.DebugLog.i("LyricSources",
+                            "${request.title}: " + r.attempts.joinToString(", ") { "${it.sourceId}=${it.outcome}" })
+                    }
                     r
                 }
                 var answered = withTimeoutOrNull(SOFT_BUDGET_MS) { job.await() }

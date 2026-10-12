@@ -1,6 +1,11 @@
 package com.almog.spotifytablet;
 
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
+import android.provider.Settings;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import android.content.pm.PackageInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -97,6 +102,15 @@ public class SettingsActivity extends AppCompatActivity {
 
     private SharedPreferences prefs;
     private float density;
+
+    private final ActivityResultLauncher<String> exportLauncher = registerForActivityResult(
+            new ActivityResultContracts.CreateDocument("application/json"), uri -> {
+                if (uri != null) writeBackup(uri);
+            });
+    private final ActivityResultLauncher<String[]> importLauncher = registerForActivityResult(
+            new ActivityResultContracts.OpenDocument(), uri -> {
+                if (uri != null) readBackup(uri);
+            });
     private final List<Section> sections = new ArrayList<>();
     private final List<TextView> navItems = new ArrayList<>();
     private int selected = 0;
@@ -187,6 +201,17 @@ public class SettingsActivity extends AppCompatActivity {
                 "Always-on clock keeps showing the last song's title.",
                 Constants.PREF_KEY_AOD_SHOW_SONG, true, null));
         display.groups.add(screen);
+        Group startup = new Group("Startup");
+        startup.rows.add(switchRow("Start when the tablet boots",
+                "Opens the app after the tablet restarts. Android asks you to allow \"display over other apps\" for this.",
+                BootReceiver.PREF_START_ON_BOOT, false, on -> {
+                    if (on && !Settings.canDrawOverlays(this)) {
+                        toast("Allow \"display over other apps\" for this app, then come back");
+                        startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:" + getPackageName())));
+                    }
+                }));
+        display.groups.add(startup);
         sections.add(display);
 
         // ---- Lyrics ----
@@ -303,6 +328,21 @@ public class SettingsActivity extends AppCompatActivity {
 
         // ---- Data & account ----
         Section data = new Section("Data & account");
+        Group backup = new Group("Backup");
+        backup.rows.add(actionRow("Export settings",
+                "Saves your settings and keys to a file. Keep it private. Your Spotify login is not included.",
+                "Export", false, () -> exportLauncher.launch("spotifytablet-settings.json")));
+        backup.rows.add(actionRow("Import settings",
+                "Loads a settings file you exported before. Restart the app afterwards.",
+                "Import", false, () -> confirm("Import settings?",
+                        "Settings in the file replace the ones you have now.", "Choose file",
+                        () -> importLauncher.launch(new String[]{"application/json", "text/plain", "*/*"}))));
+        data.groups.add(backup);
+        Group diag = new Group("Diagnostics");
+        diag.rows.add(actionRow("Debug page",
+                "Which lyric source answered and how long it took, network calls and recent errors.",
+                "Open", false, () -> startActivity(new Intent(this, DebugActivity.class))));
+        data.groups.add(diag);
         Group cache = new Group("Cache");
         cache.rows.add(actionRow("Clear lyrics cache",
                 "Deletes saved lyrics and translations. They are fetched again next time a song plays.",
@@ -731,6 +771,31 @@ public class SettingsActivity extends AppCompatActivity {
     // ---------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------
+
+    private void writeBackup(Uri uri) {
+        try (java.io.OutputStream out = getContentResolver().openOutputStream(uri)) {
+            if (out == null) throw new java.io.IOException("Could not open the file");
+            out.write(SettingsBackup.export(this).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            toast("Settings exported");
+        } catch (Exception e) {
+            toast("Export failed: " + e.getMessage());
+        }
+    }
+
+    private void readBackup(Uri uri) {
+        try (java.io.InputStream in = getContentResolver().openInputStream(uri)) {
+            if (in == null) throw new java.io.IOException("Could not open the file");
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
+            int n;
+            while ((n = in.read(chunk)) > 0) buf.write(chunk, 0, n);
+            int count = SettingsBackup.restore(this, buf.toString("UTF-8"));
+            toast("Imported " + count + " settings. Restart the app to apply everything.");
+            showSection(selected);
+        } catch (Exception e) {
+            toast("Import failed: " + e.getMessage());
+        }
+    }
 
     private void confirm(String title, String message, String yes, Runnable onYes) {
         new AlertDialog.Builder(this).setTitle(title).setMessage(message)

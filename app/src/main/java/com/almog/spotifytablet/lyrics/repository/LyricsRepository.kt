@@ -351,10 +351,16 @@ class LyricsRepository(
             title = title,
             album = album,
             durationMs = durationMs,
-            isrc = isrc
+            isrc = isrc,
+            reportStatus = false
         )
     }
 
+    /**
+     * Looks lyrics up (caches first, then the sources) and records the lookup for the debug page.
+     * [reportStatus] false keeps a failed lookup off the status banner (used for prefetching the
+     * next song, which is not what is showing).
+     */
     suspend fun fetchLyrics(
         artist: String,
         title: String,
@@ -365,7 +371,42 @@ class LyricsRepository(
         isrc: String = "",
         jellyfinUrl: String = "",
         jellyfinApiKey: String = "",
-        onUpgrade: ((LyricTrack) -> Unit)? = null
+        onUpgrade: ((LyricTrack) -> Unit)? = null,
+        reportStatus: Boolean = true
+    ): LyricTrack? {
+        if (reportStatus) com.almog.spotifytablet.AppStatus.clear("lyrics")
+        val startedAt = android.os.SystemClock.elapsedRealtime()
+        val track = fetchLyricsInner(
+            artist, title, album, durationMs, mediaSource, trackId, isrc,
+            jellyfinUrl, jellyfinApiKey, onUpgrade, reportStatus
+        )
+        if (artist.isNotBlank() && title.isNotBlank()) {
+            val ms = android.os.SystemClock.elapsedRealtime() - startedAt
+            val detail = when {
+                track == null -> "nothing found"
+                else -> (if (track.isWordSynced) "word-synced" else "line-synced") +
+                    ", ${track.lines.size} lines" + if (ms < 60) ", from cache" else ""
+            }
+            com.almog.spotifytablet.DiagLog.fetch(
+                "$title \u2014 $artist" + if (reportStatus) "" else " (prefetch)",
+                track?.source ?: "none", ms, detail
+            )
+        }
+        return track
+    }
+
+    private suspend fun fetchLyricsInner(
+        artist: String,
+        title: String,
+        album: String,
+        durationMs: Int,
+        mediaSource: String,
+        trackId: String,
+        isrc: String,
+        jellyfinUrl: String,
+        jellyfinApiKey: String,
+        onUpgrade: ((LyricTrack) -> Unit)?,
+        reportStatus: Boolean
     ): LyricTrack? = withContext(Dispatchers.IO) {
         if (artist.isBlank() || title.isBlank()) return@withContext null
 
@@ -501,6 +542,14 @@ class LyricsRepository(
         }
 
         DebugLog.w(TAG, "❌ [ALL TIERS FAILED] No lyrics found for '$cleanTitle' by '$artist'")
+        if (reportStatus) {
+            com.almog.spotifytablet.AppStatus.report(
+                "lyrics",
+                if (mobile.definitive) "No lyrics found for this song" else "Couldn't reach the lyric sources",
+                if (mobile.definitive) com.almog.spotifytablet.AppStatus.INFO else com.almog.spotifytablet.AppStatus.WARN,
+                8_000L
+            )
+        }
         null
     }
 

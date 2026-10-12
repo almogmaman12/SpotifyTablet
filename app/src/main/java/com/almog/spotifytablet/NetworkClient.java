@@ -26,6 +26,7 @@ public final class NetworkClient {
                             .readTimeout(20, TimeUnit.SECONDS)
                             .writeTimeout(20, TimeUnit.SECONDS)
                             .retryOnConnectionFailure(true)
+                            .addInterceptor(new DiagInterceptor())
                             .build();
                 }
             }
