@@ -80,11 +80,11 @@ object MobileLyricsSources {
     class Outcome(val track: LyricTrack?, val complete: Boolean, val definitive: Boolean)
 
     /** Shows the best answer so far once this long has passed, if any source has found lyrics. */
-    private const val SOFT_BUDGET_MS = 3_500L
+    private const val SOFT_BUDGET_MS = 8_000L
     /** With nothing found yet, waits this long in all before showing "no lyrics". */
-    private const val HARD_BUDGET_MS = 9_000L
-    /** A lookup that outlives the screen's wait (slow word-synced source) is given this long to finish. */
-    private const val BACKGROUND_CAP_MS = 20_000L
+    private const val HARD_BUDGET_MS = 20_000L
+    /** A lookup that outlives the screen's wait gets this long in all to find word-synced lyrics (the pick on screen is swapped when they arrive). */
+    private const val BACKGROUND_CAP_MS = 45_000L
 
     /** Lookups run here, not in the caller, so a slow better source can finish after the first answer is shown. */
     private val lookupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
