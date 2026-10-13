@@ -176,7 +176,10 @@ fun MobileLyricsContent(
     } else {
         1f
     }
-    val documentId = remember(track) { (track?.lines?.hashCode() ?: 0).toString() }
+    // From the converted lines, not the track: converting takes a moment, and during it `track` is
+    // already the new lyrics while `converted` is still the old ones. An id that ran ahead of its
+    // lines made the view keep the previous lyrics' animation state for the new ones (blank view).
+    val documentId = remember(converted) { (converted?.lines?.hashCode() ?: 0).toString() }
 
     // Translation target ("" = off) and mode.
     val target = prefs.getString(MobileTranslation.PREF_TRANSLATE_TARGET, "").orEmpty()
