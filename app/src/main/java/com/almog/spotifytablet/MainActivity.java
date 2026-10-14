@@ -77,6 +77,7 @@ public class MainActivity extends AppCompatActivity {
     private static final long CLOCK_DELAY = 5000L;
     private static final long VOLUME_REPEAT_INTERVAL = 200L;
     // These two are user-configurable via Settings and refreshed in onResume:
+    private boolean pollingSuspended = false;
     private long songPollInterval = 5000L;
     private long pausedPollInterval = 15000L;
 
@@ -880,12 +881,21 @@ private void fetchJellyfinVolume() {
             handler.removeCallbacks(progressUpdater);
             handler.post(progressUpdater);
         }
+        // Polling was suspended in onStop (battery); resume it now that we are visible again.
+        if (pollingSuspended) {
+            pollingSuspended = false;
+            handler.removeCallbacks(songUpdater);
+            handler.post(songUpdater);
+        }
     }
 
     @Override
     protected void onStop() {
         super.onStop();
         handler.removeCallbacks(progressUpdater);
+        // Screen off / app hidden: nobody sees the result, so stop polling the servers.
+        handler.removeCallbacks(songUpdater);
+        pollingSuspended = true;
     }
 
     @Override
@@ -1669,6 +1679,10 @@ private void fetchJellyfinVolume() {
         super.onResume();
 
         SharedPreferences prefs = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE);
+
+        // Re-assert show-over-lock / wake flags so waking the tablet always lands on this app.
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
 
         // Keep screen on setting
         boolean keepScreenOn = prefs.getBoolean(SettingsActivity.PREF_KEEP_SCREEN_ON, true);

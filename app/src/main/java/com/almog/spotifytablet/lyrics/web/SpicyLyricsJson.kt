@@ -20,19 +20,17 @@ object SpicyLyricsJson {
      * line that overlaps nothing is promoted to a normal line so it is never dropped.
      */
     internal fun groupBackground(lines: List<LyricLine>): List<Pair<LyricLine, List<LyricLine>>> {
-        val sorted = lines.sortedBy { it.startTimeMs }
-        val mains = sorted.filterNot { it.isBackground }
-        val attached = HashMap<LyricLine, MutableList<LyricLine>>()
-        val orphans = ArrayList<LyricLine>()
-        for (bg in sorted.filter { it.isBackground }) {
-            val owner = mains
-                .filter { bg.startTimeMs <= it.endTimeMs && bg.endTimeMs >= it.startTimeMs }
-                .minByOrNull { kotlin.math.abs(bg.startTimeMs - it.startTimeMs) }
-            if (owner != null) attached.getOrPut(owner) { ArrayList() }.add(bg) else orphans.add(bg)
+        // Sources emit each lead followed by its own background lines, so attach by list order
+        // (not by time overlap, which pairs echoes with the wrong neighbouring lead).
+        val groups = ArrayList<Pair<LyricLine, MutableList<LyricLine>>>()
+        for (line in lines) {
+            if (!line.isBackground || groups.isEmpty()) {
+                groups.add(line to ArrayList())
+            } else {
+                groups.last().second.add(line)
+            }
         }
-        return (mains + orphans)
-            .sortedBy { it.startTimeMs }
-            .map { it to (attached[it] ?: emptyList<LyricLine>()) }
+        return groups.sortedBy { it.first.startTimeMs }.map { it.first to it.second.toList() }
     }
 
     fun toJson(track: LyricTrack): String {
