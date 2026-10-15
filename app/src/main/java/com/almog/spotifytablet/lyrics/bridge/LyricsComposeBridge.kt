@@ -1,5 +1,6 @@
 package com.almog.spotifytablet.lyrics.bridge
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import com.almog.spotifytablet.lyrics.ui.LyricsView
@@ -9,6 +10,20 @@ import com.almog.spotifytablet.lyrics.viewmodel.LyricsViewModel
  * Clean Java-to-Kotlin/Compose interop bridge for initializing and interacting with ComposeView.
  */
 object LyricsComposeBridge {
+
+    // Per-view "is this layout the visible one" flag. The home screen holds two lyrics views (old
+    // and new style) and hides one with GONE, but a GONE ComposeView still composes, so the hidden
+    // one converted/romanized/translated every song a second time. Inactive views compose nothing.
+    private val active = java.util.WeakHashMap<ComposeView, androidx.compose.runtime.MutableState<Boolean>>()
+
+    private fun flag(view: ComposeView) = active.getOrPut(view) { mutableStateOf(true) }
+
+    @JvmStatic
+    fun setActive(composeView: ComposeView?, isActive: Boolean) {
+        if (composeView == null) return
+        val f = flag(composeView)
+        if (f.value != isActive) f.value = isActive
+    }
 
     /**
      * Functional callback interface for Java interoperability on seek events.
@@ -31,13 +46,16 @@ object LyricsComposeBridge {
         composeView.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
+        val isActive = flag(composeView)
         composeView.setContent {
-            LyricsView(
-                viewModel = viewModel,
-                onLineClicked = { pos ->
-                    onSeekListener?.onSeekRequested(pos)
-                }
-            )
+            if (isActive.value) {
+                LyricsView(
+                    viewModel = viewModel,
+                    onLineClicked = { pos ->
+                        onSeekListener?.onSeekRequested(pos)
+                    }
+                )
+            }
         }
     }
 }

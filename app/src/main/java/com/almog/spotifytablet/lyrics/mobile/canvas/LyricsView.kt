@@ -280,6 +280,12 @@ fun LyricsView(
                     withTimeoutOrNull(REST_POLL_MS) { wake.receive() }
                 }
                 withFrameNanos { frameTimeNanos ->
+                    // Cap at ~70 fps: on 90/120 Hz tablets every extra frame is a full animator +
+                    // canvas pass for no visible gain. Skipped frames keep lastFrameTimeNanos, so
+                    // the springs still integrate over the full elapsed time.
+                    if (lastFrameTimeNanos != 0L && frameTimeNanos - lastFrameTimeNanos < MIN_FRAME_NANOS) {
+                        return@withFrameNanos
+                    }
                     val previousStates = animStates
                     val previousOffsets = dynamicYOffsets
                     val previousScroll = scrollManager.animScrollY
@@ -619,6 +625,7 @@ private class ShownLyrics(
 )
 
 /** Paused and this many frames without a change, the frame loop rests. */
+private const val MIN_FRAME_NANOS = 14_000_000L
 private const val REST_AFTER_STILL_FRAMES = 30
 /** How often a resting frame loop looks for a change (a seek while paused). */
 private const val REST_POLL_MS = 150L

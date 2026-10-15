@@ -600,6 +600,10 @@ private void fetchJellyfinVolume() {
             if (oldMainContent != null) oldMainContent.setVisibility(View.GONE);
             if (newMainContent != null) newMainContent.setVisibility(View.VISIBLE);
         }
+        // Only the visible layout's lyrics view should compose (the hidden one wasted CPU/battery).
+        boolean oldStyle = SettingsActivity.STYLE_OLD.equals(currentHomeStyle);
+        com.almog.spotifytablet.lyrics.bridge.LyricsComposeBridge.setActive(lyricsComposeView, oldStyle);
+        com.almog.spotifytablet.lyrics.bridge.LyricsComposeBridge.setActive(newLyricsComposeView, !oldStyle);
     }
 
     private void openSettings() {
