@@ -222,6 +222,17 @@ public class SettingsActivity extends AppCompatActivity {
                 PREF_RENDERER, "mobile",
                 new String[]{"Spicy Lyrics Mobile", "Spicy Lyrics (web view)", "Original"},
                 new String[]{"mobile", "web", "native"}));
+        look.rows.add(choiceRow("Lyrics font",
+                "Each font has a size that looks best (shown next to it); picking one sets your Lyrics size to it. Applies to Latin-script lyrics.",
+                com.almog.spotifytablet.lyrics.mobile.LyricsFonts.PREF_LYRICS_FONT, "system",
+                com.almog.spotifytablet.lyrics.mobile.LyricsFonts.names(),
+                com.almog.spotifytablet.lyrics.mobile.LyricsFonts.keys(),
+                picked -> {
+                    int sp = com.almog.spotifytablet.lyrics.mobile.LyricsFonts.find(picked).getRecommendedSp();
+                    prefs.edit().putInt(Constants.PREF_KEY_LYRICS_FONT_SIZE, sp).apply();
+                    toast("Lyrics size set to " + sp + " sp for this font");
+                    recreate();
+                }));
         look.rows.add(sliderRow("Lyrics size",
                 "Size of the active line. Bigger reads better from a distance.",
                 24, 48, prefs.getInt(Constants.PREF_KEY_LYRICS_FONT_SIZE, 32),
@@ -586,6 +597,11 @@ public class SettingsActivity extends AppCompatActivity {
     /** One row showing the current choice; tapping opens a list. For longer option lists. */
     private Row choiceRow(String title, String sub, String key, String def,
                           String[] names, String[] values) {
+        return choiceRow(title, sub, key, def, names, values, null);
+    }
+
+    private Row choiceRow(String title, String sub, String key, String def,
+                          String[] names, String[] values, java.util.function.Consumer<String> onPicked) {
         return new Row(title, sub, () -> {
             LinearLayout row = rowShell();
             row.addView(titleBlock(title, sub));
@@ -607,6 +623,7 @@ public class SettingsActivity extends AppCompatActivity {
                             prefs.edit().putString(key, values[i]).apply();
                             d.dismiss();
                             paint.run();
+                            if (onPicked != null) onPicked.accept(values[i]);
                         }).show();
             });
             return row;

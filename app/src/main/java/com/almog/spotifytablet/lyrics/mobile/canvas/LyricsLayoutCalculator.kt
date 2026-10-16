@@ -187,7 +187,9 @@ internal object LyricsLayoutCalculator {
         },
     )
 
-    private fun fontFamilyFor(text: String): FontFamily = fontOverride ?: when (ScriptFontSelector.select(text)) {
+    // The chosen font applies to Latin-script lyrics only (via spicyFontFamily); scripts that need
+    // their own bundled font (Arabic, Georgian) keep it, since a Latin font has no glyphs for them.
+    private fun fontFamilyFor(text: String): FontFamily = when (ScriptFontSelector.select(text)) {
         LyricScriptFont.DEFAULT -> spicyFontFamily
         LyricScriptFont.VAZIRMATN -> vazirmatnFontFamily
         LyricScriptFont.NOTO_SANS_GEORGIAN -> georgianFontFamily

@@ -164,6 +164,8 @@ fun MobileLyricsContent(
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(Constants.PREF_NAME, Context.MODE_PRIVATE) }
     val romanize = prefs.getBoolean(MobileTranslation.PREF_ROMANIZE, false)
+    // The chosen lyrics font (Settings): applied before the first measure, re-read on recomposition.
+    LyricsFonts.apply(context)
     // Converting (and romanizing, which loads a Japanese dictionary) happens off the main thread.
     val converted by produceState<MobileLyricsAdapter.Result?>(null, track, romanize) {
         value = withContext(Dispatchers.Default) {
