@@ -271,6 +271,9 @@ public class SettingsActivity extends AppCompatActivity {
                 "How strongly the album art is blurred behind the player.",
                 10, 190, prefs.getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100),
                 v -> String.valueOf(v), v -> prefs.edit().putInt(Constants.PREF_KEY_BLUR_INTENSITY, v).apply()));
+        screen.rows.add(switchRow("Efficient background blur",
+                "Blurs the album art once instead of on every frame. Looks the same and keeps the tablet cooler. Turn off only if the background looks wrong.",
+                "efficient_blur", true, null));
         screen.rows.add(segmentRow("Clock format",
                 "12-hour or 24-hour time on the clock. \"System\" follows the tablet's own setting.",
                 ClockFormat.PREF_CLOCK_FORMAT, "24",

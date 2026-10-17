@@ -83,6 +83,9 @@ public class MainActivity extends AppCompatActivity {
     private TextView clockEventText, newUpNextText;
     private View clockWeatherDivider;
     private long lastEventFetch = 0L;
+    // "Efficient background blur": the cover is blurred once on the CPU instead of by the GPU every frame.
+    private boolean efficientBlur = true;
+    private int blurGeneration = 0;
     private long songPollInterval = 5000L;
     private long pausedPollInterval = 15000L;
 
@@ -1738,6 +1741,10 @@ private void fetchJellyfinVolume() {
         jellyfinTargetUserName = prefs.getString(Constants.PREF_KEY_JELLYFIN_TARGET_USER, Constants.DEFAULT_JELLYFIN_TARGET_USER);
 
         // Battery options (each its own switch) and the always-on display options.
+        boolean hadEfficientBlur = efficientBlur;
+        efficientBlur = prefs.getBoolean("efficient_blur", true)
+                && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S;
+        if (hadEfficientBlur != efficientBlur) lastBlurredTrackId = "";
         boolean hadNoBlur = PowerSettings.noBackgroundBlur;
         PowerSettings.refresh(this);
         if (hadNoBlur != PowerSettings.noBackgroundBlur) lastBlurredTrackId = "";
@@ -1859,6 +1866,30 @@ private void fetchJellyfinVolume() {
                 if (PowerSettings.noBackgroundBlur) {
                     // Battery saver: no blurred cover behind the lyrics.
                     if (backgroundBlur != null) backgroundBlur.setImageDrawable(null);
+                } else if (efficientBlur) {
+                    // Same look, blurred once on a small copy instead of by the GPU on every frame.
+                    final int sigma = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
+                            .getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100);
+                    final int generation = ++blurGeneration;
+                    final int vw = backgroundBlur.getWidth() > 0 ? backgroundBlur.getWidth() : getResources().getDisplayMetrics().widthPixels;
+                    final int vh = backgroundBlur.getHeight() > 0 ? backgroundBlur.getHeight() : getResources().getDisplayMetrics().heightPixels;
+                    backgroundBlur.setRenderEffect(null);
+                    Glide.with(MainActivity.this).asBitmap().disallowHardwareConfig().override(512, 512).load(img)
+                            .into(new CustomTarget<Bitmap>() {
+                                @Override
+                                public void onResourceReady(@NonNull Bitmap resource, Transition<? super Bitmap> transition) {
+                                    java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
+                                        Bitmap blurred = BackgroundBlur.render(resource, vw, vh, sigma);
+                                        runOnUiThread(() -> {
+                                            // A newer song may have arrived while this one was blurring.
+                                            if (isDestroyed() || generation != blurGeneration || backgroundBlur == null) return;
+                                            backgroundBlur.setImageBitmap(blurred);
+                                        });
+                                    });
+                                }
+
+                                @Override public void onLoadCleared(Drawable placeholder) {}
+                            });
                 } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                     int blurRadius = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
                             .getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100);

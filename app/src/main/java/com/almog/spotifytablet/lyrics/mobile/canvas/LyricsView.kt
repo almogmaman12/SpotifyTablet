@@ -556,9 +556,11 @@ fun LyricsView(
                 // Optimization: Don't draw invisible lines.
                 if (lineAnim.opacity <= 0.01f) return@forEachIndexed
 
-                // Optimization: Don't draw lines off-screen.
+                // Optimization: Don't draw lines off-screen. The margin is half a line's height: more than
+                // the widest distance blur reaches (~0.5 em), and far lines are the costliest to draw
+                // (they carry the biggest blur), so no more of them than that.
                 val lineScreenY = scrollOffset + dynamicY
-                if (lineScreenY < -layout.height * 3 || lineScreenY > canvasHeight + layout.height * 3) {
+                if (lineScreenY < -layout.height * 1.5f || lineScreenY > canvasHeight + layout.height * 0.5f) {
                     return@forEachIndexed
                 }
 
