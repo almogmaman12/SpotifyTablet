@@ -348,11 +348,6 @@ public class SettingsActivity extends AppCompatActivity {
                     "Blurs lines that aren't being sung. Looks nice but uses noticeably more battery.",
                     "lyrics_line_blur", false, null));
         }
-        look.rows.add(choiceRow("Colors from the cover",
-                "Tints the lyrics area with the album cover's main color (lyrics stay white).",
-                "lyrics_cover_colors", "off",
-                new String[]{"Off", "Background", "Background + progress bars"},
-                new String[]{"off", "background", "both"}));
         look.rows.add(switchRow("Up next",
                 "A small strip over the lyrics naming the next song in your Spotify queue (modern layout).",
                 "lyrics_up_next", false, null));

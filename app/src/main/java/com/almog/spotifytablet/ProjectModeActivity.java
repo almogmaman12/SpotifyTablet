@@ -112,7 +112,7 @@ public class ProjectModeActivity extends AppCompatActivity {
     private RecyclerView eventsRecyclerView;
     private CalendarEventAdapter calendarAdapter;
     private GoogleSignInClient mGoogleSignInClient;
-    private String googleAuthToken;
+    private boolean calendarReady = false;
 
     // Runnables
     private final Runnable spotifyUpdater = this::fetchCurrentSong;
@@ -946,183 +946,55 @@ public class ProjectModeActivity extends AppCompatActivity {
     );
 
     private void setupGoogleSignIn() {
-        // NOTE: We need a string resource or BuildConfig for the Client ID
-        // For now, we will try to silently sign in or prompt if needed.
-        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestEmail()
-                .requestScopes(new Scope("https://www.googleapis.com/auth/calendar.readonly"))
-                .build();
+        mGoogleSignInClient = GoogleCalendarClient.signInClient(this);
 
-        mGoogleSignInClient = GoogleSignIn.getClient(this, gso);
-
-        // Try silent sign-in first
-        mGoogleSignInClient.silentSignIn()
-                .addOnCompleteListener(this, task -> {
-                    handleSignInResult(task);
-                });
+        // Already signed in (here or from Settings)? Start right away; otherwise try silently.
+        if (GoogleCalendarClient.isConnected(this)) {
+            calendarReady = true;
+            handler.post(calendarUpdater);
+            return;
+        }
+        mGoogleSignInClient.silentSignIn().addOnCompleteListener(this, this::handleSignInResult);
     }
 
     private void handleSignInResult(Task<GoogleSignInAccount> completedTask) {
         try {
-            GoogleSignInAccount account = completedTask.getResult(ApiException.class);
-            // Sign in success. However, GoogleSignInAccount doesn't give an access token directly that can be used with OkHttp easily without GoogleAuthUtil.
-            // Using GoogleAuthUtil requires a background thread.
-            new Thread(() -> {
-                try {
-                    String token = com.google.android.gms.auth.GoogleAuthUtil.getToken(
-                            ProjectModeActivity.this,
-                            account.getAccount(),
-                            "oauth2:https://www.googleapis.com/auth/calendar.readonly"
-                    );
-                    googleAuthToken = token;
-                    Log.d(TAG, "Got Google Token! Google Sign-In Success!");
-                    runOnUiThread(calendarUpdater);
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to get auth token", e);
-                    runOnUiThread(() -> Toast.makeText(ProjectModeActivity.this, "Auth Token Error: " + e.getMessage(), Toast.LENGTH_LONG).show());
-                }
-            }).start();
+            completedTask.getResult(ApiException.class);
+            Log.d(TAG, "Google Sign-In Success!");
+            calendarReady = true;
+            runOnUiThread(calendarUpdater);
         } catch (ApiException e) {
             Log.w(TAG, "signInResult:failed code=" + e.getStatusCode());
             // Prompt interactive sign in
-            Intent signInIntent = mGoogleSignInClient.getSignInIntent();
-            signInLauncher.launch(signInIntent);
+            signInLauncher.launch(mGoogleSignInClient.getSignInIntent());
         }
     }
 
+    /**
+     * Red / exam events for the countdown list, from the shared Google Calendar helper. It picks out
+     * events with a red color, a red-style title, or on the exams calendar; everything else is left to
+     * the always-on clock's "next event".
+     */
     private void fetchCalendarEvents() {
-        if (googleAuthToken == null) return;
-        
-        Request request = new Request.Builder()
-                .url("https://www.googleapis.com/calendar/v3/users/me/calendarList")
-                .addHeader("Authorization", "Bearer " + googleAuthToken)
-                .build();
-
-        http.newCall(request).enqueue(new Callback() {
-            @Override public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                runOnUiThread(() -> Toast.makeText(ProjectModeActivity.this, "Calendar Network Error", Toast.LENGTH_SHORT).show());
-                handler.postDelayed(calendarUpdater, 60000);
+        if (!calendarReady) return;
+        new Thread(() -> {
+            long now = System.currentTimeMillis();
+            List<CalendarEventAdapter.CalendarEvent> result = new ArrayList<>();
+            for (GoogleCalendarClient.Event e : GoogleCalendarClient.upcomingEvents(this, null, now, 0, 50)) {
+                boolean isRedColor = "11".equals(e.colorId) || "4".equals(e.colorId);
+                boolean hasRedTitle = e.summary.toLowerCase().contains("[red]") || e.summary.contains("עגבנייה");
+                boolean isExamsCalendar = e.calendarSummary.contains("מבחנים") && "NONE".equals(e.colorId);
+                if (isRedColor || hasRedTitle || isExamsCalendar) {
+                    result.add(new CalendarEventAdapter.CalendarEvent(e.summary, e.startMs - now, e.startMs));
+                }
             }
-            @Override public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-        try {
-                if (!response.isSuccessful()) {
-                    Log.e(TAG, "CalendarList API Error: " + response.code());
-                    runOnUiThread(() -> Toast.makeText(ProjectModeActivity.this, "Calendar API Error " + response.code(), Toast.LENGTH_LONG).show());
-                    
-                    handler.postDelayed(calendarUpdater, 60000);
-                    return;
-                }
-                
-                try {
-                    JSONObject root = new JSONObject(response.body().string());
-                    JSONArray items = root.getJSONArray("items");
-                    java.util.Map<String, String> calendarMap = new java.util.HashMap<>();
-                    for (int i = 0; i < items.length(); i++) {
-                        JSONObject cal = items.getJSONObject(i);
-                        calendarMap.put(cal.getString("id"), cal.optString("summary", "Unknown"));
-                    }
-                    fetchEventsFromCalendars(calendarMap);
-                } catch (Exception e) {
-                    Log.e(TAG, "Calendar parse error", e);
-                    handler.postDelayed(calendarUpdater, 60000);
-                }
-                
-            } finally {
-            if (response != null) response.close();
-        }
-    }
-        });
-    }
-
-    private void fetchEventsFromCalendars(java.util.Map<String, String> calendars) {
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
-        sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
-        String timeMin = sdf.format(new Date());
-        long now = System.currentTimeMillis();
-
-        List<CalendarEventAdapter.CalendarEvent> allEvents = new java.util.concurrent.CopyOnWriteArrayList<>();
-        java.util.concurrent.atomic.AtomicInteger pendingRequests = new java.util.concurrent.atomic.AtomicInteger(calendars.size());
-
-        for (java.util.Map.Entry<String, String> entry : calendars.entrySet()) {
-            String calId = entry.getKey();
-            String calName = entry.getValue();
-            String url = "https://www.googleapis.com/calendar/v3/calendars/" + android.net.Uri.encode(calId) + "/events" +
-                    "?timeMin=" + timeMin +
-                    "&orderBy=startTime" +
-                    "&singleEvents=true" +
-                    "&maxResults=50";
-
-            Request request = new Request.Builder()
-                    .url(url)
-                    .addHeader("Authorization", "Bearer " + googleAuthToken)
-                    .build();
-
-            http.newCall(request).enqueue(new Callback() {
-                @Override public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                    checkIfDone(pendingRequests, allEvents);
-                }
-                @Override public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-        try {
-                    if (response.isSuccessful() && response.body() != null) {
-                        try {
-                            JSONObject root = new JSONObject(response.body().string());
-                            JSONArray items = root.getJSONArray("items");
-                            
-                            for (int i = 0; i < items.length(); i++) {
-                                JSONObject event = items.getJSONObject(i);
-                                String summary = event.optString("summary", "Unknown Event");
-                                String colorId = event.optString("colorId", "NONE");
-                                
-                                boolean isRedColor = "11".equals(colorId) || "4".equals(colorId);
-                                boolean hasRedTitle = summary.toLowerCase().contains("[red]") || summary.contains("עגבנייה");
-                                boolean isExamsCalendar = calName.contains("מבחנים") && "NONE".equals(colorId);
-
-                                if (isRedColor || hasRedTitle || isExamsCalendar) {
-                                    JSONObject start = event.optJSONObject("start");
-                                    if (start != null) {
-                                        String dateTime = start.optString("dateTime");
-                                        String dateOnly = start.optString("date");
-
-                                        try {
-                                            Date date = null;
-                                            if (dateTime != null && !dateTime.isEmpty()) {
-                                                SimpleDateFormat isoFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US);
-                                                date = isoFormat.parse(dateTime);
-                                            } else if (dateOnly != null && !dateOnly.isEmpty()) {
-                                                SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
-                                                date = dateFormat.parse(dateOnly);
-                                            }
-
-                                            if (date != null) {
-                                                long timeUntil = date.getTime() - now;
-                                                allEvents.add(new CalendarEventAdapter.CalendarEvent(summary, timeUntil, date.getTime()));
-                                            }
-                                        } catch (Exception e) {}
-                                    }
-                                }
-                            }
-                        } catch (Exception e) {}
-                    }
-                    
-                    checkIfDone(pendingRequests, allEvents);
-                } finally {
-            if (response != null) response.close();
-        }
-    }
+            result.sort((e1, e2) -> Long.compare(e1.timeUntilMs, e2.timeUntilMs));
+            runOnUiThread(() -> {
+                if (isDestroyed()) return;
+                calendarAdapter.updateEvents(result);
+                handler.postDelayed(calendarUpdater, 60000); // Check again in a minute
             });
-        }
-    }
-
-    private void checkIfDone(java.util.concurrent.atomic.AtomicInteger pendingRequests, List<CalendarEventAdapter.CalendarEvent> allEvents) {
-        if (pendingRequests.decrementAndGet() == 0) {
-            // Sort by timeUntil
-            List<CalendarEventAdapter.CalendarEvent> sortedEvents = new ArrayList<>(allEvents);
-            sortedEvents.sort((e1, e2) -> Long.compare(e1.timeUntilMs, e2.timeUntilMs));
-            
-            runOnUiThread(() -> calendarAdapter.updateEvents(sortedEvents));
-            
-            handler.postDelayed(calendarUpdater, 60000); // Check again in a minute
-        }
+        }).start();
     }
 
     // ==========================================
@@ -1204,7 +1076,7 @@ public class ProjectModeActivity extends AppCompatActivity {
         // Resume handlers
         handler.post(clockUpdater);
         handler.post(spotifyUpdater);
-        if (googleAuthToken != null) handler.post(calendarUpdater);
+        if (calendarReady) handler.post(calendarUpdater);
         resetIdleTimer();
     }
 

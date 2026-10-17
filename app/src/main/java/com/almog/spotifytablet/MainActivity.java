@@ -81,9 +81,6 @@ public class MainActivity extends AppCompatActivity {
     // Always-on display options (Settings → Display → Always-on display), refreshed in onResume.
     private boolean aodShowWeather = true, aodShowQuote = true, aodShowShabbat = true, aodShowEvent = false;
     private TextView clockEventText, newUpNextText;
-    private String lastCoverUrl = "";
-    private String lastCoverMode = "off";
-    private int coverColor = 0;
     private View clockWeatherDivider;
     private long lastEventFetch = 0L;
     private long songPollInterval = 5000L;
@@ -1751,7 +1748,6 @@ private void fetchJellyfinVolume() {
         applyAodOptions();
         applyClockBrightness();
         if (!prefs.getBoolean("lyrics_up_next", false)) showUpNext("");
-        if (!prefs.getString("lyrics_cover_colors", "off").equals(lastCoverMode)) applyCoverColors(lastCoverUrl);
 
         // Reload user-configurable polling intervals
         songPollInterval   = prefs.getLong(Constants.PREF_KEY_SONG_POLL_INTERVAL,   5000L);
@@ -1860,8 +1856,6 @@ private void fetchJellyfinVolume() {
                     Glide.with(MainActivity.this).load(img).into(newAlbumArt);
                 }
 
-                lastCoverUrl = img;
-                applyCoverColors(img);
                 if (PowerSettings.noBackgroundBlur) {
                     // Battery saver: no blurred cover behind the lyrics.
                     if (backgroundBlur != null) backgroundBlur.setImageDrawable(null);
@@ -1964,52 +1958,6 @@ private void fetchJellyfinVolume() {
         } else {
             newUpNextText.setText(text);
             newUpNextText.setVisibility(View.VISIBLE);
-        }
-    }
-
-    /**
-     * "Colors from the cover" setting: "background" washes the lyrics area in a dark tint of the
-     * cover's main color; "both" also colors the progress bars. "off" restores the plain look.
-     */
-    private void applyCoverColors(String imgUrl) {
-        final String mode = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getString("lyrics_cover_colors", "off");
-        lastCoverMode = mode;
-        if ("off".equals(mode) || imgUrl == null || imgUrl.isEmpty()) {
-            tintLyricsArea(0, false);
-            return;
-        }
-        Glide.with(this).asBitmap().load(imgUrl).override(96, 96).into(new CustomTarget<Bitmap>() {
-            @Override
-            public void onResourceReady(@NonNull Bitmap bmp, Transition<? super Bitmap> t) {
-                if (isDestroyed() || isFinishing()) return;
-                androidx.palette.graphics.Palette.from(bmp).maximumColorCount(12).generate(p -> {
-                    if (p == null || isDestroyed()) return;
-                    int c = p.getVibrantColor(p.getMutedColor(p.getDominantColor(0)));
-                    if (c == 0) return;
-                    coverColor = c;
-                    tintLyricsArea(c, "both".equals(mode));
-                });
-            }
-
-            @Override public void onLoadCleared(Drawable placeholder) {}
-        });
-    }
-
-    private void tintLyricsArea(int color, boolean bars) {
-        int wash = 0;
-        if (color != 0) {
-            float[] hsv = new float[3];
-            Color.colorToHSV(color, hsv);
-            hsv[2] = Math.min(hsv[2], 0.35f);   // dark enough for white lyrics to stay readable
-            wash = androidx.core.graphics.ColorUtils.setAlphaComponent(Color.HSVToColor(hsv), 150);
-        }
-        if (newLyricsContainer != null) newLyricsContainer.setBackgroundColor(wash);
-        if (lyricsComposeView != null) lyricsComposeView.setBackgroundColor(wash);
-        int barColor = bars && color != 0 ? color : lastAppliedThemeColor;
-        if (barColor == -1) barColor = 0;
-        if (barColor != 0) {
-            if (newLinearProgressBar != null) newLinearProgressBar.setProgressTintList(ColorStateList.valueOf(barColor));
-            if (progressBar != null) progressBar.setProgressTintList(ColorStateList.valueOf(barColor));
         }
     }
 

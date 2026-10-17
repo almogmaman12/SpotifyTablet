@@ -38,8 +38,19 @@ public final class GoogleCalendarClient {
     private GoogleCalendarClient() {}
 
     public static final class Cal {
-        public final String id, name;
-        Cal(String id, String name) { this.id = id; this.name = name; }
+        public final String id, name, summary;
+        Cal(String id, String name, String summary) { this.id = id; this.name = name; this.summary = summary; }
+    }
+
+    /** One calendar event. [startMs] of an all-day event is local midnight of its date. */
+    public static final class Event {
+        public final String summary, colorId, calendarSummary;
+        public final long startMs;
+        public final boolean allDay;
+        Event(String summary, String colorId, String calendarSummary, long startMs, boolean allDay) {
+            this.summary = summary; this.colorId = colorId; this.calendarSummary = calendarSummary;
+            this.startMs = startMs; this.allDay = allDay;
+        }
     }
 
     public static GoogleSignInClient signInClient(Context c) {
@@ -57,7 +68,7 @@ public final class GoogleCalendarClient {
     }
 
     /** A fresh access token, or null when not signed in / consent is missing. Blocking. */
-    private static String token(Context c) {
+    public static String token(Context c) {
         GoogleSignInAccount a = GoogleSignIn.getLastSignedInAccount(c);
         if (a == null || a.getAccount() == null || !GoogleSignIn.hasPermissions(a, new Scope(SCOPE))) return null;
         try {
@@ -88,34 +99,30 @@ public final class GoogleCalendarClient {
             JSONArray items = new JSONObject(body).getJSONArray("items");
             for (int i = 0; i < items.length(); i++) {
                 JSONObject o = items.getJSONObject(i);
-                out.add(new Cal(o.getString("id"), o.optString("summaryOverride", o.optString("summary", "Calendar"))));
+                String summary = o.optString("summary", "Unknown");
+                out.add(new Cal(o.getString("id"), o.optString("summaryOverride", summary), summary));
             }
         } catch (Exception ignored) {
         }
         return out;
     }
 
-    /** "19:30  Dinner" for the next timed event in the coming 24 hours, or null. */
-    public static String nextEventLine(Context c, String timePattern) {
+    /**
+     * Upcoming events from [calendarIds] (null or empty = every calendar), starting at [fromMs] and,
+     * when [toMs] > 0, ending before it; up to [maxPerCalendar] from each, merged and sorted by start.
+     * Blocking. Empty when not connected or on a network error.
+     */
+    public static List<Event> upcomingEvents(Context c, Set<String> calendarIds, long fromMs, long toMs, int maxPerCalendar) {
+        List<Event> out = new ArrayList<>();
         String token = token(c);
-        if (token == null) return null;
-        String csv = c.getSharedPreferences(Constants.PREF_NAME, Context.MODE_PRIVATE).getString(PREF_CALENDAR_IDS, "");
-        Set<String> wanted = new HashSet<>();
-        for (String s : csv.split(",")) if (!s.trim().isEmpty()) wanted.add(s.trim());
-
-        List<String> ids = new ArrayList<>();
-        for (Cal cal : listCalendars(c)) if (wanted.isEmpty() || wanted.contains(cal.id)) ids.add(cal.id);
-
+        if (token == null) return out;
         SimpleDateFormat utc = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
         utc.setTimeZone(TimeZone.getTimeZone("UTC"));
-        long now = System.currentTimeMillis();
-        String min = utc.format(new Date(now)), max = utc.format(new Date(now + 24L * 3600_000L));
-
-        long bestStart = Long.MAX_VALUE;
-        String bestTitle = null;
-        for (String id : ids) {
-            String body = get(token, "https://www.googleapis.com/calendar/v3/calendars/" + android.net.Uri.encode(id)
-                    + "/events?singleEvents=true&orderBy=startTime&maxResults=10&timeMin=" + min + "&timeMax=" + max);
+        String range = "&timeMin=" + utc.format(new Date(fromMs)) + (toMs > 0 ? "&timeMax=" + utc.format(new Date(toMs)) : "");
+        for (Cal cal : listCalendars(c)) {
+            if (calendarIds != null && !calendarIds.isEmpty() && !calendarIds.contains(cal.id)) continue;
+            String body = get(token, "https://www.googleapis.com/calendar/v3/calendars/" + android.net.Uri.encode(cal.id)
+                    + "/events?singleEvents=true&orderBy=startTime&maxResults=" + maxPerCalendar + range);
             if (body == null) continue;
             try {
                 JSONArray items = new JSONObject(body).getJSONArray("items");
@@ -123,17 +130,35 @@ public final class GoogleCalendarClient {
                     JSONObject e = items.getJSONObject(i);
                     if ("cancelled".equals(e.optString("status"))) continue;
                     JSONObject start = e.optJSONObject("start");
-                    String dt = start == null ? "" : start.optString("dateTime", "");
-                    if (dt.isEmpty()) continue; // all-day: no time to show
-                    Date d = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).parse(dt);
-                    String title = e.optString("summary", "").trim();
-                    if (d == null || title.isEmpty() || d.getTime() < now - 15 * 60_000L) continue;
-                    if (d.getTime() < bestStart) { bestStart = d.getTime(); bestTitle = title; }
-                    break; // events are ordered; the first valid one is this calendar's next
+                    if (start == null) continue;
+                    String dateTime = start.optString("dateTime", "");
+                    String dateOnly = start.optString("date", "");
+                    Date d;
+                    boolean allDay = dateTime.isEmpty();
+                    if (!allDay) d = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).parse(dateTime);
+                    else if (!dateOnly.isEmpty()) d = new SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateOnly);
+                    else continue;
+                    if (d == null) continue;
+                    out.add(new Event(e.optString("summary", "Unknown Event"), e.optString("colorId", "NONE"),
+                            cal.summary, d.getTime(), allDay));
                 }
             } catch (Exception ignored) {
             }
         }
-        return bestTitle == null ? null : DateFormat.format(timePattern, new Date(bestStart)) + "  " + bestTitle;
+        java.util.Collections.sort(out, (x, y) -> Long.compare(x.startMs, y.startMs));
+        return out;
+    }
+
+    /** "19:30  Dinner" for the next timed event in the coming 24 hours, or null. */
+    public static String nextEventLine(Context c, String timePattern) {
+        String csv = c.getSharedPreferences(Constants.PREF_NAME, Context.MODE_PRIVATE).getString(PREF_CALENDAR_IDS, "");
+        Set<String> wanted = new HashSet<>();
+        for (String s : csv.split(",")) if (!s.trim().isEmpty()) wanted.add(s.trim());
+        long now = System.currentTimeMillis();
+        for (Event e : upcomingEvents(c, wanted, now - 15 * 60_000L, now + 24L * 3600_000L, 10)) {
+            if (e.allDay || e.summary.trim().isEmpty() || e.startMs < now - 15 * 60_000L) continue;
+            return DateFormat.format(timePattern, new Date(e.startMs)) + "  " + e.summary.trim();
+        }
+        return null;
     }
 }
