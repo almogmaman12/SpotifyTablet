@@ -169,6 +169,16 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        super.onRequestPermissionsResult(code, perms, results);
+        if (code == 4711 && (results.length == 0 || results[0] != android.content.pm.PackageManager.PERMISSION_GRANTED)) {
+            prefs.edit().putBoolean("aod_show_event", false).apply();
+            toast("Calendar permission is needed to show your next event");
+            recreate();
+        }
+    }
+
+    @Override
     protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
         out.putInt("section", selected);
@@ -197,10 +207,29 @@ public class SettingsActivity extends AppCompatActivity {
                 "How strongly the album art is blurred behind the player.",
                 10, 190, prefs.getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100),
                 v -> String.valueOf(v), v -> prefs.edit().putInt(Constants.PREF_KEY_BLUR_INTENSITY, v).apply()));
-        screen.rows.add(switchRow("Show song when paused",
+        screen.rows.add(segmentRow("Clock format",
+                "12-hour or 24-hour time on the clock. \"System\" follows the tablet's own setting.",
+                ClockFormat.PREF_CLOCK_FORMAT, "24",
+                new String[]{"24-hour", "12-hour", "System"}, new String[]{"24", "12", "auto"}));
+        display.groups.add(screen);
+        Group aod = new Group("Always-on display");
+        aod.rows.add(switchRow("Show song when paused",
                 "Always-on clock keeps showing the last song's title.",
                 Constants.PREF_KEY_AOD_SHOW_SONG, true, null));
-        display.groups.add(screen);
+        aod.rows.add(switchRow("Show weather",
+                "Temperature and icon next to the greeting on the clock.", "aod_show_weather", true, null));
+        aod.rows.add(switchRow("Show quote",
+                "The daily quote under the greeting.", "aod_show_quote", true, null));
+        aod.rows.add(switchRow("Show Shabbat times",
+                "Candle lighting and havdalah times above the clock.", "aod_show_shabbat", true, null));
+        aod.rows.add(switchRow("Show next calendar event",
+                "Your next event within 24 hours, under the clock. Needs calendar permission.",
+                "aod_show_event", false, on -> {
+                    if (on && !CalendarHelper.hasPermission(this)) {
+                        requestPermissions(new String[]{android.Manifest.permission.READ_CALENDAR}, 4711);
+                    }
+                }));
+        display.groups.add(aod);
         Group startup = new Group("Startup");
         startup.rows.add(switchRow("Start when the tablet boots",
                 "Opens the app after the tablet restarts. Android asks you to allow \"display over other apps\" for this.",
@@ -214,6 +243,28 @@ public class SettingsActivity extends AppCompatActivity {
         display.groups.add(startup);
         sections.add(display);
 
+        // ---- Battery ----
+        Section battery = new Section("Battery");
+        Group saver = new Group("Battery saver (turn on only what you want)");
+        saver.rows.add(switchRow("Lower animation frame rate",
+                "Lyrics animate at about 30 frames per second instead of up to 70. Motion looks a little less smooth.",
+                PowerSettings.PREF_LOW_FPS, false, null));
+        saver.rows.add(switchRow("No background blur",
+                "Skips the blurred album art behind the player, which costs a lot of power.",
+                PowerSettings.PREF_NO_BLUR, false, null));
+        saver.rows.add(switchRow("Check for songs less often",
+                "Asks Spotify and Jellyfin half as often. The song display can lag a few seconds longer.",
+                PowerSettings.PREF_SLOW_POLL, false, null));
+        saver.rows.add(switchRow("Dim the clock screen",
+                "Lowers the screen brightness while the always-on clock is showing.",
+                PowerSettings.PREF_DIM_CLOCK, false, null));
+        saver.rows.add(sliderRow("Clock screen brightness",
+                "Used when \"Dim the clock screen\" is on.",
+                1, 50, prefs.getInt(PowerSettings.PREF_CLOCK_BRIGHTNESS, 10),
+                v -> v + " %", v -> prefs.edit().putInt(PowerSettings.PREF_CLOCK_BRIGHTNESS, v).apply()));
+        battery.groups.add(saver);
+        sections.add(battery);
+
         // ---- Lyrics ----
         Section lyrics = new Section("Lyrics");
         Group look = new Group("Look");
@@ -221,7 +272,25 @@ public class SettingsActivity extends AppCompatActivity {
                 "Restart the app after changing.",
                 PREF_RENDERER, "mobile",
                 new String[]{"Spicy Lyrics Mobile", "Spicy Lyrics (web view)", "Original"},
-                new String[]{"mobile", "web", "native"}));
+                new String[]{"mobile", "web", "native"}, picked -> recreate()));
+        // Only the original renderer has line blur, so the switch only appears when it is selected.
+        if ("native".equals(prefs.getString(PREF_RENDERER, "mobile"))) {
+            look.rows.add(switchRow("Line blur (original renderer)",
+                    "Blurs lines that aren't being sung. Looks nice but uses noticeably more battery.",
+                    "lyrics_line_blur", false, null));
+        }
+        look.rows.add(choiceRow("Colors from the cover",
+                "Tints the lyrics area with the album cover's main color (lyrics stay white).",
+                "lyrics_cover_colors", "off",
+                new String[]{"Off", "Background", "Background + progress bars"},
+                new String[]{"off", "background", "both"}));
+        look.rows.add(switchRow("Up next",
+                "A small strip over the lyrics naming the next song in your Spotify queue (modern layout).",
+                "lyrics_up_next", false, null));
+        look.rows.add(sliderRow("Translation & romanization size",
+                "Size of the smaller lines under each lyric. 100% is the default.",
+                50, 150, prefs.getInt(com.almog.spotifytablet.lyrics.mobile.LyricsFonts.PREF_NOTE_SIZE, 100),
+                v -> v + " %", v -> prefs.edit().putInt(com.almog.spotifytablet.lyrics.mobile.LyricsFonts.PREF_NOTE_SIZE, v).apply()));
         look.rows.add(choiceRow("Lyrics font",
                 "Each font has a size that looks best (shown next to it); picking one sets your Lyrics size to it. Applies to Latin-script lyrics.",
                 com.almog.spotifytablet.lyrics.mobile.LyricsFonts.PREF_LYRICS_FONT, "system",

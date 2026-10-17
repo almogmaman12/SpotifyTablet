@@ -78,6 +78,14 @@ public class MainActivity extends AppCompatActivity {
     private static final long VOLUME_REPEAT_INTERVAL = 200L;
     // These two are user-configurable via Settings and refreshed in onResume:
     private boolean pollingSuspended = false;
+    // Always-on display options (Settings → Display → Always-on display), refreshed in onResume.
+    private boolean aodShowWeather = true, aodShowQuote = true, aodShowShabbat = true, aodShowEvent = false;
+    private TextView clockEventText, newUpNextText;
+    private String lastCoverUrl = "";
+    private String lastCoverMode = "off";
+    private int coverColor = 0;
+    private View clockWeatherDivider;
+    private long lastEventFetch = 0L;
     private long songPollInterval = 5000L;
     private long pausedPollInterval = 15000L;
 
@@ -690,6 +698,9 @@ private void fetchJellyfinVolume() {
         shabbatTimeText = findViewById(R.id.shabbatTimeText);
         clockShabbatTimeText = findViewById(R.id.clockShabbatTimeText);
         clockQuoteText = findViewById(R.id.clockQuoteText);
+        clockEventText = findViewById(R.id.clockEventText);
+        newUpNextText = findViewById(R.id.newUpNextText);
+        clockWeatherDivider = findViewById(R.id.clockWeatherDivider);
 
         lyricsComposeView = findViewById(R.id.lyricsComposeView);
         if (lyricsComposeView != null && lyricsViewModel != null) {
@@ -1222,6 +1233,7 @@ private void fetchJellyfinVolume() {
                         if (json.has("queue")) {
                             JSONArray queue = json.getJSONArray("queue");
                             DebugLog.d(TAG, "[LyricsPrefetch] Queue fetched — " + queue.length() + " item(s) ahead");
+                            if (queue.length() == 0) runOnUiThread(() -> showUpNext(""));
                             if (queue.length() > 0) {
                                 // The next few songs, so skipping or a short song still starts with lyrics ready.
                                 int limit = Math.min(queue.length(), PREFETCH_AHEAD);
@@ -1240,7 +1252,11 @@ private void fetchJellyfinVolume() {
                                             ? item.getJSONObject("album").optString("name", "") : "";
                                     JSONObject ext = item.optJSONObject("external_ids");
                                     final String isrc = ext != null ? ext.optString("isrc", "") : "";
-                                    if (i == 0) cachedNextTrackId = id;
+                                    if (i == 0) {
+                                        cachedNextTrackId = id;
+                                        final String upNext = title.isEmpty() ? "" : "Up next: " + title + (artist.isEmpty() ? "" : " \u2014 " + artist);
+                                        runOnUiThread(() -> showUpNext(upNext));
+                                    }
                                     if (id.isEmpty() || title.isEmpty() || artist.isEmpty()) {
                                         DebugLog.w(TAG, "[LyricsPrefetch] Queue item " + i + " missing fields — id='" + id + "' title='" + title + "' artist='" + artist + "'");
                                         continue;
@@ -1598,7 +1614,7 @@ private void fetchJellyfinVolume() {
 
         OffsetDateTime now = OffsetDateTime.now();
         String timeStr = "";
-        java.time.format.DateTimeFormatter timeFmt = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
+        java.time.format.DateTimeFormatter timeFmt = java.time.format.DateTimeFormatter.ofPattern(ClockFormat.pattern(this));
 
         if (now.isBefore(shabbatCandlesTime)) {
             // Before candles lighting time
@@ -1649,7 +1665,7 @@ private void fetchJellyfinVolume() {
                 }
                 if (clockShabbatTimeText != null) {
                     clockShabbatTimeText.setText(finalTime);
-                    clockShabbatTimeText.setVisibility(View.VISIBLE);
+                    clockShabbatTimeText.setVisibility(aodShowShabbat ? View.VISIBLE : View.GONE);
                 }
             } else {
                 if (shabbatTimeText != null) shabbatTimeText.setVisibility(View.GONE);
@@ -1724,9 +1740,26 @@ private void fetchJellyfinVolume() {
         jellyfinClientName = prefs.getString(Constants.PREF_KEY_JELLYFIN_CLIENT_NAME, "");
         jellyfinTargetUserName = prefs.getString(Constants.PREF_KEY_JELLYFIN_TARGET_USER, Constants.DEFAULT_JELLYFIN_TARGET_USER);
 
+        // Battery options (each its own switch) and the always-on display options.
+        boolean hadNoBlur = PowerSettings.noBackgroundBlur;
+        PowerSettings.refresh(this);
+        if (hadNoBlur != PowerSettings.noBackgroundBlur) lastBlurredTrackId = "";
+        aodShowWeather = prefs.getBoolean("aod_show_weather", true);
+        aodShowQuote = prefs.getBoolean("aod_show_quote", true);
+        aodShowShabbat = prefs.getBoolean("aod_show_shabbat", true);
+        aodShowEvent = prefs.getBoolean("aod_show_event", false) && CalendarHelper.hasPermission(this);
+        applyAodOptions();
+        applyClockBrightness();
+        if (!prefs.getBoolean("lyrics_up_next", false)) showUpNext("");
+        if (!prefs.getString("lyrics_cover_colors", "off").equals(lastCoverMode)) applyCoverColors(lastCoverUrl);
+
         // Reload user-configurable polling intervals
         songPollInterval   = prefs.getLong(Constants.PREF_KEY_SONG_POLL_INTERVAL,   5000L);
         pausedPollInterval = prefs.getLong(Constants.PREF_KEY_PAUSED_POLL_INTERVAL, 15000L);
+        if (PowerSettings.slowPolling) {
+            songPollInterval *= 2;
+            pausedPollInterval *= 2;
+        }
 
         // Cache prefs that are read on hot paths (e.g. every showClock call).
         cachedAodShowSong = prefs.getBoolean(Constants.PREF_KEY_AOD_SHOW_SONG, true);
@@ -1827,7 +1860,12 @@ private void fetchJellyfinVolume() {
                     Glide.with(MainActivity.this).load(img).into(newAlbumArt);
                 }
 
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                lastCoverUrl = img;
+                applyCoverColors(img);
+                if (PowerSettings.noBackgroundBlur) {
+                    // Battery saver: no blurred cover behind the lyrics.
+                    if (backgroundBlur != null) backgroundBlur.setImageDrawable(null);
+                } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                     int blurRadius = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
                             .getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100);
                     backgroundBlur.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(
@@ -1905,6 +1943,7 @@ private void fetchJellyfinVolume() {
             if (!visibilityChanged) return;
 
             clockOverlay.setVisibility(targetVisibility);
+            applyClockBrightness();
 
             if (show) {
                 handler.removeCallbacks(progressUpdater);
@@ -1916,10 +1955,116 @@ private void fetchJellyfinVolume() {
         });
     }
 
+    /** "Up next" strip over the lyrics (new layout); empty text or the setting being off hides it. */
+    private void showUpNext(String text) {
+        if (newUpNextText == null) return;
+        boolean on = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getBoolean("lyrics_up_next", false);
+        if (!on || text == null || text.isEmpty()) {
+            newUpNextText.setVisibility(View.GONE);
+        } else {
+            newUpNextText.setText(text);
+            newUpNextText.setVisibility(View.VISIBLE);
+        }
+    }
+
+    /**
+     * "Colors from the cover" setting: "background" washes the lyrics area in a dark tint of the
+     * cover's main color; "both" also colors the progress bars. "off" restores the plain look.
+     */
+    private void applyCoverColors(String imgUrl) {
+        final String mode = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getString("lyrics_cover_colors", "off");
+        lastCoverMode = mode;
+        if ("off".equals(mode) || imgUrl == null || imgUrl.isEmpty()) {
+            tintLyricsArea(0, false);
+            return;
+        }
+        Glide.with(this).asBitmap().load(imgUrl).override(96, 96).into(new CustomTarget<Bitmap>() {
+            @Override
+            public void onResourceReady(@NonNull Bitmap bmp, Transition<? super Bitmap> t) {
+                if (isDestroyed() || isFinishing()) return;
+                androidx.palette.graphics.Palette.from(bmp).maximumColorCount(12).generate(p -> {
+                    if (p == null || isDestroyed()) return;
+                    int c = p.getVibrantColor(p.getMutedColor(p.getDominantColor(0)));
+                    if (c == 0) return;
+                    coverColor = c;
+                    tintLyricsArea(c, "both".equals(mode));
+                });
+            }
+
+            @Override public void onLoadCleared(Drawable placeholder) {}
+        });
+    }
+
+    private void tintLyricsArea(int color, boolean bars) {
+        int wash = 0;
+        if (color != 0) {
+            float[] hsv = new float[3];
+            Color.colorToHSV(color, hsv);
+            hsv[2] = Math.min(hsv[2], 0.35f);   // dark enough for white lyrics to stay readable
+            wash = androidx.core.graphics.ColorUtils.setAlphaComponent(Color.HSVToColor(hsv), 150);
+        }
+        if (newLyricsContainer != null) newLyricsContainer.setBackgroundColor(wash);
+        if (lyricsComposeView != null) lyricsComposeView.setBackgroundColor(wash);
+        int barColor = bars && color != 0 ? color : lastAppliedThemeColor;
+        if (barColor == -1) barColor = 0;
+        if (barColor != 0) {
+            if (newLinearProgressBar != null) newLinearProgressBar.setProgressTintList(ColorStateList.valueOf(barColor));
+            if (progressBar != null) progressBar.setProgressTintList(ColorStateList.valueOf(barColor));
+        }
+    }
+
+    /** Shows or hides the always-on display's extras according to the Settings switches. */
+    private void applyAodOptions() {
+        int weather = aodShowWeather ? View.VISIBLE : View.GONE;
+        if (clockWeatherText != null) clockWeatherText.setVisibility(weather);
+        if (clockWeatherIcon != null) clockWeatherIcon.setVisibility(weather);
+        if (clockWeatherDivider != null) clockWeatherDivider.setVisibility(weather);
+        if (clockQuoteText != null) clockQuoteText.setVisibility(aodShowQuote ? View.VISIBLE : View.GONE);
+        if (!aodShowShabbat && clockShabbatTimeText != null) clockShabbatTimeText.setVisibility(View.GONE);
+        if (!aodShowEvent && clockEventText != null) clockEventText.setVisibility(View.GONE);
+        lastEventFetch = 0L;
+    }
+
+    /** "Dim the clock screen" battery option: low brightness while the clock is up, normal otherwise. */
+    private void applyClockBrightness() {
+        android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
+        boolean clockUp = clockOverlay != null && clockOverlay.getVisibility() == View.VISIBLE;
+        float target = (clockUp && PowerSettings.dimClock)
+                ? PowerSettings.clockBrightness
+                : android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+        if (lp.screenBrightness != target) {
+            lp.screenBrightness = target;
+            getWindow().setAttributes(lp);
+        }
+    }
+
+    /** Next calendar event under the clock; re-read every 5 minutes, only while the clock is showing. */
+    private void refreshAodEvent() {
+        if (!aodShowEvent || clockEventText == null) return;
+        if (clockOverlay == null || clockOverlay.getVisibility() != View.VISIBLE) return;
+        long now = System.currentTimeMillis();
+        if (now - lastEventFetch < 300_000L) return;
+        lastEventFetch = now;
+        final String pattern = ClockFormat.pattern(this);
+        java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
+            String line = CalendarHelper.nextEventLine(getApplicationContext(), pattern);
+            runOnUiThread(() -> {
+                if (isDestroyed() || clockEventText == null) return;
+                if (line == null) {
+                    clockEventText.setVisibility(View.GONE);
+                } else {
+                    clockEventText.setText(line);
+                    clockEventText.setVisibility(View.VISIBLE);
+                }
+            });
+        });
+    }
+
     private void updateClockTime() {
+        refreshAodEvent();
         long now = System.currentTimeMillis();
         // Compute once; reuse for both the full label and the split display.
-        String timeStr = DateFormat.format("HH:mm", now).toString();
+        String timeStr = DateFormat.format(ClockFormat.pattern(this), now).toString();
         if (clockTimeText != null) clockTimeText.setText(timeStr);
         String[] parts = timeStr.split(":");
         if (parts.length == 2) {

@@ -530,7 +530,7 @@ public class ProjectModeActivity extends AppCompatActivity {
     // ==========================================
     private void updateClock() {
         long now = System.currentTimeMillis();
-        clockTime.setText(DateFormat.format("HH:mm", now));
+        clockTime.setText(DateFormat.format(ClockFormat.pattern(this), now));
         clockDate.setText(DateFormat.format("EEEE, MMMM dd", now));
         handler.postDelayed(clockUpdater, 60000L - (now % 60000L)); // sync to next minute
     }

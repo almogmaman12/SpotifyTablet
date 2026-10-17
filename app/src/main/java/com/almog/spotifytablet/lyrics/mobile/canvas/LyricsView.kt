@@ -117,7 +117,8 @@ fun LyricsView(
     val letterConfig = config.copy(wordMotionBoost = 1f, scroll = ScrollConfig())
     val measuredCache = remember(lines) { HashMap<MeasureKey, MeasuredLyrics>() }
     var measuredWidth by remember { mutableFloatStateOf(0f) }
-    val fontKey = LyricsLayoutCalculator.fontKey
+    // The font and the translation-line size both change how lines measure, so both key the cache.
+    val fontKey = LyricsLayoutCalculator.fontKey + "|" + LyricsLayoutCalculator.noteScalePct
     val desiredKey = MeasureKey(letterConfig, measuredWidth, fontSizeScale, romanize, lyricsType, fontKey, translation, romanizationMode)
     val desired = measuredCache[desiredKey]
     val original = measuredCache[desiredKey.copy(translation = null)]
@@ -283,7 +284,7 @@ fun LyricsView(
                     // Cap at ~70 fps: on 90/120 Hz tablets every extra frame is a full animator +
                     // canvas pass for no visible gain. Skipped frames keep lastFrameTimeNanos, so
                     // the springs still integrate over the full elapsed time.
-                    if (lastFrameTimeNanos != 0L && frameTimeNanos - lastFrameTimeNanos < MIN_FRAME_NANOS) {
+                    if (lastFrameTimeNanos != 0L && frameTimeNanos - lastFrameTimeNanos < com.almog.spotifytablet.PowerSettings.minFrameNanos) {
                         return@withFrameNanos
                     }
                     val previousStates = animStates
@@ -625,7 +626,6 @@ private class ShownLyrics(
 )
 
 /** Paused and this many frames without a change, the frame loop rests. */
-private const val MIN_FRAME_NANOS = 14_000_000L
 private const val REST_AFTER_STILL_FRAMES = 30
 /** How often a resting frame loop looks for a change (a seek while paused). */
 private const val REST_POLL_MS = 150L

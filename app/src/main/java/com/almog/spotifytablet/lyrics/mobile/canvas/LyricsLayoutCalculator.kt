@@ -82,7 +82,7 @@ internal object LyricsLayoutCalculator {
                     romanizationNote(originals[index]) else null
                 val supplements = presentationSupplements(originals[index], romanize, romanizationMode,
                     presentation?.texts?.getOrNull(index), presentation?.mode).map {
-                    measure(it, 0.6f, layout.contentWidth / ACTIVE_LINE_SCALE, layout.isRightAligned)
+                    measure(it, 0.6f * noteScalePct / 100f, layout.contentWidth / ACTIVE_LINE_SCALE, layout.isRightAligned)
                 }
                 if (supplements.isNotEmpty()) {
                     val em = size * density
@@ -160,6 +160,12 @@ internal object LyricsLayoutCalculator {
      */
     internal var fontOverride by mutableStateOf<FontFamily?>(null)
         private set
+
+    /** Size of translation and romanization lines as a percent of the default (60% of the lyric). */
+    internal var noteScalePct by mutableStateOf(100)
+        private set
+
+    internal fun setNoteScale(pct: Int) { noteScalePct = pct.coerceIn(50, 150) }
 
     /** Names [fontOverride], so measured lyrics can tell a font change from none. */
     internal var fontKey by mutableStateOf("")

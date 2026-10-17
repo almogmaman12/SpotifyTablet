@@ -522,6 +522,25 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/newUpNextText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="10dp"
+                android:background="#66000000"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:maxWidth="420dp"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="6dp"
+                android:textColor="#CCFFFFFF"
+                android:textSize="14sp"
+                android:visibility="gone"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                tools:text="Up next: Song — Artist" />
         </androidx.constraintlayout.widget.ConstraintLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -1029,6 +1048,7 @@
                     android:textStyle="italic" />
 
                 <View
+                    android:id="@+id/clockWeatherDivider"
                     android:layout_width="1dp"
                     android:layout_height="20dp"
                     android:layout_marginHorizontal="12dp"
@@ -1086,6 +1106,18 @@
                 android:gravity="center"
                 android:textColor="#CCCCCC"
                 android:textSize="22sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/clockEventText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center"
+                android:textColor="#99FFFFFF"
+                android:textSize="20sp"
+                android:maxLines="1"
+                android:ellipsize="end"
                 android:visibility="gone" />
         </LinearLayout>
 
