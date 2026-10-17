@@ -149,15 +149,29 @@ public final class GoogleCalendarClient {
         return out;
     }
 
-    /** "19:30  Dinner" for the next timed event in the coming 24 hours, or null. */
+    /**
+     * "19:30  Dinner" for the next timed event today, or "Tomorrow 09:00  Dinner" for one tomorrow.
+     * It looks through the end of tomorrow (not a rolling 24 hours), so tomorrow's first event is
+     * already shown today. Null when nothing is coming.
+     */
     public static String nextEventLine(Context c, String timePattern) {
         String csv = c.getSharedPreferences(Constants.PREF_NAME, Context.MODE_PRIVATE).getString(PREF_CALENDAR_IDS, "");
         Set<String> wanted = new HashSet<>();
         for (String s : csv.split(",")) if (!s.trim().isEmpty()) wanted.add(s.trim());
         long now = System.currentTimeMillis();
-        for (Event e : upcomingEvents(c, wanted, now - 15 * 60_000L, now + 24L * 3600_000L, 10)) {
+        java.util.Calendar midnight = java.util.Calendar.getInstance();
+        midnight.set(java.util.Calendar.HOUR_OF_DAY, 0);
+        midnight.set(java.util.Calendar.MINUTE, 0);
+        midnight.set(java.util.Calendar.SECOND, 0);
+        midnight.set(java.util.Calendar.MILLISECOND, 0);
+        midnight.add(java.util.Calendar.DAY_OF_YEAR, 1);
+        long tomorrowStart = midnight.getTimeInMillis();
+        midnight.add(java.util.Calendar.DAY_OF_YEAR, 1);
+        long endOfTomorrow = midnight.getTimeInMillis();
+        for (Event e : upcomingEvents(c, wanted, now - 15 * 60_000L, endOfTomorrow, 10)) {
             if (e.allDay || e.summary.trim().isEmpty() || e.startMs < now - 15 * 60_000L) continue;
-            return DateFormat.format(timePattern, new Date(e.startMs)) + "  " + e.summary.trim();
+            String time = DateFormat.format(timePattern, new Date(e.startMs)).toString();
+            return (e.startMs >= tomorrowStart ? "Tomorrow " : "") + time + "  " + e.summary.trim();
         }
         return null;
     }

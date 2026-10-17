@@ -273,7 +273,7 @@ public class SettingsActivity extends AppCompatActivity {
         aod.rows.add(switchRow("Show Shabbat times",
                 "Candle lighting and havdalah times above the clock.", "aod_show_shabbat", true, null));
         aod.rows.add(switchRow("Show next calendar event",
-                "Your next event within 24 hours, under the clock. Uses the same Google sign-in as Project Mode.",
+                "Your next event today or tomorrow, under the clock. Uses the same Google sign-in as Project Mode.",
                 "aod_show_event", false, on -> {
                     if (on && !GoogleCalendarClient.isConnected(this)) connectGoogleCalendar();
                 }));
