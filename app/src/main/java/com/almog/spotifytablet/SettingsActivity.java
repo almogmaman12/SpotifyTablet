@@ -317,9 +317,11 @@ public class SettingsActivity extends AppCompatActivity {
         // ---- Battery ----
         Section battery = new Section("Battery");
         Group saver = new Group("Battery saver (turn on only what you want)");
-        saver.rows.add(switchRow("Lower animation frame rate",
-                "Lyrics animate at about 30 frames per second instead of up to 70. Motion looks a little less smooth.",
-                PowerSettings.PREF_LOW_FPS, false, null));
+        saver.rows.add(choiceRow("Lyrics frame rate",
+                "How smoothly the lyrics animate. Lower saves battery; Max follows the screen (90/120 Hz tablets use the most power). The screen can only show rates it supports, so 45 may look like 30 on a 60 Hz tablet.",
+                PowerSettings.PREF_LYRICS_FPS, prefs.getBoolean(PowerSettings.PREF_LOW_FPS, false) ? "30" : "60",
+                new String[]{"24 fps (most saving)", "30 fps", "45 fps", "60 fps (default)", "Max (screen's own rate)"},
+                new String[]{"24", "30", "45", "60", "0"}));
         saver.rows.add(switchRow("No background blur",
                 "Skips the blurred album art behind the player, which costs a lot of power.",
                 PowerSettings.PREF_NO_BLUR, false, null));

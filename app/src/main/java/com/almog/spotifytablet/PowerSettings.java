@@ -9,14 +9,15 @@ import android.content.SharedPreferences;
  * never touch SharedPreferences. Call {@link #refresh} whenever the screen comes back.
  */
 public final class PowerSettings {
-    public static final String PREF_LOW_FPS = "battery_low_fps";
+    public static final String PREF_LOW_FPS = "battery_low_fps"; // old on/off switch, still honoured
+    public static final String PREF_LYRICS_FPS = "battery_lyrics_fps"; // "24", "30", "45", "60" or "0" (no cap)
     public static final String PREF_NO_BLUR = "battery_no_blur";
     public static final String PREF_SLOW_POLL = "battery_slow_poll";
     public static final String PREF_DIM_CLOCK = "battery_dim_clock";
     public static final String PREF_CLOCK_BRIGHTNESS = "battery_clock_brightness"; // percent
 
-    /** Shortest time between lyrics frames: ~70 fps normally, 30 fps with "Lower animation frame rate". */
-    public static volatile long minFrameNanos = 14_000_000L;
+    /** Shortest time between lyrics frames, from the "Lyrics frame rate" choice (0 = no cap). */
+    public static volatile long minFrameNanos = 14_000_000L; // 60 fps until refresh() runs
     public static volatile boolean noBackgroundBlur = false;
     public static volatile boolean slowPolling = false;
     public static volatile boolean dimClock = false;
@@ -35,7 +36,12 @@ public final class PowerSettings {
 
     public static void refresh(Context context) {
         SharedPreferences p = context.getSharedPreferences(Constants.PREF_NAME, Context.MODE_PRIVATE);
-        minFrameNanos = p.getBoolean(PREF_LOW_FPS, false) ? 33_000_000L : 14_000_000L;
+        String fps = p.getString(PREF_LYRICS_FPS, p.getBoolean(PREF_LOW_FPS, false) ? "30" : "60");
+        int n;
+        try { n = Integer.parseInt(fps); } catch (NumberFormatException e) { n = 60; }
+        // A frame is drawn when at least ~85% of the target interval has passed, so a cap of N lands on
+        // the nearest rate the screen can show (a 60 Hz panel can't do 45, it does 30 or 60).
+        minFrameNanos = n <= 0 ? 0L : (long) (1_000_000_000d / n * 0.85);
         noBackgroundBlur = p.getBoolean(PREF_NO_BLUR, false);
         slowPolling = p.getBoolean(PREF_SLOW_POLL, false);
         dimClock = p.getBoolean(PREF_DIM_CLOCK, false);
