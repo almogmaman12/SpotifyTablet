@@ -22,6 +22,15 @@ public final class PowerSettings {
     public static volatile boolean dimClock = false;
     public static volatile float clockBrightness = 0.10f;
 
+    // Scheduled dimming of the always-on clock: between start and end it uses its own level.
+    public static final String PREF_DIM_SCHEDULE = "aod_dim_schedule";
+    public static final String PREF_DIM_START = "aod_dim_start"; // minutes after midnight
+    public static final String PREF_DIM_END = "aod_dim_end";
+    public static final String PREF_DIM_LEVEL = "aod_dim_level"; // percent
+    public static volatile boolean dimSchedule = false;
+    public static volatile int dimStartMin = 23 * 60, dimEndMin = 7 * 60;
+    public static volatile float dimLevel = 0.03f;
+
     private PowerSettings() {}
 
     public static void refresh(Context context) {
@@ -30,6 +39,26 @@ public final class PowerSettings {
         noBackgroundBlur = p.getBoolean(PREF_NO_BLUR, false);
         slowPolling = p.getBoolean(PREF_SLOW_POLL, false);
         dimClock = p.getBoolean(PREF_DIM_CLOCK, false);
+        dimSchedule = p.getBoolean(PREF_DIM_SCHEDULE, false);
+        dimStartMin = p.getInt(PREF_DIM_START, 23 * 60);
+        dimEndMin = p.getInt(PREF_DIM_END, 7 * 60);
+        dimLevel = Math.max(0.01f, Math.min(1f, p.getInt(PREF_DIM_LEVEL, 3) / 100f));
         clockBrightness = Math.max(0.01f, Math.min(1f, p.getInt(PREF_CLOCK_BRIGHTNESS, 10) / 100f));
+    }
+
+    /**
+     * Brightness for the clock screen right now, or a negative number for "leave it to the system".
+     * The schedule wins inside its window (which may cross midnight); otherwise the plain dim option.
+     */
+    public static float clockBrightnessNow() {
+        if (dimSchedule) {
+            java.util.Calendar c = java.util.Calendar.getInstance();
+            int now = c.get(java.util.Calendar.HOUR_OF_DAY) * 60 + c.get(java.util.Calendar.MINUTE);
+            boolean inside = dimStartMin <= dimEndMin
+                    ? now >= dimStartMin && now < dimEndMin
+                    : now >= dimStartMin || now < dimEndMin;
+            if (inside) return dimLevel;
+        }
+        return dimClock ? clockBrightness : -1f;
     }
 }

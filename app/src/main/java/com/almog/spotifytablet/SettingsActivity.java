@@ -168,6 +168,19 @@ public class SettingsActivity extends AppCompatActivity {
         }));
     }
 
+    private String fmtMinutes(int m) {
+        return android.text.format.DateFormat.format(ClockFormat.pattern(this),
+                new java.util.GregorianCalendar(2000, 0, 1, m / 60, m % 60)).toString();
+    }
+
+    private void pickTime(String key, int def) {
+        int cur = prefs.getInt(key, def);
+        new android.app.TimePickerDialog(this, (v, h, min) -> {
+            prefs.edit().putInt(key, h * 60 + min).apply();
+            recreate();
+        }, cur / 60, cur % 60, !"12".equals(prefs.getString(ClockFormat.PREF_CLOCK_FORMAT, "24"))).show();
+    }
+
     private final ActivityResultLauncher<Intent> calendarSignIn = registerForActivityResult(
             new androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
             result -> {
@@ -303,7 +316,22 @@ public class SettingsActivity extends AppCompatActivity {
                 "Used when \"Dim the clock screen\" is on.",
                 1, 50, prefs.getInt(PowerSettings.PREF_CLOCK_BRIGHTNESS, 10),
                 v -> v + " %", v -> prefs.edit().putInt(PowerSettings.PREF_CLOCK_BRIGHTNESS, v).apply()));
+        Group night = new Group("Dim the clock on a schedule");
+        night.rows.add(switchRow("Dim at set times",
+                "Lowers the clock screen's brightness between the times below, for example overnight.",
+                PowerSettings.PREF_DIM_SCHEDULE, false, null));
+        night.rows.add(actionRow("Dim from", "When the dimming starts.",
+                fmtMinutes(prefs.getInt(PowerSettings.PREF_DIM_START, 23 * 60)), false,
+                () -> pickTime(PowerSettings.PREF_DIM_START, 23 * 60)));
+        night.rows.add(actionRow("Until", "When it goes back to normal.",
+                fmtMinutes(prefs.getInt(PowerSettings.PREF_DIM_END, 7 * 60)), false,
+                () -> pickTime(PowerSettings.PREF_DIM_END, 7 * 60)));
+        night.rows.add(sliderRow("Dim level",
+                "Brightness during the scheduled hours. Lower is darker.",
+                1, 50, prefs.getInt(PowerSettings.PREF_DIM_LEVEL, 3),
+                v -> v + " %", v -> prefs.edit().putInt(PowerSettings.PREF_DIM_LEVEL, v).apply()));
         battery.groups.add(saver);
+        battery.groups.add(night);
         sections.add(battery);
 
         // ---- Lyrics ----

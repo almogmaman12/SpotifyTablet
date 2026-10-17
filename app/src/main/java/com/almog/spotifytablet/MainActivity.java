@@ -2029,8 +2029,9 @@ private void fetchJellyfinVolume() {
     private void applyClockBrightness() {
         android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
         boolean clockUp = clockOverlay != null && clockOverlay.getVisibility() == View.VISIBLE;
-        float target = (clockUp && PowerSettings.dimClock)
-                ? PowerSettings.clockBrightness
+        float scheduled = PowerSettings.clockBrightnessNow();
+        float target = (clockUp && scheduled >= 0f)
+                ? scheduled
                 : android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
         if (lp.screenBrightness != target) {
             lp.screenBrightness = target;
@@ -2062,6 +2063,7 @@ private void fetchJellyfinVolume() {
 
     private void updateClockTime() {
         refreshAodEvent();
+        applyClockBrightness(); // the dim schedule can start or end at any minute
         long now = System.currentTimeMillis();
         // Compute once; reuse for both the full label and the split display.
         String timeStr = DateFormat.format(ClockFormat.pattern(this), now).toString();
