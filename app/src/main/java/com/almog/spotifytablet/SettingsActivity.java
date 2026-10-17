@@ -192,6 +192,20 @@ public class SettingsActivity extends AppCompatActivity {
         calendarSignIn.launch(GoogleCalendarClient.signInClient(this).getSignInIntent());
     }
 
+    /** Fetches the next event now and reports it; the clock also re-reads as soon as you return to it. */
+    private void refreshCalendarNow() {
+        if (!GoogleCalendarClient.isConnected(this)) {
+            toast("Connect Google Calendar first");
+            return;
+        }
+        toast("Refreshing\u2026");
+        final String pattern = ClockFormat.pattern(this);
+        new Thread(() -> {
+            String line = GoogleCalendarClient.nextEventLine(getApplicationContext(), pattern);
+            runOnUiThread(() -> toast(line == null ? "No events today or tomorrow" : "Next: " + line));
+        }).start();
+    }
+
     /** Checklist of the account's calendars; the choice is saved as a list of ids. */
     private void chooseCalendars() {
         if (!GoogleCalendarClient.isConnected(this)) {
@@ -283,6 +297,9 @@ public class SettingsActivity extends AppCompatActivity {
         aod.rows.add(actionRow("Calendars on the clock",
                 "Pick which calendars the next event comes from. None picked means all of them.",
                 "Choose", false, this::chooseCalendars));
+        aod.rows.add(actionRow("Refresh calendar now",
+                "Re-reads your calendars right away and shows what the clock will display.",
+                "Refresh", false, this::refreshCalendarNow));
         display.groups.add(aod);
         Group startup = new Group("Startup");
         startup.rows.add(switchRow("Start when the tablet boots",
