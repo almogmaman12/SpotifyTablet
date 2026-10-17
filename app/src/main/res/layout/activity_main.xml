@@ -501,18 +501,38 @@
         </androidx.constraintlayout.widget.ConstraintLayout>
 
         <!-- RIGHT SIDE: Seamless Full Height Live Lyrics Area -->
+        <!-- "Up next" strip: sits right above the lyrics box; the box moves down only while it shows. -->
+        <TextView
+            android:id="@+id/newUpNextText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="24dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="20dp"
+            android:ellipsize="end"
+            android:gravity="end"
+            android:maxLines="1"
+            android:textColor="#CCFFFFFF"
+            android:textSize="15sp"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/newCenterMediaColumn"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="Up next: Song — Artist" />
+
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/newLyricsContainer"
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:layout_marginStart="24dp"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="4dp"
             android:layout_marginEnd="20dp"
             android:layout_marginBottom="16dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toEndOf="@id/newCenterMediaColumn"
-            app:layout_constraintTop_toTopOf="parent">
+            app:layout_constraintTop_toBottomOf="@id/newUpNextText"
+            app:layout_goneMarginTop="16dp">
 
             <androidx.compose.ui.platform.ComposeView
                 android:id="@+id/newLyricsComposeView"
@@ -523,24 +543,6 @@
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
 
-            <TextView
-                android:id="@+id/newUpNextText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:layout_marginBottom="10dp"
-                android:background="#66000000"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:maxWidth="420dp"
-                android:paddingHorizontal="12dp"
-                android:paddingVertical="6dp"
-                android:textColor="#CCFFFFFF"
-                android:textSize="14sp"
-                android:visibility="gone"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
-                tools:text="Up next: Song — Artist" />
         </androidx.constraintlayout.widget.ConstraintLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
 
