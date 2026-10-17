@@ -168,14 +168,51 @@ public class SettingsActivity extends AppCompatActivity {
         }));
     }
 
-    @Override
-    public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
-        super.onRequestPermissionsResult(code, perms, results);
-        if (code == 4711 && (results.length == 0 || results[0] != android.content.pm.PackageManager.PERMISSION_GRANTED)) {
-            prefs.edit().putBoolean("aod_show_event", false).apply();
-            toast("Calendar permission is needed to show your next event");
-            recreate();
+    private final ActivityResultLauncher<Intent> calendarSignIn = registerForActivityResult(
+            new androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                toast(GoogleCalendarClient.isConnected(this) ? "Google Calendar connected" : "Google sign-in didn't finish");
+                recreate();
+            });
+
+    private void connectGoogleCalendar() {
+        calendarSignIn.launch(GoogleCalendarClient.signInClient(this).getSignInIntent());
+    }
+
+    /** Checklist of the account's calendars; the choice is saved as a list of ids. */
+    private void chooseCalendars() {
+        if (!GoogleCalendarClient.isConnected(this)) {
+            toast("Connect Google Calendar first");
+            return;
         }
+        new Thread(() -> {
+            java.util.List<GoogleCalendarClient.Cal> cals = GoogleCalendarClient.listCalendars(this);
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if (cals.isEmpty()) {
+                    toast("Couldn't load your calendars");
+                    return;
+                }
+                java.util.Set<String> chosen = new java.util.HashSet<>(java.util.Arrays.asList(
+                        prefs.getString(GoogleCalendarClient.PREF_CALENDAR_IDS, "").split(",")));
+                String[] names = new String[cals.size()];
+                boolean[] checked = new boolean[cals.size()];
+                for (int i = 0; i < cals.size(); i++) {
+                    names[i] = cals.get(i).name;
+                    checked[i] = chosen.contains(cals.get(i).id);
+                }
+                new AlertDialog.Builder(this).setTitle("Calendars on the clock")
+                        .setMultiChoiceItems(names, checked, (d, which, on) -> checked[which] = on)
+                        .setPositiveButton("Save", (d, w) -> {
+                            StringBuilder sb = new StringBuilder();
+                            for (int i = 0; i < cals.size(); i++) {
+                                if (checked[i]) sb.append(sb.length() > 0 ? "," : "").append(cals.get(i).id);
+                            }
+                            prefs.edit().putString(GoogleCalendarClient.PREF_CALENDAR_IDS, sb.toString()).apply();
+                        })
+                        .setNegativeButton("Cancel", null).show();
+            });
+        }).start();
     }
 
     @Override
@@ -223,12 +260,16 @@ public class SettingsActivity extends AppCompatActivity {
         aod.rows.add(switchRow("Show Shabbat times",
                 "Candle lighting and havdalah times above the clock.", "aod_show_shabbat", true, null));
         aod.rows.add(switchRow("Show next calendar event",
-                "Your next event within 24 hours, under the clock. Needs calendar permission.",
+                "Your next event within 24 hours, under the clock. Uses the same Google sign-in as Project Mode.",
                 "aod_show_event", false, on -> {
-                    if (on && !CalendarHelper.hasPermission(this)) {
-                        requestPermissions(new String[]{android.Manifest.permission.READ_CALENDAR}, 4711);
-                    }
+                    if (on && !GoogleCalendarClient.isConnected(this)) connectGoogleCalendar();
                 }));
+        aod.rows.add(actionRow("Google Calendar",
+                GoogleCalendarClient.isConnected(this) ? "Connected." : "Not connected yet.",
+                GoogleCalendarClient.isConnected(this) ? "Reconnect" : "Connect", false, this::connectGoogleCalendar));
+        aod.rows.add(actionRow("Calendars on the clock",
+                "Pick which calendars the next event comes from. None picked means all of them.",
+                "Choose", false, this::chooseCalendars));
         display.groups.add(aod);
         Group startup = new Group("Startup");
         startup.rows.add(switchRow("Start when the tablet boots",

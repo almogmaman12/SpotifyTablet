@@ -1747,7 +1747,7 @@ private void fetchJellyfinVolume() {
         aodShowWeather = prefs.getBoolean("aod_show_weather", true);
         aodShowQuote = prefs.getBoolean("aod_show_quote", true);
         aodShowShabbat = prefs.getBoolean("aod_show_shabbat", true);
-        aodShowEvent = prefs.getBoolean("aod_show_event", false) && CalendarHelper.hasPermission(this);
+        aodShowEvent = prefs.getBoolean("aod_show_event", false);
         applyAodOptions();
         applyClockBrightness();
         if (!prefs.getBoolean("lyrics_up_next", false)) showUpNext("");
@@ -2047,7 +2047,7 @@ private void fetchJellyfinVolume() {
         lastEventFetch = now;
         final String pattern = ClockFormat.pattern(this);
         java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
-            String line = CalendarHelper.nextEventLine(getApplicationContext(), pattern);
+            String line = GoogleCalendarClient.nextEventLine(getApplicationContext(), pattern);
             runOnUiThread(() -> {
                 if (isDestroyed() || clockEventText == null) return;
                 if (line == null) {
