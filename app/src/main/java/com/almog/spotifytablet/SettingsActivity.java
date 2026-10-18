@@ -352,6 +352,10 @@ public class SettingsActivity extends AppCompatActivity {
                 "Brightness during the scheduled hours. Lower is darker.",
                 1, 50, prefs.getInt(PowerSettings.PREF_DIM_LEVEL, 3),
                 v -> v + " %", v -> prefs.edit().putInt(PowerSettings.PREF_DIM_LEVEL, v).apply()));
+        night.rows.add(sliderRow("Extra dim (below the screen's lowest)",
+                "If the screen's lowest brightness is still too bright, this darkens the clock itself on top of it. 0% is off, 90% is almost black. Only during the scheduled hours.",
+                0, 90, prefs.getInt(PowerSettings.PREF_DIM_EXTRA, 0),
+                v -> v + " %", v -> prefs.edit().putInt(PowerSettings.PREF_DIM_EXTRA, v).apply()));
         battery.groups.add(saver);
         battery.groups.add(night);
         sections.add(battery);
@@ -370,6 +374,9 @@ public class SettingsActivity extends AppCompatActivity {
                     "Blurs lines that aren't being sung. Looks nice but uses noticeably more battery.",
                     "lyrics_line_blur", false, null));
         }
+        look.rows.add(switchRow("Cover when there are no lyrics",
+                "Shows the big cover with the title and artist instead of empty space (modern layout).",
+                "lyrics_no_lyrics_cover", true, null));
         look.rows.add(switchRow("Up next",
                 "A small strip over the lyrics naming the next song in your Spotify queue (modern layout).",
                 "lyrics_up_next", false, null));

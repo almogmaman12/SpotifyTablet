@@ -1,6 +1,9 @@
 package com.almog.spotifytablet.lyrics.bridge
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import com.almog.spotifytablet.lyrics.ui.LyricsView
@@ -28,6 +31,19 @@ object LyricsComposeBridge {
     /**
      * Functional callback interface for Java interoperability on seek events.
      */
+    fun interface OnNoLyricsListener {
+        fun onNoLyricsChanged(noLyrics: Boolean)
+    }
+
+    /** Told when the song being shown turns out to have no lyrics (settled, not just loading), and when that ends. */
+    @Volatile
+    private var noLyricsListener: OnNoLyricsListener? = null
+
+    @JvmStatic
+    fun setNoLyricsListener(listener: OnNoLyricsListener?) {
+        noLyricsListener = listener
+    }
+
     fun interface OnSeekRequestedListener {
         fun onSeekRequested(positionMs: Long)
     }
@@ -49,6 +65,9 @@ object LyricsComposeBridge {
         val isActive = flag(composeView)
         composeView.setContent {
             if (isActive.value) {
+                val ui by viewModel.uiState.collectAsStateWithLifecycle()
+                val noLyrics = !ui.isLoading && (ui.track == null || ui.track?.lines.isNullOrEmpty())
+                LaunchedEffect(noLyrics) { noLyricsListener?.onNoLyricsChanged(noLyrics) }
                 LyricsView(
                     viewModel = viewModel,
                     onLineClicked = { pos ->
