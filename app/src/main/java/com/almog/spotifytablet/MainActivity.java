@@ -81,13 +81,11 @@ public class MainActivity extends AppCompatActivity {
     // Always-on display options (Settings → Display → Always-on display), refreshed in onResume.
     private boolean aodShowWeather = true, aodShowQuote = true, aodShowShabbat = true, aodShowEvent = false;
     private TextView clockEventText, newUpNextText;
-    // "No lyrics" screen (new layout): big cover, title and artist instead of empty space.
-    private View newNoLyricsPanel, clockDimOverlay;
-    private ImageView newNoLyricsCover;
-    private TextView newNoLyricsTitle, newNoLyricsArtist;
+    // No lyrics (new layout): the player slides to the middle of the screen instead of leaving the lyrics area empty.
+    private View newCenterMediaColumn, clockDimOverlay;
     private boolean noLyricsNow = false;
-    private String currentCoverUrl = "";
-    private final Runnable showNoLyricsRunnable = this::showNoLyricsPanel;
+    private boolean playerCentered = false;
+    private final Runnable applyNoLyricsRunnable = this::applyNoLyricsLayout;
     private View clockWeatherDivider;
     private long lastEventFetch = 0L;
     // "Efficient background blur": the cover is blurred once on the CPU instead of by the GPU every frame.
@@ -707,24 +705,13 @@ private void fetchJellyfinVolume() {
         clockQuoteText = findViewById(R.id.clockQuoteText);
         clockEventText = findViewById(R.id.clockEventText);
         newUpNextText = findViewById(R.id.newUpNextText);
-        newNoLyricsPanel = findViewById(R.id.newNoLyricsPanel);
-        newNoLyricsCover = findViewById(R.id.newNoLyricsCover);
-        newNoLyricsTitle = findViewById(R.id.newNoLyricsTitle);
-        newNoLyricsArtist = findViewById(R.id.newNoLyricsArtist);
+        newCenterMediaColumn = findViewById(R.id.newCenterMediaColumn);
         clockDimOverlay = findViewById(R.id.clockDimOverlay);
-        if (newNoLyricsCover != null) {
-            newNoLyricsCover.setClipToOutline(true);
-            newNoLyricsCover.setOutlineProvider(new android.view.ViewOutlineProvider() {
-                @Override public void getOutline(View v, android.graphics.Outline o) {
-                    o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), 24 * getResources().getDisplayMetrics().density);
-                }
-            });
-        }
         com.almog.spotifytablet.lyrics.bridge.LyricsComposeBridge.setNoLyricsListener(noLyrics -> runOnUiThread(() -> {
             noLyricsNow = noLyrics;
-            handler.removeCallbacks(showNoLyricsRunnable);
-            if (noLyrics) handler.postDelayed(showNoLyricsRunnable, 1500); // a new song's lyrics are about to load
-            else if (newNoLyricsPanel != null) newNoLyricsPanel.setVisibility(View.GONE);
+            handler.removeCallbacks(applyNoLyricsRunnable);
+            if (noLyrics) handler.postDelayed(applyNoLyricsRunnable, 1500); // a new song's lyrics are about to load
+            else centerPlayer(false);
         }));
         clockWeatherDivider = findViewById(R.id.clockWeatherDivider);
 
@@ -1780,6 +1767,7 @@ private void fetchJellyfinVolume() {
         aodShowEvent = prefs.getBoolean("aod_show_event", false);
         applyAodOptions();
         applyClockBrightness();
+        handler.post(applyNoLyricsRunnable); // the "center the player" setting may have changed
         if (!prefs.getBoolean("lyrics_up_next", false)) showUpNext("");
 
         // Reload user-configurable polling intervals
@@ -1882,7 +1870,6 @@ private void fetchJellyfinVolume() {
             if (newArtistName != null) crossfadeText(newArtistName, artist);
 
             if (!isDestroyed() && !isFinishing() && img != null && !img.isEmpty()) {
-                currentCoverUrl = img;
                 if (albumArt != null) {
                     Glide.with(MainActivity.this).load(img).into(albumArt);
                 }
@@ -2007,23 +1994,35 @@ private void fetchJellyfinVolume() {
         });
     }
 
-    /** Fills and shows the no-lyrics screen, if the setting is on and a song is actually playing. */
-    private void showNoLyricsPanel() {
-        if (newNoLyricsPanel == null || !noLyricsNow) return;
+    /** No lyrics for the song that's playing: slide the player to the middle (the setting can turn this off). */
+    private void applyNoLyricsLayout() {
+        if (!noLyricsNow) return;
         boolean on = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getBoolean("lyrics_no_lyrics_cover", true);
-        CharSequence title = newSongTitle != null ? newSongTitle.getText() : "";
         boolean newLayout = newMainContent != null && newMainContent.getVisibility() == View.VISIBLE;
         boolean clockUp = clockOverlay != null && clockOverlay.getVisibility() == View.VISIBLE;
-        if (!on || !newLayout || clockUp || title == null || title.length() == 0 || "Updates Paused".contentEquals(title)) {
-            newNoLyricsPanel.setVisibility(View.GONE);
-            return;
+        CharSequence title = newSongTitle != null ? newSongTitle.getText() : "";
+        boolean hasSong = title != null && title.length() > 0 && !"Updates Paused".contentEquals(title);
+        centerPlayer(on && newLayout && !clockUp && hasSong);
+    }
+
+    /**
+     * Moves the cover, controls and title (and the weather bar above them) to the middle of the free
+     * space, or back beside the lyrics. Animated, so it reads as the lyrics making room, not a jump.
+     */
+    private void centerPlayer(boolean center) {
+        if (newCenterMediaColumn == null || playerCentered == center) return;
+        float dx = 0f;
+        if (center) {
+            View parent = (View) newCenterMediaColumn.getParent();
+            float density = getResources().getDisplayMetrics().density;
+            float areaStart = newCenterMediaColumn.getLeft() - 16 * density;   // where the sidebar ends
+            float areaEnd = parent.getWidth() - 20 * density;
+            float targetCenter = (areaStart + areaEnd) / 2f;
+            dx = targetCenter - (newCenterMediaColumn.getLeft() + newCenterMediaColumn.getWidth() / 2f);
         }
-        newNoLyricsTitle.setText(title);
-        newNoLyricsArtist.setText(newArtistName != null ? newArtistName.getText() : "");
-        if (!currentCoverUrl.isEmpty() && !isDestroyed()) {
-            Glide.with(this).load(currentCoverUrl).into(newNoLyricsCover);
-        }
-        newNoLyricsPanel.setVisibility(View.VISIBLE);
+        playerCentered = center;
+        newCenterMediaColumn.animate().translationX(dx).setDuration(450).start();
+        if (newHeaderContainer != null) newHeaderContainer.animate().translationX(dx).setDuration(450).start();
     }
 
     /** "Up next" strip over the lyrics (new layout); empty text or the setting being off hides it. */

@@ -374,8 +374,8 @@ public class SettingsActivity extends AppCompatActivity {
                     "Blurs lines that aren't being sung. Looks nice but uses noticeably more battery.",
                     "lyrics_line_blur", false, null));
         }
-        look.rows.add(switchRow("Cover when there are no lyrics",
-                "Shows the big cover with the title and artist instead of empty space (modern layout).",
+        look.rows.add(switchRow("Center the player when there are no lyrics",
+                "The cover, controls and title slide to the middle of the screen instead of leaving the lyrics area empty (modern layout).",
                 "lyrics_no_lyrics_cover", true, null));
         look.rows.add(switchRow("Up next",
                 "A small strip over the lyrics naming the next song in your Spotify queue (modern layout).",

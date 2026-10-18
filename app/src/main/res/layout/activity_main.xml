@@ -543,58 +543,6 @@
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
 
-            <!-- Shown instead of empty space when a song has no lyrics: big cover, title and artist. -->
-            <LinearLayout
-                android:id="@+id/newNoLyricsPanel"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:visibility="gone"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent">
-
-                <ImageView
-                    android:id="@+id/newNoLyricsCover"
-                    android:layout_width="260dp"
-                    android:layout_height="260dp"
-                    android:contentDescription="@null"
-                    android:scaleType="centerCrop" />
-
-                <TextView
-                    android:id="@+id/newNoLyricsTitle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:ellipsize="end"
-                    android:maxLines="2"
-                    android:maxWidth="480dp"
-                    android:gravity="center"
-                    android:textColor="#FFFFFF"
-                    android:textSize="28sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/newNoLyricsArtist"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:ellipsize="end"
-                    android:maxLines="1"
-                    android:maxWidth="480dp"
-                    android:textColor="#B3FFFFFF"
-                    android:textSize="20sp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp"
-                    android:text="No lyrics for this song"
-                    android:textColor="#66FFFFFF"
-                    android:textSize="14sp" />
-            </LinearLayout>
 
         </androidx.constraintlayout.widget.ConstraintLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
