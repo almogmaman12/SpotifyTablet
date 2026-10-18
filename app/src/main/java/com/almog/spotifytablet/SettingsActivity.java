@@ -879,9 +879,17 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     /** Which lyric sites are asked, with how many are on. Opens a checklist. */
+    private boolean returnFromSources;
+
+    @Override
+    protected void onRestart() {
+        super.onRestart();
+        if (returnFromSources) { returnFromSources = false; recreate(); }
+    }
+
     private Row sourcesRow() {
         return new Row("Lyric sources",
-                "Choose which sites are asked for lyrics (Spicy Lyrics, LRCLIB, AMLL, Unison, Apple, NetEase and more).",
+                "Rank, switch on and off, blends and your own Spicy Lyrics key.",
                 () -> {
                     com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.init(this);
                     LinearLayout row = rowShell();
@@ -902,49 +910,9 @@ public class SettingsActivity extends AppCompatActivity {
                     };
                     paint.run();
                     row.addView(value);
-                    row.setOnClickListener(v -> showSourcesDialog(paint));
+                    row.setOnClickListener(v -> { returnFromSources = true; startActivity(new android.content.Intent(this, SourcesActivity.class)); });
                     return row;
                 });
-    }
-
-    private void showSourcesDialog(Runnable done) {
-        final List<com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo> list =
-                com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.sources();
-        if (list.isEmpty()) {
-            toast("Sources are not ready yet");
-            return;
-        }
-        final String[] names = new String[list.size()];
-        final boolean[] checked = new boolean[list.size()];
-        for (int i = 0; i < list.size(); i++) {
-            names[i] = list.get(i).getName();
-            checked[i] = list.get(i).getEnabled();
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("Lyric sources (asked in this order)")
-                .setMultiChoiceItems(names, checked, (d, which, on) -> checked[which] = on)
-                .setPositiveButton("Save", (d, w) -> {
-                    for (int i = 0; i < list.size(); i++) {
-                        com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources
-                                .setSourceEnabled(list.get(i).getId(), checked[i]);
-                    }
-                    done.run();
-                })
-                .setNeutralButton("What they send", (d, w) -> {
-                    StringBuilder sb = new StringBuilder();
-                    for (com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo s : list) {
-                        if (s.getNote() != null) {
-                            sb.append("• ").append(s.getName()).append(": ").append(s.getNote()).append("\n\n");
-                        }
-                    }
-                    new AlertDialog.Builder(this).setTitle("What turning sources on sends")
-                            .setMessage(sb.length() == 0
-                                    ? "The default sources only receive the song title, artist and length."
-                                    : sb.toString())
-                            .setPositiveButton("OK", null).show();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
     }
 
     // ---------------------------------------------------------------------

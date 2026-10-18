@@ -73,6 +73,11 @@
             android:theme="@style/Theme.SpotifyTablet" />
 
         <activity
+            android:name=".SourcesActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SpotifyTablet" />
+
+        <activity
             android:name=".DebugActivity"
             android:exported="false"
             android:theme="@style/Theme.SpotifyTablet" />

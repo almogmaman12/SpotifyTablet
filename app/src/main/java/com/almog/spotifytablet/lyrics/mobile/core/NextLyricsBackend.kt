@@ -24,7 +24,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
 /** External-playback wiring for the original player's provider boundary. */
-internal class NextLyricsBackend(context: Context, clientKey: String) {
+internal class NextLyricsBackend(context: Context, private val defaultKey: String) {
     private val diskCache = File(context.cacheDir, "lyrics")
     private val preferences = context.getSharedPreferences("lyrics_sources", Context.MODE_PRIVATE)
     private val client = OkHttpClient.Builder()
@@ -34,8 +34,8 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
     private val gson = Gson()
     /** Header values of custom sources: kept out of [preferences], which backups copy. */
     private val customHeaders = context.getSharedPreferences("custom_source_headers", Context.MODE_PRIVATE)
-    private val builtIn: Set<RemoteLyricsProvider> =
-        createProviders(client, gson, clientKey, SharedSpotify.resolver)
+    @Volatile private var builtIn: Set<RemoteLyricsProvider> =
+        createProviders(client, gson, preferences.getString(PERSONAL_KEY, null)?.takeIf { it.isNotBlank() } ?: defaultKey, SharedSpotify.resolver)
     private val cooldowns = ProviderCooldownTracker()
     // Custom sources come and go, so these are rebuilt with them ([rebuild]).
     @Volatile private var providers: Set<RemoteLyricsProvider> = builtIn
@@ -283,6 +283,7 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
         private const val CUSTOM_PRIORITY = 1_000
         internal const val SWITCHED_OFF = "switchedOff"
         private const val DISCLOSED = "disclosed"
+        private const val PERSONAL_KEY = "personalKey"
     }
 
     /** Run on every read, so a restored old backup can't switch the old sources back on either. */
@@ -296,6 +297,18 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
         val blends = preferences.getStringSet("blends", emptySet()).orEmpty()
             .filterTo(mutableSetOf()) { LyricsBlends.byId(it) != null }
         return RemoteLyricsPolicy(normalized.order, normalized.disabledSourceIds, blends)
+    }
+
+    /** The person's own Spicy Lyrics client key, or null while the built-in one is used. */
+    val personalKey: String?
+        get() = preferences.getString(PERSONAL_KEY, null)?.takeIf { it.isNotBlank() }
+
+    /** Switches Spicy Lyrics to [key] (null: back to the built-in key) and forgets picks made with the old one. */
+    fun setPersonalKey(key: String?) {
+        preferences.edit().apply { if (key.isNullOrBlank()) remove(PERSONAL_KEY) else putString(PERSONAL_KEY, key) }.apply()
+        builtIn = createProviders(client, gson, key?.takeIf { it.isNotBlank() } ?: defaultKey, SharedSpotify.resolver)
+        rebuild()
+        clearCache()
     }
 
     fun setBlendEnabled(id: String, enabled: Boolean) {

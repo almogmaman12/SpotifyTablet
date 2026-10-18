@@ -9,6 +9,9 @@ import com.almog.spotifytablet.lyrics.mobile.models.LineRole
 import com.almog.spotifytablet.lyrics.mobile.models.LyricsType
 import com.almog.spotifytablet.lyrics.mobile.network.data.LyricsLookupRequest
 import com.almog.spotifytablet.lyrics.mobile.network.data.RemoteLyricsResolution
+import com.almog.spotifytablet.lyrics.mobile.network.data.LyricsBlends
+import com.almog.spotifytablet.lyrics.mobile.network.data.LyricsCapability
+import com.almog.spotifytablet.lyrics.mobile.network.data.SpicyLyricsKey
 import com.almog.spotifytablet.lyrics.model.LyricAttribution
 import com.almog.spotifytablet.lyrics.model.LyricContributor
 import com.almog.spotifytablet.lyrics.model.LyricLine
@@ -41,7 +44,17 @@ object MobileLyricsSources {
         }
     }
 
-    class SourceInfo(val id: String, val name: String, val enabled: Boolean, val note: String?)
+    class SourceInfo(
+        val id: String, val name: String, val enabled: Boolean, val note: String?,
+        /** Needs the person's agreement before it is first switched on. */
+        val needsConsent: Boolean = false,
+        /** What it can return: "Word sync", "Line sync", "Plain text". */
+        val types: List<String> = emptyList(),
+        /** Sources that only add to another's results (e.g. Apple Music relays); null for a top-level source. */
+        val group: String? = null,
+    )
+
+    class BlendInfo(val id: String, val name: String, val enabled: Boolean, val usable: Boolean, val needs: String)
 
     /** The lyric sources the app can ask, in rank order, with whether each is on. Empty before [init]. */
     @JvmStatic
@@ -56,9 +69,59 @@ object MobileLyricsSources {
                     id = d.id,
                     name = d.displayName,
                     enabled = d.id !in policy.disabledSourceIds,
-                    note = com.almog.spotifytablet.lyrics.mobile.network.data.SourceDisclosures.forSource(d)?.description
+                    note = com.almog.spotifytablet.lyrics.mobile.network.data.SourceDisclosures.forSource(d)?.description,
+                    needsConsent = com.almog.spotifytablet.lyrics.mobile.network.data.SourceDisclosures.forSource(d) != null && !b.isDisclosed(d.id),
+                    types = buildList {
+                        if (LyricsCapability.WORD_SYNC in d.capabilities) add("Word sync")
+                        if (LyricsCapability.LINE_SYNC in d.capabilities) add("Line sync")
+                        if (LyricsCapability.PLAIN_TEXT in d.capabilities) add("Plain text")
+                    },
+                    group = d.upstreamFamily.takeIf { it != d.id && it != "custom" && it != "blend" }
                 )
             }
+    }
+
+    /** Saves a new rank order (ids of [sources], top first). Ids left out keep their place after the others. */
+    @JvmStatic
+    fun setOrder(ids: List<String>) {
+        val b = backend ?: return
+        val policy = b.policy()
+        b.setPolicy(ids + policy.sourceOrder.filterNot { it in ids }, policy.disabledSourceIds)
+    }
+
+    @JvmStatic
+    fun markDisclosed(id: String) { backend?.markDisclosed(id) }
+
+    /** The blends, with whether each is on and whether its donor sources are on too (a blend needs both). */
+    @JvmStatic
+    fun blends(): List<BlendInfo> {
+        val b = backend ?: return emptyList()
+        val policy = b.policy()
+        val names = b.descriptors.associate { it.id to it.displayName }
+        return LyricsBlends.ALL.map { d ->
+            BlendInfo(d.id, d.displayName, d.id in policy.enabledBlendIds,
+                d.donorIds.all { it !in policy.disabledSourceIds },
+                d.donorIds.joinToString(" + ") { names[it] ?: it })
+        }
+    }
+
+    @JvmStatic
+    fun setBlendEnabled(id: String, enabled: Boolean) { backend?.setBlendEnabled(id, enabled) }
+
+    /** Hint of the saved personal key (e.g. "sl_pk_…x7Qa"), or null while the built-in key is used. */
+    @JvmStatic
+    fun personalKeyHint(): String? = backend?.personalKey?.let(SpicyLyricsKey::hint)
+
+    /** Saves [input] as the personal Spicy Lyrics key; blank goes back to the built-in one. Returns an error text, or null when saved. */
+    @JvmStatic
+    fun setPersonalKey(input: String): String? {
+        val b = backend ?: return "Sources are not ready yet"
+        return when (val c = SpicyLyricsKey.check(input)) {
+            is SpicyLyricsKey.Check.Ok -> { b.setPersonalKey(c.key); null }
+            SpicyLyricsKey.Check.Empty -> { b.setPersonalKey(null); null }
+            SpicyLyricsKey.Check.Secret -> "That is a secret key (sl_sk_…). Use the client key that starts with sl_pk_."
+            SpicyLyricsKey.Check.Invalid -> "That doesn't look like a client key. It starts with sl_pk_."
+        }
     }
 
     /** Switches one source on or off. Picks cached under another set of sources are ignored automatically. */
