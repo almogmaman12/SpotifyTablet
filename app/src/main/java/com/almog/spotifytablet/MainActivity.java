@@ -2765,8 +2765,11 @@ private void fetchJellyfinVolume() {
         pausedSongTitle = title;
         pausedSongArtist = artist;
 
-        final String key = "web:" + st.key;
+        // The page can update its title and cover a moment after the address changes, so they count as part of the track.
+        final String key = "web:" + st.key + "|" + st.title + "|" + st.artist;
         final boolean trackChanged = !key.equals(lastBlurredTrackId);
+        final boolean artChanged = !st.artwork.equals(lastBrowserArtwork);
+        lastBrowserArtwork = st.artwork;
         if (trackChanged) {
             lastBlurredTrackId = key;
             if (lyricsViewModel != null) lyricsViewModel.clearLyrics();
@@ -2785,9 +2788,11 @@ private void fetchJellyfinVolume() {
             if (newBtnVolUp != null) newBtnVolUp.setVisibility(View.GONE);
             if (newBtnVolDown != null) newBtnVolDown.setVisibility(View.GONE);
             if (newVolumeText != null) newVolumeText.setVisibility(View.GONE);
-            updateUIForSong(title, artist, st.artwork, trackChanged);
+            updateUIForSong(title, artist, st.artwork, trackChanged || artChanged);
         });
     }
+
+    private String lastBrowserArtwork = "";
 
     /** Starts or stops the receiver for the browser extension to match the setting. */
     private void syncBrowserServer() {

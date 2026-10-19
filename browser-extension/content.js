@@ -32,7 +32,11 @@
     const list = md && md.artwork ? [...md.artwork] : [];
     if (list.length) {
       list.sort((a, b) => (parseInt(b.sizes) || 0) - (parseInt(a.sizes) || 0));
-      try { return new URL(list[0].src, location.href).href; } catch (e) { /* fall through */ }
+      try {
+        const u = new URL(list[0].src, location.href);
+        // The tablet cannot open blob: or data: addresses from this page.
+        if (u.protocol === "http:" || u.protocol === "https:") return u.href;
+      } catch (e) { /* fall through */ }
     }
     const v = new URLSearchParams(location.search).get("v");
     if (v && /youtube\.com$/.test(location.hostname)) return "https://i.ytimg.com/vi/" + v + "/hqdefault.jpg";
