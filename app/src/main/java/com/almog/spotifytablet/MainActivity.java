@@ -1882,6 +1882,7 @@ private void fetchJellyfinVolume() {
             if (artistName != null) crossfadeText(artistName, artist);
             if (newArtistName != null) crossfadeText(newArtistName, artist);
 
+            DebugLog.i("Cover", "updateUIForSong '" + title + "' cover=" + (img == null || img.isEmpty() ? "(none)" : "set"));
             if (!isDestroyed() && !isFinishing() && img != null && !img.isEmpty()) {
                 if (albumArt != null) {
                     Glide.with(MainActivity.this).load(img).into(albumArt);
@@ -1899,6 +1900,7 @@ private void fetchJellyfinVolume() {
                                 @Override
                                 public boolean onResourceReady(Drawable r, Object model, com.bumptech.glide.request.target.Target<Drawable> target,
                                                                com.bumptech.glide.load.DataSource src, boolean first) {
+                                    DebugLog.i("Cover", "loaded " + r.getIntrinsicWidth() + "x" + r.getIntrinsicHeight() + " from " + src);
                                     return false;
                                 }
                             })
