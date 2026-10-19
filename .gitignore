@@ -26,6 +26,7 @@ spicy.html
 *.html
 # ...except the bundled lyrics renderer page
 !app/src/main/assets/**/*.html
+!browser-extension/*.html
 
 # Keystore files (signing keys — never commit)
 *.jks
