@@ -37,6 +37,8 @@ public final class BrowserMedia {
 
     public static final class State {
         public String key = "", title = "", artist = "", album = "", artwork = "", site = "";
+        /** The cover as a small data: JPEG sent by the extension, so the tablet does not have to fetch it. */
+        public String artworkData = "";
         public int positionMs, durationMs;
         public boolean playing;
         public long receivedAt;
@@ -180,7 +182,7 @@ public final class BrowserMedia {
                 respond(out, 401, "{\"ok\":false,\"error\":\"bad token\"}");
                 return;
             }
-            if (length > 65_536) {
+            if (length > 600_000) {
                 respond(out, 413, "{\"ok\":false}");
                 return;
             }
@@ -224,6 +226,9 @@ public final class BrowserMedia {
         s.album = o.optString("album", "").trim();
         s.artwork = o.optString("artwork", "");
         s.site = o.optString("site", "");
+        s.artworkData = o.optString("artworkData", "");
+        // The extension sends the picture once in a while; keep it while the same cover is still reported.
+        if (s.artworkData.isEmpty() && prev != null && prev.artwork.equals(s.artwork)) s.artworkData = prev.artworkData;
         s.positionMs = (int) Math.max(0, o.optLong("positionMs", 0));
         s.durationMs = (int) Math.max(0, o.optLong("durationMs", 0));
         s.playing = o.optBoolean("playing", false);

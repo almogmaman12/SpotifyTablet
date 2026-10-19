@@ -1882,7 +1882,7 @@ private void fetchJellyfinVolume() {
             if (artistName != null) crossfadeText(artistName, artist);
             if (newArtistName != null) crossfadeText(newArtistName, artist);
 
-            DebugLog.i("Cover", "updateUIForSong '" + title + "' cover=" + (img == null || img.isEmpty() ? "(none)" : "set"));
+            DebugLog.i("Cover", "updateUIForSong '" + title + "' cover=" + (img == null || img.isEmpty() ? "(none)" : img.startsWith("data:") ? "data" : "address"));
             if (!isDestroyed() && !isFinishing() && img != null && !img.isEmpty()) {
                 if (albumArt != null) {
                     Glide.with(MainActivity.this).load(img).into(albumArt);
@@ -2785,8 +2785,9 @@ private void fetchJellyfinVolume() {
         // The page can update its title and cover a moment after the address changes, so they count as part of the track.
         final String key = "web:" + st.key + "|" + st.title + "|" + st.artist;
         final boolean trackChanged = !key.equals(lastBlurredTrackId);
-        final boolean artChanged = !st.artwork.equals(lastBrowserArtwork);
-        lastBrowserArtwork = st.artwork;
+        final String cover = !st.artworkData.isEmpty() ? st.artworkData : st.artwork;
+        final boolean artChanged = !cover.equals(lastBrowserArtwork);
+        lastBrowserArtwork = cover;
         if (trackChanged) {
             lastBlurredTrackId = key;
             if (lyricsViewModel != null) lyricsViewModel.clearLyrics();
@@ -2805,7 +2806,7 @@ private void fetchJellyfinVolume() {
             if (newBtnVolUp != null) newBtnVolUp.setVisibility(View.GONE);
             if (newBtnVolDown != null) newBtnVolDown.setVisibility(View.GONE);
             if (newVolumeText != null) newVolumeText.setVisibility(View.GONE);
-            updateUIForSong(title, artist, st.artwork, trackChanged || artChanged);
+            updateUIForSong(title, artist, cover, trackChanged || artChanged);
         });
     }
 
