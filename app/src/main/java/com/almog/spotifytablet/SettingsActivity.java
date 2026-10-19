@@ -438,7 +438,11 @@ public class SettingsActivity extends AppCompatActivity {
         Group web = new Group("Browser extension (YouTube, SoundCloud, any page)");
         web.rows.add(switchRow("Receive from the browser",
                 "Lets the Chrome extension from the browser-extension folder send what is playing to this tablet.",
-                BrowserMedia.PREF_ENABLED, false, on -> recreate()));
+                BrowserMedia.PREF_ENABLED, false, on -> {
+                    // Listen right away, so the extension can connect while this screen is still open.
+                    if (on) BrowserMedia.start(getApplicationContext(), null); else BrowserMedia.stop();
+                    recreate();
+                }));
         if (BrowserMedia.isEnabled(this)) {
             web.rows.add(infoRow("Address and code",
                     "In the extension's options enter  " + BrowserMedia.address() + "  and the code  " + BrowserMedia.token(this)

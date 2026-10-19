@@ -111,7 +111,7 @@ public final class BrowserMedia {
     }
 
     public static synchronized void start(Context context, Runnable changed) {
-        onChange = changed;
+        if (changed != null) onChange = changed;
         token = token(context);
         if (server != null) return;
         final ServerSocket ss;
