@@ -18,6 +18,7 @@ import android.text.format.DateUtils;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.Button;
 import com.google.android.material.button.MaterialButton;
@@ -152,7 +153,7 @@ public class MainActivity extends AppCompatActivity {
     private final Runnable clockTimeUpdater = this::updateClockTime;
     private final Runnable shabbatUpdater = this::updateShabbatTime;
     private View newMainContent, oldMainContent;
-    private View newAlbumFrame, oldAlbumFrame;
+    private View newAlbumFrame, oldAlbumFrame, newSongInfoContainer;
     private ImageView newAlbumArt;
     private ProgressBar newLinearProgressBar;
     private TextView newSongTitle, newArtistName, newGreetingText, newWeatherText, newTimeDisplayStart, newTimeDisplayEnd, newVolumeText;
@@ -636,6 +637,7 @@ private void fetchJellyfinVolume() {
         newPlaybackControls = findViewById(R.id.newPlaybackControls);
 
         newAlbumFrame = findViewById(R.id.newAlbumFrame);
+        newSongInfoContainer = findViewById(R.id.newSongInfoContainer);
         newAlbumArt = findViewById(R.id.newAlbumArt);
         newLinearProgressBar = findViewById(R.id.newLinearProgressBar);
         newSongTitle = findViewById(R.id.newSongTitle);
@@ -2051,8 +2053,32 @@ private void fetchJellyfinVolume() {
             dx = targetCenter - (newCenterMediaColumn.getLeft() + newCenterMediaColumn.getWidth() / 2f);
         }
         playerCentered = center;
+        widenTitle(center);
         newCenterMediaColumn.animate().translationX(dx).setDuration(450).start();
         if (newHeaderContainer != null) newHeaderContainer.animate().translationX(dx).setDuration(450).start();
+    }
+
+    /**
+     * With no lyrics there is room beside the player: let the title and artist use it (up to about
+     * 720dp) instead of the cover's width, so long titles show whole instead of scrolling.
+     */
+    private void widenTitle(boolean wide) {
+        if (newCenterMediaColumn == null || newSongInfoContainer == null) return;
+        float density = getResources().getDisplayMetrics().density;
+        int normalMax = Math.round(400 * density);
+        int width = ViewGroup.LayoutParams.MATCH_PARENT;
+        int maxWidth = normalMax;
+        if (wide) {
+            View parent = (View) newCenterMediaColumn.getParent();
+            float free = parent.getWidth() - newCenterMediaColumn.getLeft() + 16 * density - 20 * density - 48 * density;
+            maxWidth = Math.max(normalMax, Math.round(Math.min(free, 720 * density)));
+            width = maxWidth;
+        }
+        newCenterMediaColumn.setClipChildren(!wide);
+        newSongInfoContainer.getLayoutParams().width = width;
+        newSongInfoContainer.requestLayout();
+        if (newSongTitle != null) newSongTitle.setMaxWidth(maxWidth);
+        if (newArtistName != null) newArtistName.setMaxWidth(maxWidth);
     }
 
     /** "Up next" strip over the lyrics (new layout); empty text or the setting being off hides it. */
@@ -2828,8 +2854,10 @@ private void fetchJellyfinVolume() {
     }
 
     private void fetchAutoCurrentSong() {
-        // A video or song playing in the browser extension wins over Spotify and Jellyfin: nothing to ask over the network.
-        if (BrowserMedia.playingNow()) {
+        // The browser needs no network check, so when it ranks first (Settings → Auto priority) it is used at once;
+        // otherwise Spotify and Jellyfin are asked first and checkAutoDecision applies the order.
+        final boolean browserPlaying = BrowserMedia.playingNow();
+        if (browserPlaying && "browser".equals(autoOrder().get(0))) {
             if (!"browser".equals(currentAutoEffectiveSource)) {
                 currentAutoEffectiveSource = "browser";
                 runOnUiThread(() -> updateSourceTheme("auto"));
@@ -2840,7 +2868,7 @@ private void fetchJellyfinVolume() {
             handler.postDelayed(songUpdater, Math.min(songPollInterval, 2000));
             return;
         }
-        if ("browser".equals(currentAutoEffectiveSource)) {
+        if ("browser".equals(currentAutoEffectiveSource) && !browserPlaying) {
             currentAutoEffectiveSource = "spotify";
             lastBlurredTrackId = "";
             runOnUiThread(() -> updateSourceTheme("auto"));
@@ -2985,6 +3013,18 @@ private void fetchJellyfinVolume() {
         }
     }
 
+    /** Auto mode's priority (Settings): which of spotify, jellyfin and browser wins when several are playing. */
+    private java.util.List<String> autoOrder() {
+        String raw = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getString("auto_source_order", "browser,spotify,jellyfin");
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (String part : raw.split(",")) {
+            String p = part.trim();
+            if (("spotify".equals(p) || "jellyfin".equals(p) || "browser".equals(p)) && !out.contains(p)) out.add(p);
+        }
+        for (String d : new String[]{"browser", "spotify", "jellyfin"}) if (!out.contains(d)) out.add(d);
+        return out;
+    }
+
     private void checkAutoDecision() {
         synchronized (autoModeLock) {
             if (!spotifyChecked || !jellyfinChecked) {
@@ -2993,12 +3033,14 @@ private void fetchJellyfinVolume() {
 
             String oldEffectiveSource = currentAutoEffectiveSource;
 
-            if (spotifyActive && jellyfinActive) {
-                currentAutoEffectiveSource = "spotify";
-            } else if (spotifyActive) {
-                currentAutoEffectiveSource = "spotify";
-            } else if (jellyfinActive) {
-                currentAutoEffectiveSource = "jellyfin";
+            // The first source in the Auto priority that is playing wins.
+            for (String candidate : autoOrder()) {
+                if (("spotify".equals(candidate) && spotifyActive)
+                        || ("jellyfin".equals(candidate) && jellyfinActive)
+                        || ("browser".equals(candidate) && BrowserMedia.playingNow())) {
+                    currentAutoEffectiveSource = candidate;
+                    break;
+                }
             }
 
             final String activeSource = currentAutoEffectiveSource;
@@ -3007,6 +3049,14 @@ private void fetchJellyfinVolume() {
             // avoids posting a runOnUiThread with 12+ view invalidations every poll cycle.
             if (!activeSource.equals(oldEffectiveSource)) {
                 runOnUiThread(() -> updateSourceTheme("auto"));
+            }
+
+            if ("browser".equals(activeSource)) {
+                parseBrowserState();
+                checkInactivityReversion();
+                handler.removeCallbacks(songUpdater);
+                handler.postDelayed(songUpdater, Math.min(songPollInterval, 2000));
+                return;
             }
 
             if ("spotify".equals(activeSource)) {

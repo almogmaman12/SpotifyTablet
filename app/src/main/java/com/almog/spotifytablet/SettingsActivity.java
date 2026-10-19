@@ -434,6 +434,15 @@ public class SettingsActivity extends AppCompatActivity {
                 "Which player the tablet follows. Auto picks whichever is playing.",
                 Constants.PREF_KEY_MEDIA_SOURCE, "auto",
                 new String[]{"Auto", "Spotify", "Jellyfin", "Browser"}, new String[]{"auto", "spotify", "jellyfin", "browser"}));
+        src.rows.add(choiceRow("Auto priority",
+                "In Auto mode, when more than one player is playing, the first one in this order is shown.",
+                "auto_source_order", "browser,spotify,jellyfin",
+                new String[]{"Browser, Spotify, Jellyfin", "Browser, Jellyfin, Spotify",
+                        "Spotify, Browser, Jellyfin", "Spotify, Jellyfin, Browser",
+                        "Jellyfin, Browser, Spotify", "Jellyfin, Spotify, Browser"},
+                new String[]{"browser,spotify,jellyfin", "browser,jellyfin,spotify",
+                        "spotify,browser,jellyfin", "spotify,jellyfin,browser",
+                        "jellyfin,browser,spotify", "jellyfin,spotify,browser"}));
         playback.groups.add(src);
         Group web = new Group("Browser extension (YouTube, SoundCloud, any page)");
         web.rows.add(switchRow("Receive from the browser",
