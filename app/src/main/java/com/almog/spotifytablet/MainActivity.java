@@ -1890,7 +1890,11 @@ private void fetchJellyfinVolume() {
                     Glide.with(MainActivity.this).load(img).into(albumArt);
                 }
                 if (newAlbumArt != null) {
+                    // Keep the picture's own shape: by default Glide would crop it to the square view first,
+                    // and a widescreen cover could never be shown wide (the view's centerCrop still fits it).
                     Glide.with(MainActivity.this).load(img)
+                            .override(com.bumptech.glide.request.target.Target.SIZE_ORIGINAL)
+                            .dontTransform()
                             .listener(new com.bumptech.glide.request.RequestListener<Drawable>() {
                                 @Override
                                 public boolean onLoadFailed(com.bumptech.glide.load.engine.GlideException e, Object model,
