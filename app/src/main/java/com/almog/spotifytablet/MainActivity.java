@@ -1902,6 +1902,10 @@ private void fetchJellyfinVolume() {
                                 @Override
                                 public boolean onResourceReady(Drawable r, Object model, com.bumptech.glide.request.target.Target<Drawable> target,
                                                                com.bumptech.glide.load.DataSource src, boolean first) {
+                                    if (r.getIntrinsicHeight() > 0) {
+                                        coverRatio = (float) r.getIntrinsicWidth() / r.getIntrinsicHeight();
+                                        applyCoverShape();
+                                    }
                                     DebugLog.i("Cover", "loaded " + r.getIntrinsicWidth() + "x" + r.getIntrinsicHeight() + " from " + src);
                                     return false;
                                 }
@@ -2062,8 +2066,34 @@ private void fetchJellyfinVolume() {
         }
         playerCentered = center;
         widenColumn(colW, normalW, density);
+        applyCoverShape();
         newCenterMediaColumn.animate().translationX(dx).setDuration(450).start();
         if (newHeaderContainer != null) newHeaderContainer.animate().translationX(dxHeader).setDuration(450).start();
+    }
+
+    private float coverRatio = 1f;
+
+    /**
+     * With no lyrics (player centred), a widescreen cover such as a YouTube thumbnail is shown wide:
+     * same height as the square cover, as wide as its shape and the column allow. Otherwise square.
+     */
+    private void applyCoverShape() {
+        if (newAlbumFrame == null) return;
+        float density = getResources().getDisplayMetrics().density;
+        boolean on = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getBoolean("no_lyrics_wide_cover", true);
+        int h = Math.round(340 * density);
+        int w = h;
+        if (playerCentered && on && coverRatio >= 1.3f && newCenterMediaColumn != null) {
+            int colW = newCenterMediaColumn.getLayoutParams().width;
+            if (colW <= 0) colW = newCenterMediaColumn.getWidth();
+            w = Math.max(h, Math.min(Math.round(h * coverRatio), colW));
+        }
+        ViewGroup.LayoutParams lp = newAlbumFrame.getLayoutParams();
+        if (lp.width != w || lp.height != h) {
+            lp.width = w;
+            lp.height = h;
+            newAlbumFrame.setLayoutParams(lp);
+        }
     }
 
     /** Sets the center column's width; the progress bar keeps its normal width, the title and artist use the rest. */

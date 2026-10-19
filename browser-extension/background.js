@@ -38,7 +38,7 @@ async function ensureArt(url) {
   try {
     const res = await fetch(url);
     const bitmap = await createImageBitmap(await res.blob());
-    const scale = Math.min(1, 480 / Math.max(bitmap.width, bitmap.height));
+    const scale = Math.min(1, 960 / Math.max(bitmap.width, bitmap.height));
     const w = Math.max(1, Math.round(bitmap.width * scale));
     const h = Math.max(1, Math.round(bitmap.height * scale));
     const canvas = new OffscreenCanvas(w, h);

@@ -377,6 +377,9 @@ public class SettingsActivity extends AppCompatActivity {
         look.rows.add(switchRow("Center the player when there are no lyrics",
                 "The cover, controls and title slide to the middle of the screen instead of leaving the lyrics area empty (modern layout).",
                 "lyrics_no_lyrics_cover", true, null));
+        look.rows.add(switchRow("Show wide covers wide (no lyrics)",
+                "With no lyrics, a widescreen picture like a YouTube thumbnail is shown wide instead of cropped to a square. Needs the option above.",
+                "no_lyrics_wide_cover", true, null));
         look.rows.add(switchRow("Up next",
                 "A small strip over the lyrics naming the next song in your Spotify queue (modern layout).",
                 "lyrics_up_next", false, null));
