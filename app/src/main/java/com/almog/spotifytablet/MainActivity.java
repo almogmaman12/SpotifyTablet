@@ -1887,7 +1887,22 @@ private void fetchJellyfinVolume() {
                     Glide.with(MainActivity.this).load(img).into(albumArt);
                 }
                 if (newAlbumArt != null) {
-                    Glide.with(MainActivity.this).load(img).into(newAlbumArt);
+                    Glide.with(MainActivity.this).load(img)
+                            .listener(new com.bumptech.glide.request.RequestListener<Drawable>() {
+                                @Override
+                                public boolean onLoadFailed(com.bumptech.glide.load.engine.GlideException e, Object model,
+                                                            com.bumptech.glide.request.target.Target<Drawable> target, boolean first) {
+                                    DebugLog.w("Cover", "failed to load " + model + ": " + (e != null ? e.getMessage() : ""));
+                                    return false;
+                                }
+
+                                @Override
+                                public boolean onResourceReady(Drawable r, Object model, com.bumptech.glide.request.target.Target<Drawable> target,
+                                                               com.bumptech.glide.load.DataSource src, boolean first) {
+                                    return false;
+                                }
+                            })
+                            .into(newAlbumArt);
                 }
 
                 if (PowerSettings.noBackgroundBlur) {

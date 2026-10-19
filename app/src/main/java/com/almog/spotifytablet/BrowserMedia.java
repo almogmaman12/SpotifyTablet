@@ -229,6 +229,9 @@ public final class BrowserMedia {
         s.playing = o.optBoolean("playing", false);
         s.receivedAt = System.currentTimeMillis();
         latest = s;
+        if (prev == null || !prev.key.equals(s.key) || !prev.artwork.equals(s.artwork)) {
+            DebugLog.i("BrowserMedia", "now: " + s.title + " | " + s.artist + " | " + s.site + " | cover=" + (s.artwork.isEmpty() ? "(none)" : s.artwork));
+        }
         boolean changed = prev == null || !prev.key.equals(s.key) || prev.playing != s.playing;
         if (!changed && prev != null) {
             long predicted = prev.positionMs + (prev.playing ? s.receivedAt - prev.receivedAt : 0);
