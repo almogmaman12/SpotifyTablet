@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Tablet Now Playing</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 20px; min-width: 320px; color: #1b1f24; }
+  h1 { font-size: 17px; margin: 0 0 12px; }
+  label { display: block; margin: 12px 0 4px; font-weight: 600; }
+  input { width: 100%; box-sizing: border-box; padding: 8px; font-size: 14px; }
+  button { margin-top: 14px; padding: 8px 14px; font-size: 14px; cursor: pointer; }
+  #status { margin-top: 12px; min-height: 1.4em; }
+  p.hint { color: #5f6b7a; margin: 4px 0 0; }
+</style>
+<h1>Tablet Now Playing</h1>
+<p class="hint">On the tablet: Settings → Playback → turn on "Receive from the browser", then copy the address and code shown there.</p>
+<label for="address">Tablet address</label>
+<input id="address" placeholder="192.168.1.20:8765" autocomplete="off">
+<label for="token">Code</label>
+<input id="token" placeholder="8 letters" autocomplete="off">
+<button id="save">Save and test</button>
+<div id="status"></div>
+<script src="options.js"></script>
