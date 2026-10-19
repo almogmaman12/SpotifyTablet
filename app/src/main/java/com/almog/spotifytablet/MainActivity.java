@@ -2043,42 +2043,36 @@ private void fetchJellyfinVolume() {
      */
     private void centerPlayer(boolean center) {
         if (newCenterMediaColumn == null || playerCentered == center) return;
-        float dx = 0f;
+        float density = getResources().getDisplayMetrics().density;
+        int normalW = Math.round(360 * density);
+        int colW = normalW;
+        float dx = 0f, dxHeader = 0f;
         if (center) {
             View parent = (View) newCenterMediaColumn.getParent();
-            float density = getResources().getDisplayMetrics().density;
             float areaStart = newCenterMediaColumn.getLeft() - 16 * density;   // where the sidebar ends
             float areaEnd = parent.getWidth() - 20 * density;
             float targetCenter = (areaStart + areaEnd) / 2f;
-            dx = targetCenter - (newCenterMediaColumn.getLeft() + newCenterMediaColumn.getWidth() / 2f);
+            // With no lyrics there is room beside the player: widen the column (up to ~720dp) for long titles.
+            float free = areaEnd - newCenterMediaColumn.getLeft() - 32 * density;
+            colW = Math.round(Math.max(normalW, Math.min(free, 720 * density)));
+            dx = targetCenter - (newCenterMediaColumn.getLeft() + colW / 2f);
+            dxHeader = targetCenter - (newCenterMediaColumn.getLeft() + normalW / 2f);
         }
         playerCentered = center;
-        widenTitle(center);
+        widenColumn(colW, normalW, density);
         newCenterMediaColumn.animate().translationX(dx).setDuration(450).start();
-        if (newHeaderContainer != null) newHeaderContainer.animate().translationX(dx).setDuration(450).start();
+        if (newHeaderContainer != null) newHeaderContainer.animate().translationX(dxHeader).setDuration(450).start();
     }
 
-    /**
-     * With no lyrics there is room beside the player: let the title and artist use it (up to about
-     * 720dp) instead of the cover's width, so long titles show whole instead of scrolling.
-     */
-    private void widenTitle(boolean wide) {
-        if (newCenterMediaColumn == null || newSongInfoContainer == null) return;
-        float density = getResources().getDisplayMetrics().density;
-        int normalMax = Math.round(400 * density);
-        int width = ViewGroup.LayoutParams.MATCH_PARENT;
-        int maxWidth = normalMax;
-        if (wide) {
-            View parent = (View) newCenterMediaColumn.getParent();
-            float free = parent.getWidth() - newCenterMediaColumn.getLeft() + 16 * density - 20 * density - 48 * density;
-            maxWidth = Math.max(normalMax, Math.round(Math.min(free, 720 * density)));
-            width = maxWidth;
-        }
-        if (newCenterMediaColumn instanceof ViewGroup) ((ViewGroup) newCenterMediaColumn).setClipChildren(!wide);
-        newSongInfoContainer.getLayoutParams().width = width;
-        newSongInfoContainer.requestLayout();
+    /** Sets the center column's width; the progress bar keeps its normal width, the title and artist use the rest. */
+    private void widenColumn(int colW, int normalW, float density) {
+        newCenterMediaColumn.getLayoutParams().width = colW;
+        View row = findViewById(R.id.newTimeProgressRow);
+        if (row != null) row.getLayoutParams().width = colW > normalW ? normalW : ViewGroup.LayoutParams.MATCH_PARENT;
+        int maxWidth = colW > normalW ? colW : Math.round(400 * density);
         if (newSongTitle != null) newSongTitle.setMaxWidth(maxWidth);
         if (newArtistName != null) newArtistName.setMaxWidth(maxWidth);
+        newCenterMediaColumn.requestLayout();
     }
 
     /** "Up next" strip over the lyrics (new layout); empty text or the setting being off hides it. */
