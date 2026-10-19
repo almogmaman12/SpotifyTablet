@@ -2056,7 +2056,9 @@ private void fetchJellyfinVolume() {
             float free = areaEnd - newCenterMediaColumn.getLeft() - 32 * density;
             colW = Math.round(Math.max(normalW, Math.min(free, 720 * density)));
             dx = targetCenter - (newCenterMediaColumn.getLeft() + colW / 2f);
-            dxHeader = targetCenter - (newCenterMediaColumn.getLeft() + normalW / 2f);
+            // The weather bar's right edge follows the column's, so it moves with the widening: aim its middle at the same centre.
+            float headerW = newHeaderContainer != null ? newHeaderContainer.getWidth() : normalW;
+            dxHeader = targetCenter - (newCenterMediaColumn.getLeft() + colW - headerW / 2f);
         }
         playerCentered = center;
         widenColumn(colW, normalW, density);
