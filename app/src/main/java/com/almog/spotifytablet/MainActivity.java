@@ -2074,7 +2074,7 @@ private void fetchJellyfinVolume() {
             maxWidth = Math.max(normalMax, Math.round(Math.min(free, 720 * density)));
             width = maxWidth;
         }
-        newCenterMediaColumn.setClipChildren(!wide);
+        if (newCenterMediaColumn instanceof ViewGroup) ((ViewGroup) newCenterMediaColumn).setClipChildren(!wide);
         newSongInfoContainer.getLayoutParams().width = width;
         newSongInfoContainer.requestLayout();
         if (newSongTitle != null) newSongTitle.setMaxWidth(maxWidth);
