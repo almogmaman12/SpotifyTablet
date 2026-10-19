@@ -935,6 +935,7 @@ private void fetchJellyfinVolume() {
             aodController.cleanup();
         }
         handler.removeCallbacksAndMessages(null);
+        BrowserMedia.stop();
     }
 
     private float playbackSpeed = 1.0f;
@@ -967,6 +968,14 @@ private void fetchJellyfinVolume() {
 
         if ("jellyfin".equals(mediaSource)) {
             fetchJellyfinCurrentSong();
+            return;
+        }
+
+        if ("browser".equals(mediaSource)) {
+            parseBrowserState();
+            checkInactivityReversion();
+            handler.removeCallbacks(songUpdater);
+            handler.postDelayed(songUpdater, isPlaying ? Math.min(songPollInterval, 2000) : pausedPollInterval);
             return;
         }
 
@@ -1209,7 +1218,9 @@ private void fetchJellyfinVolume() {
     private void fetchSyncedLyrics(String artist, String title, String isrc) {
         if (lyricsViewModel == null) return;
         String activeSource = "auto".equals(mediaSource) ? currentAutoEffectiveSource : mediaSource;
-        lyricsViewModel.loadLyrics(artist, title, currentAlbumName, durationMs, activeSource, lastBlurredTrackId, isrc, jellyfinServerUrl, jellyfinApiKey);
+        // A page has no Spotify track id: pass none, so the sources match on title and artist.
+        String id = "browser".equals(activeSource) ? "" : lastBlurredTrackId;
+        lyricsViewModel.loadLyrics(artist, title, currentAlbumName, durationMs, activeSource, id, isrc, jellyfinServerUrl, jellyfinApiKey);
     }
 
     /** How many songs ahead in the queue get their lyrics fetched early. */
@@ -1221,6 +1232,7 @@ private void fetchJellyfinVolume() {
         if ("auto".equals(mediaSource) && !"spotify".equals(currentAutoEffectiveSource)) {
             return;
         }
+        if ("browser".equals(mediaSource)) return;
         if (accessToken == null || accessToken.isEmpty()) return;
 
         long now = System.currentTimeMillis();
@@ -1760,6 +1772,7 @@ private void fetchJellyfinVolume() {
         if (hadEfficientBlur != efficientBlur) lastBlurredTrackId = "";
         boolean hadNoBlur = PowerSettings.noBackgroundBlur;
         PowerSettings.refresh(this);
+        syncBrowserServer();
         if (hadNoBlur != PowerSettings.noBackgroundBlur) lastBlurredTrackId = "";
         aodShowWeather = prefs.getBoolean("aod_show_weather", true);
         aodShowQuote = prefs.getBoolean("aod_show_quote", true);
@@ -2133,6 +2146,10 @@ private void fetchJellyfinVolume() {
         };
 
         String activeSource = "auto".equals(mediaSource) ? currentAutoEffectiveSource : mediaSource;
+        if ("browser".equals(activeSource)) {
+            BrowserMedia.sendCommand(isPlaying ? "play" : "pause");
+            return;
+        }
         if ("spotify".equals(activeSource)) {
             if (accessToken == null) {
                 revert.run();
@@ -2183,6 +2200,13 @@ private void fetchJellyfinVolume() {
         };
 
         String activeSource = "auto".equals(mediaSource) ? currentAutoEffectiveSource : mediaSource;
+        if ("browser".equals(activeSource)) {
+            // The page decides what "next" means (YouTube's next video, SoundCloud's next track...).
+            BrowserMedia.sendCommand(d);
+            final String before = lastBlurredTrackId;
+            handler.postDelayed(() -> { if (before.equals(lastBlurredTrackId)) revert.run(); }, 2500);
+            return;
+        }
         if ("spotify".equals(activeSource)) {
             if (accessToken == null) {
                 revert.run();
@@ -2703,7 +2727,101 @@ private void fetchJellyfinVolume() {
         });
     }
 
+    /** Shows what the browser extension last reported (a video, a song on YouTube Music, SoundCloud...). */
+    private void parseBrowserState() {
+        BrowserMedia.State st = BrowserMedia.fresh();
+        if (st == null || st.title.isEmpty()) {
+            pausedSongTitle = "";
+            pausedSongArtist = "";
+            isSongPaused = false;
+            isPlaying = false;
+            runOnUiThread(() -> {
+                songTitle.setText("Not Playing");
+                artistName.setText("");
+                albumArt.setImageDrawable(null);
+                if (clockSongText != null) {
+                    clockSongText.setText("");
+                    clockSongText.setVisibility(View.GONE);
+                }
+                showClock(true);
+            });
+            return;
+        }
+        final String title = st.title;
+        final String artist = st.artist.isEmpty() ? st.site : st.artist;
+        currentAlbumName = st.album;
+        long now = System.currentTimeMillis();
+        durationMs = st.durationMs;
+        progressMs = (int) Math.min(st.durationMs > 0 ? st.durationMs : Long.MAX_VALUE,
+                st.positionMs + (st.playing ? now - st.receivedAt : 0));
+        boolean wasPlaying = isPlaying;
+        isPlaying = st.playing;
+        lastProgressTimestamp = now;
+        if (!wasPlaying && isPlaying) {
+            handler.removeCallbacks(progressUpdater);
+            handler.post(progressUpdater);
+        }
+        isSongPaused = !isPlaying;
+        pausedSongTitle = title;
+        pausedSongArtist = artist;
+
+        final String key = "web:" + st.key;
+        final boolean trackChanged = !key.equals(lastBlurredTrackId);
+        if (trackChanged) {
+            lastBlurredTrackId = key;
+            if (lyricsViewModel != null) lyricsViewModel.clearLyrics();
+            boolean wantLyrics = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
+                    .getBoolean(BrowserMedia.PREF_LYRICS, true);
+            if (wantLyrics) {
+                String[] q = BrowserMedia.lyricsQuery(st);
+                fetchSyncedLyrics(q[0], q[1], "");
+            }
+        }
+        runOnUiThread(() -> {
+            // The page's own volume is not remote-controlled yet.
+            if (btnVolUp != null) btnVolUp.setVisibility(View.GONE);
+            if (btnVolDown != null) btnVolDown.setVisibility(View.GONE);
+            if (volumeText != null) volumeText.setVisibility(View.GONE);
+            if (newBtnVolUp != null) newBtnVolUp.setVisibility(View.GONE);
+            if (newBtnVolDown != null) newBtnVolDown.setVisibility(View.GONE);
+            if (newVolumeText != null) newVolumeText.setVisibility(View.GONE);
+            updateUIForSong(title, artist, st.artwork, trackChanged);
+        });
+    }
+
+    /** Starts or stops the receiver for the browser extension to match the setting. */
+    private void syncBrowserServer() {
+        if (BrowserMedia.isEnabled(this)) {
+            BrowserMedia.start(this, () -> handler.post(() -> {
+                // Something changed in the browser (new video, play/pause, seek): show it now, not at the next poll.
+                if ("browser".equals(mediaSource) || "auto".equals(mediaSource)) {
+                    handler.removeCallbacks(songUpdater);
+                    handler.post(songUpdater);
+                }
+            }));
+        } else {
+            BrowserMedia.stop();
+        }
+    }
+
     private void fetchAutoCurrentSong() {
+        // A video or song playing in the browser extension wins over Spotify and Jellyfin: nothing to ask over the network.
+        if (BrowserMedia.playingNow()) {
+            if (!"browser".equals(currentAutoEffectiveSource)) {
+                currentAutoEffectiveSource = "browser";
+                runOnUiThread(() -> updateSourceTheme("auto"));
+            }
+            parseBrowserState();
+            checkInactivityReversion();
+            handler.removeCallbacks(songUpdater);
+            handler.postDelayed(songUpdater, Math.min(songPollInterval, 2000));
+            return;
+        }
+        if ("browser".equals(currentAutoEffectiveSource)) {
+            currentAutoEffectiveSource = "spotify";
+            lastBlurredTrackId = "";
+            runOnUiThread(() -> updateSourceTheme("auto"));
+        }
         synchronized (autoModeLock) {
             spotifyChecked = false;
             jellyfinChecked = false;
@@ -2983,6 +3101,8 @@ private void fetchJellyfinVolume() {
             mediaSource = "spotify";
         } else if ("spotify".equals(mediaSource)) {
             mediaSource = "jellyfin";
+        } else if ("jellyfin".equals(mediaSource)) {
+            mediaSource = "browser";
         } else {
             mediaSource = "auto";
         }
@@ -3012,7 +3132,8 @@ private void fetchJellyfinVolume() {
         }
         final String effectiveSource = tempEffectiveSource;
 
-        int themeColor = android.graphics.Color.parseColor("spotify".equals(effectiveSource) ? "#1DB954" : "#A259FF");
+        int themeColor = android.graphics.Color.parseColor("spotify".equals(effectiveSource) ? "#1DB954"
+                : "browser".equals(effectiveSource) ? "#FF5A4F" : "#A259FF");
         int sourceBtnColor = android.graphics.Color.parseColor(
                 "auto".equals(source) ? "#007BFF" : ("spotify".equals(source) ? "#1DB954" : "#A259FF")
         );

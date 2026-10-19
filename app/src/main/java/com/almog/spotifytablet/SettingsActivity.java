@@ -433,8 +433,26 @@ public class SettingsActivity extends AppCompatActivity {
         src.rows.add(segmentRow("Media source",
                 "Which player the tablet follows. Auto picks whichever is playing.",
                 Constants.PREF_KEY_MEDIA_SOURCE, "auto",
-                new String[]{"Auto", "Spotify", "Jellyfin"}, new String[]{"auto", "spotify", "jellyfin"}));
+                new String[]{"Auto", "Spotify", "Jellyfin", "Browser"}, new String[]{"auto", "spotify", "jellyfin", "browser"}));
         playback.groups.add(src);
+        Group web = new Group("Browser extension (YouTube, SoundCloud, any page)");
+        web.rows.add(switchRow("Receive from the browser",
+                "Lets the Chrome extension from the browser-extension folder send what is playing to this tablet.",
+                BrowserMedia.PREF_ENABLED, false, on -> recreate()));
+        if (BrowserMedia.isEnabled(this)) {
+            web.rows.add(infoRow("Address and code",
+                    "In the extension's options enter  " + BrowserMedia.address() + "  and the code  " + BrowserMedia.token(this)
+                            + ". The PC and tablet must be on the same Wi-Fi."));
+            web.rows.add(actionRow("New code", "Extensions using the old code stop working.", "Change", false, () -> {
+                BrowserMedia.newToken(this);
+                toast("New code created");
+                recreate();
+            }));
+            web.rows.add(switchRow("Look up lyrics for videos",
+                    "Cleans the video title (\"Artist - Song (Official Video)\") and searches the lyric sources.",
+                    BrowserMedia.PREF_LYRICS, true, null));
+        }
+        playback.groups.add(web);
         Group updates = new Group("Updates");
         updates.rows.add(switchRow("Live track updates",
                 "Keeps checking what is playing. Turn off to save battery and API quota.",
@@ -858,6 +876,15 @@ public class SettingsActivity extends AppCompatActivity {
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
             lp.topMargin = dp(10);
             row.addView(et, lp);
+            return row;
+        });
+    }
+
+    /** A row that only shows text. */
+    private Row infoRow(String title, String sub) {
+        return new Row(title, sub, () -> {
+            LinearLayout row = rowShell();
+            row.addView(titleBlock(title, sub));
             return row;
         });
     }
