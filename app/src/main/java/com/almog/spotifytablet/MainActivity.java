@@ -75,7 +75,10 @@ public class MainActivity extends AppCompatActivity {
     // LyricsView runs on its own internal Compose withFrameNanos vsync loop.
     private static final int PROGRESS_UPDATE_INTERVAL = 50; // 20fps for progress bar/timers; saves 67% main thread wakeups
     private static final long CLOCK_MOVE_INTERVAL = 60000L;
-    private static final long CLOCK_DELAY = 5000L;
+    /** How long after playback stops the clock comes back (Settings → Display). */
+    private long clockDelayMs() {
+        return getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getInt("clock_after_pause_s", 5) * 1000L;
+    }
     private static final long VOLUME_REPEAT_INTERVAL = 200L;
     // These two are user-configurable via Settings and refreshed in onResume:
     private boolean pollingSuspended = false;
@@ -1226,7 +1229,9 @@ private void fetchJellyfinVolume() {
     }
 
     /** How many songs ahead in the queue get their lyrics fetched early. */
-    private static final int PREFETCH_AHEAD = 3;
+    private int prefetchAhead() {
+        return getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getInt("lyrics_prefetch_ahead", 3);
+    }
     /** Queue songs whose lyrics were already requested, so each is fetched once. */
     private final java.util.LinkedHashSet<String> prefetchedTrackIds = new java.util.LinkedHashSet<>();
 
@@ -1235,6 +1240,7 @@ private void fetchJellyfinVolume() {
             return;
         }
         if ("browser".equals(mediaSource)) return;
+        if (prefetchAhead() <= 0) return;
         if (accessToken == null || accessToken.isEmpty()) return;
 
         long now = System.currentTimeMillis();
@@ -1263,7 +1269,7 @@ private void fetchJellyfinVolume() {
                             if (queue.length() == 0) runOnUiThread(() -> showUpNext(""));
                             if (queue.length() > 0) {
                                 // The next few songs, so skipping or a short song still starts with lyrics ready.
-                                int limit = Math.min(queue.length(), PREFETCH_AHEAD);
+                                int limit = Math.min(queue.length(), prefetchAhead());
                                 for (int i = 0; i < limit; i++) {
                                     JSONObject item = queue.getJSONObject(i);
                                     if ("episode".equals(item.optString("type", "")) || item.has("show")) {
@@ -1368,7 +1374,9 @@ private void fetchJellyfinVolume() {
             // withFrameNanos — 2s sync interval is plenty and cuts PlaybackAnchor +
             // LyricsUiState copy() allocations from ~2/sec to ~0.5/sec.
             if (playingChanged || (nowRt - lastAnchorSyncRealtime) >= 2000L) {
-                lyricsViewModel.setPlaybackAnchor(ms, isPlaying, playbackSpeed);
+                // Settings → Lyrics timing: a positive offset shows lyrics earlier, a negative one later.
+                long lyricsOffset = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getInt("lyrics_offset_ms", 0);
+                lyricsViewModel.setPlaybackAnchor(ms + lyricsOffset, isPlaying, playbackSpeed);
                 lastAnchorSyncRealtime = nowRt;
                 lastAnchorIsPlaying = isPlaying;
             }
@@ -1775,6 +1783,7 @@ private void fetchJellyfinVolume() {
         boolean hadNoBlur = PowerSettings.noBackgroundBlur;
         PowerSettings.refresh(this);
         syncBrowserServer();
+        applyOrientation();
         if (hadNoBlur != PowerSettings.noBackgroundBlur) lastBlurredTrackId = "";
         aodShowWeather = prefs.getBoolean("aod_show_weather", true);
         aodShowQuote = prefs.getBoolean("aod_show_quote", true);
@@ -1987,7 +1996,7 @@ private void fetchJellyfinVolume() {
             if (artistName != null && !artistName.isSelected()) artistName.setSelected(true);
             if (newArtistName != null && !newArtistName.isSelected()) newArtistName.setSelected(true);
 
-        } else if (System.currentTimeMillis() - lastPlayTimestamp > CLOCK_DELAY) {
+        } else if (System.currentTimeMillis() - lastPlayTimestamp > clockDelayMs()) {
             showClock(true);
         }
     }
@@ -2869,6 +2878,15 @@ private void fetchJellyfinVolume() {
     private String lastBrowserArtwork = "";
 
     /** Starts or stops the receiver for the browser extension to match the setting. */
+    /** Settings → Display → Screen orientation. */
+    private void applyOrientation() {
+        String o = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getString("screen_orientation", "auto");
+        int want = "landscape".equals(o) ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                : "portrait".equals(o) ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+        if (getRequestedOrientation() != want) setRequestedOrientation(want);
+    }
+
     private void syncBrowserServer() {
         if (BrowserMedia.isEnabled(this)) {
             BrowserMedia.start(this, () -> handler.post(() -> {
@@ -3125,7 +3143,8 @@ private void fetchJellyfinVolume() {
         } else {
             if (!"auto".equals(mediaSource)) {
                 long elapsed = System.currentTimeMillis() - lastActivePlaybackTimestamp;
-                if (elapsed >= 10 * 60 * 1000L) { // 10 minutes
+                int revertMinutes = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getInt("auto_revert_minutes", 10);
+                if (revertMinutes > 0 && elapsed >= revertMinutes * 60 * 1000L) {
                     revertToAuto();
                 }
             }

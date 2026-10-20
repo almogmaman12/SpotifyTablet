@@ -33,9 +33,11 @@ import java.util.concurrent.atomic.AtomicReference
  */
 object MobileLyricsSources {
     @Volatile private var backend: NextLyricsBackend? = null
+    @Volatile private var appContext: Context? = null
 
     @JvmStatic
     fun init(context: Context) {
+        appContext = context.applicationContext
         if (backend != null) return
         synchronized(this) {
             if (backend == null) {
@@ -142,12 +144,19 @@ object MobileLyricsSources {
      */
     class Outcome(val track: LyricTrack?, val complete: Boolean, val definitive: Boolean)
 
-    /** Shows the best answer so far once this long has passed, if any source has found lyrics. */
-    private const val SOFT_BUDGET_MS = 8_000L
-    /** With nothing found yet, waits this long in all before showing "no lyrics". */
-    private const val HARD_BUDGET_MS = 20_000L
-    /** A lookup that outlives the screen's wait gets this long in all to find word-synced lyrics (the pick on screen is swapped when they arrive). */
-    private const val BACKGROUND_CAP_MS = 45_000L
+    /**
+     * Settings → Lyrics → Lookup patience: how long the screen waits before showing the best answer so far
+     * (soft), how long it waits with nothing found yet (hard), and how long a lookup may run in all (cap).
+     */
+    private fun patience(): Triple<Long, Long, Long> {
+        val mode = appContext?.getSharedPreferences(Constants.PREF_NAME, Context.MODE_PRIVATE)
+            ?.getString("lyrics_patience", "quick")
+        return when (mode) {
+            "balanced" -> Triple(20_000L, 30_000L, 45_000L)
+            "best" -> Triple(40_000L, 45_000L, 60_000L)
+            else -> Triple(8_000L, 20_000L, 45_000L)
+        }
+    }
 
     /** Lookups run here, not in the caller, so a slow better source can finish after the first answer is shown. */
     private val lookupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -174,6 +183,7 @@ object MobileLyricsSources {
         onSettled: ((track: LyricTrack, isUpgrade: Boolean) -> Unit)? = null
     ): Outcome {
         val backend = backend ?: return Outcome(null, complete = true, definitive = false)
+        val (softBudgetMs, hardBudgetMs, backgroundCapMs) = patience()
         val request = LyricsLookupRequest(
             artist = artist,
             title = title,
@@ -195,7 +205,7 @@ object MobileLyricsSources {
                 val known = cached?.answers?.toMutableMap() ?: mutableMapOf()
                 val best = AtomicReference<RemoteLyricsResolution?>(cached?.resolution)
                 val job = lookupScope.async {
-                    val r = withTimeoutOrNull(BACKGROUND_CAP_MS) { backend.resolve(request, known) { best.set(it) } }
+                    val r = withTimeoutOrNull(backgroundCapMs) { backend.resolve(request, known) { best.set(it) } }
                     if (r != null) {
                         backend.store(request, r)
                         com.almog.spotifytablet.DebugLog.i("LyricSources",
@@ -203,9 +213,9 @@ object MobileLyricsSources {
                     }
                     r
                 }
-                var answered = withTimeoutOrNull(SOFT_BUDGET_MS) { job.await() }
+                var answered = withTimeoutOrNull(softBudgetMs) { job.await() }
                 if (answered == null && best.get() !is RemoteLyricsResolution.Found) {
-                    answered = withTimeoutOrNull(HARD_BUDGET_MS - SOFT_BUDGET_MS) { job.await() }
+                    answered = withTimeoutOrNull(hardBudgetMs - softBudgetMs) { job.await() }
                 }
                 if (answered != null) {
                     answered

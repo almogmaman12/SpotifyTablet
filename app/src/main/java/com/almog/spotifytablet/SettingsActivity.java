@@ -73,11 +73,18 @@ public class SettingsActivity extends AppCompatActivity {
         final String title;
         final String subtitle;
         final Supplier<View> make;
+        /** The preference this row edits, when it edits one (drives the "changed" dot and "Reset this section"). */
+        String key;
 
         Row(String title, String subtitle, Supplier<View> make) {
             this.title = title;
             this.subtitle = subtitle == null ? "" : subtitle;
             this.make = make;
+        }
+
+        Row withKey(String key) {
+            this.key = key;
+            return this;
         }
     }
 
@@ -93,10 +100,19 @@ public class SettingsActivity extends AppCompatActivity {
 
     private static final class Section {
         final String name;
+        final String icon;
+        /** Heading it sits under in the left list; empty for none. */
+        final String category;
+        final String blurb;
         final List<Group> groups = new ArrayList<>();
+        boolean searchable = true;
+        boolean resettable = true;
 
-        Section(String name) {
+        Section(String name, String icon, String category, String blurb) {
             this.name = name;
+            this.icon = icon;
+            this.category = category;
+            this.blurb = blurb;
         }
     }
 
@@ -117,6 +133,7 @@ public class SettingsActivity extends AppCompatActivity {
     private LinearLayout content;
     private ScrollView contentScroll;
     private TextView tvSectionTitle;
+    private TextView tvSectionBlurb;
 
     // ---------------------------------------------------------------------
 
@@ -148,6 +165,7 @@ public class SettingsActivity extends AppCompatActivity {
         content = findViewById(R.id.content);
         contentScroll = findViewById(R.id.contentScroll);
         tvSectionTitle = findViewById(R.id.tvSectionTitle);
+        tvSectionBlurb = findViewById(R.id.tvSectionBlurb);
 
         try {
             PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
@@ -253,8 +271,9 @@ public class SettingsActivity extends AppCompatActivity {
     // ---------------------------------------------------------------------
 
     private void buildSections() {
+        sections.add(buildOverview());
         // ---- Display ----
-        Section display = new Section("Display");
+        Section display = new Section("Display", "🖥", "Appearance", "Layout, clock, always-on display and the screen itself.");
         Group layout = new Group("Layout");
         layout.rows.add(segmentRow("Home layout",
                 "Modern Split has the lyrics stage with controls and clock on the left.",
@@ -270,7 +289,8 @@ public class SettingsActivity extends AppCompatActivity {
         screen.rows.add(sliderRow("Background blur",
                 "How strongly the album art is blurred behind the player.",
                 10, 190, prefs.getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100),
-                v -> String.valueOf(v), v -> prefs.edit().putInt(Constants.PREF_KEY_BLUR_INTENSITY, v).apply()));
+                v -> String.valueOf(v), v -> prefs.edit().putInt(Constants.PREF_KEY_BLUR_INTENSITY, v).apply())
+                .withKey(Constants.PREF_KEY_BLUR_INTENSITY));
         screen.rows.add(switchRow("Efficient background blur",
                 "Blurs the album art once instead of on every frame. Looks the same and keeps the tablet cooler. Turn off only if the background looks wrong.",
                 "efficient_blur", true, null));
@@ -278,8 +298,17 @@ public class SettingsActivity extends AppCompatActivity {
                 "12-hour or 24-hour time on the clock. \"System\" follows the tablet's own setting.",
                 ClockFormat.PREF_CLOCK_FORMAT, "24",
                 new String[]{"24-hour", "12-hour", "System"}, new String[]{"24", "12", "auto"}));
+        screen.rows.add(segmentRow("Screen orientation",
+                "Follow the tablet, or lock the player to landscape or portrait.",
+                "screen_orientation", "auto",
+                new String[]{"Auto", "Landscape", "Portrait"}, new String[]{"auto", "landscape", "portrait"}));
         display.groups.add(screen);
         Group aod = new Group("Always-on display");
+        aod.rows.add(sliderRow("Show the clock after playback stops",
+                "How long after the music stops the always-on clock comes back.",
+                1, 120, prefs.getInt("clock_after_pause_s", 5),
+                v -> v + " s", v -> prefs.edit().putInt("clock_after_pause_s", v).apply())
+                .withKey("clock_after_pause_s"));
         aod.rows.add(switchRow("Show song when paused",
                 "Always-on clock keeps showing the last song's title.",
                 Constants.PREF_KEY_AOD_SHOW_SONG, true, null));
@@ -318,7 +347,7 @@ public class SettingsActivity extends AppCompatActivity {
         sections.add(display);
 
         // ---- Battery ----
-        Section battery = new Section("Battery");
+        Section battery = new Section("Battery", "🔋", "Appearance", "Save power, and dim the clock screen.");
         Group saver = new Group("Battery saver (turn on only what you want)");
         saver.rows.add(choiceRow("Lyrics frame rate",
                 "How smoothly the lyrics animate. Lower saves battery; Max follows the screen (90/120 Hz tablets use the most power). The screen can only show rates it supports, so 45 may look like 30 on a 60 Hz tablet.",
@@ -337,7 +366,8 @@ public class SettingsActivity extends AppCompatActivity {
         saver.rows.add(sliderRow("Clock screen brightness",
                 "Used when \"Dim the clock screen\" is on.",
                 1, 50, prefs.getInt(PowerSettings.PREF_CLOCK_BRIGHTNESS, 10),
-                v -> v + " %", v -> prefs.edit().putInt(PowerSettings.PREF_CLOCK_BRIGHTNESS, v).apply()));
+                v -> v + " %", v -> prefs.edit().putInt(PowerSettings.PREF_CLOCK_BRIGHTNESS, v).apply())
+                .withKey(PowerSettings.PREF_CLOCK_BRIGHTNESS));
         Group night = new Group("Dim the clock on a schedule");
         night.rows.add(switchRow("Dim at set times",
                 "Lowers the clock screen's brightness between the times below, for example overnight.",
@@ -351,17 +381,19 @@ public class SettingsActivity extends AppCompatActivity {
         night.rows.add(sliderRow("Dim level",
                 "Brightness during the scheduled hours. Lower is darker.",
                 1, 50, prefs.getInt(PowerSettings.PREF_DIM_LEVEL, 3),
-                v -> v + " %", v -> prefs.edit().putInt(PowerSettings.PREF_DIM_LEVEL, v).apply()));
+                v -> v + " %", v -> prefs.edit().putInt(PowerSettings.PREF_DIM_LEVEL, v).apply())
+                .withKey(PowerSettings.PREF_DIM_LEVEL));
         night.rows.add(sliderRow("Extra dim (below the screen's lowest)",
                 "If the screen's lowest brightness is still too bright, this darkens the clock itself on top of it. 0% is off, 90% is almost black. Only during the scheduled hours.",
                 0, 90, prefs.getInt(PowerSettings.PREF_DIM_EXTRA, 0),
-                v -> v + " %", v -> prefs.edit().putInt(PowerSettings.PREF_DIM_EXTRA, v).apply()));
+                v -> v + " %", v -> prefs.edit().putInt(PowerSettings.PREF_DIM_EXTRA, v).apply())
+                .withKey(PowerSettings.PREF_DIM_EXTRA));
         battery.groups.add(saver);
         battery.groups.add(night);
         sections.add(battery);
 
         // ---- Lyrics ----
-        Section lyrics = new Section("Lyrics");
+        Section lyrics = new Section("Lyrics", "🎤", "Music", "How lyrics look, where they come from, timing and translation.");
         Group look = new Group("Look");
         look.rows.add(choiceRow("Renderer",
                 "Restart the app after changing.",
@@ -386,7 +418,8 @@ public class SettingsActivity extends AppCompatActivity {
         look.rows.add(sliderRow("Translation & romanization size",
                 "Size of the smaller lines under each lyric. 100% is the default.",
                 50, 150, prefs.getInt(com.almog.spotifytablet.lyrics.mobile.LyricsFonts.PREF_NOTE_SIZE, 100),
-                v -> v + " %", v -> prefs.edit().putInt(com.almog.spotifytablet.lyrics.mobile.LyricsFonts.PREF_NOTE_SIZE, v).apply()));
+                v -> v + " %", v -> prefs.edit().putInt(com.almog.spotifytablet.lyrics.mobile.LyricsFonts.PREF_NOTE_SIZE, v).apply())
+                .withKey(com.almog.spotifytablet.lyrics.mobile.LyricsFonts.PREF_NOTE_SIZE));
         look.rows.add(choiceRow("Lyrics font",
                 "Each font has a size that looks best (shown next to it); picking one sets your Lyrics size to it. Applies to Latin-script lyrics.",
                 com.almog.spotifytablet.lyrics.mobile.LyricsFonts.PREF_LYRICS_FONT, "system",
@@ -401,7 +434,8 @@ public class SettingsActivity extends AppCompatActivity {
         look.rows.add(sliderRow("Lyrics size",
                 "Size of the active line. Bigger reads better from a distance.",
                 24, 48, prefs.getInt(Constants.PREF_KEY_LYRICS_FONT_SIZE, 32),
-                v -> v + " sp", v -> prefs.edit().putInt(Constants.PREF_KEY_LYRICS_FONT_SIZE, v).apply()));
+                v -> v + " sp", v -> prefs.edit().putInt(Constants.PREF_KEY_LYRICS_FONT_SIZE, v).apply())
+                .withKey(Constants.PREF_KEY_LYRICS_FONT_SIZE));
         look.rows.add(switchRow("Word animations",
                 "Smooth word-by-word highlighting and movement.", PREF_LYRICS_ANIMATION, true, null));
         look.rows.add(switchRow("Dynamic line spacing",
@@ -413,6 +447,23 @@ public class SettingsActivity extends AppCompatActivity {
         Group source = new Group("Sources");
         source.rows.add(sourcesRow());
         lyrics.groups.add(source);
+        Group lookup = new Group("Finding lyrics");
+        lookup.rows.add(choiceRow("Lookup patience",
+                "How long to wait for the best lyrics before showing what has been found. Quick shows the first result after about 8 s and swaps in better lyrics later; Best quality waits up to 40 s so lyrics rarely change mid-song.",
+                "lyrics_patience", "quick",
+                new String[]{"Quick (default)", "Balanced (about 20 s)", "Best quality (up to 40 s)"},
+                new String[]{"quick", "balanced", "best"}));
+        lookup.rows.add(sliderRow("Songs to look up ahead",
+                "How many upcoming songs in your Spotify queue get their lyrics found early, so they show instantly. 0 turns it off.",
+                0, 10, prefs.getInt("lyrics_prefetch_ahead", 3),
+                v -> v == 0 ? "Off" : String.valueOf(v), v -> prefs.edit().putInt("lyrics_prefetch_ahead", v).apply())
+                .withKey("lyrics_prefetch_ahead"));
+        lookup.rows.add(sliderRow("Lyrics timing",
+                "If the lyrics run late or early, shift them. Positive shows lyrics earlier, negative later (steps of 50 ms).",
+                -40, 40, prefs.getInt("lyrics_offset_ms", 0) / 50,
+                v -> (v > 0 ? "+" : "") + (v * 50) + " ms", v -> prefs.edit().putInt("lyrics_offset_ms", v * 50).apply())
+                .withKey("lyrics_offset_ms"));
+        lyrics.groups.add(lookup);
 
         Group lang = new Group("Translation & romanization");
         lang.rows.add(switchRow("Romanization",
@@ -431,7 +482,7 @@ public class SettingsActivity extends AppCompatActivity {
         sections.add(lyrics);
 
         // ---- Playback ----
-        Section playback = new Section("Playback");
+        Section playback = new Section("Playback", "▶", "Music", "Which player the tablet follows, your browser, and how often it checks.");
         Group src = new Group("Source");
         src.rows.add(segmentRow("Media source",
                 "Which player the tablet follows. Auto picks whichever is playing.",
@@ -446,6 +497,11 @@ public class SettingsActivity extends AppCompatActivity {
                 new String[]{"browser,spotify,jellyfin", "browser,jellyfin,spotify",
                         "spotify,browser,jellyfin", "spotify,jellyfin,browser",
                         "jellyfin,browser,spotify", "jellyfin,spotify,browser"}));
+        src.rows.add(sliderRow("Return to Auto after being idle",
+                "If you picked a player by hand and nothing plays on it for this long, go back to Auto. 0 never goes back.",
+                0, 120, prefs.getInt("auto_revert_minutes", 10),
+                v -> v == 0 ? "Never" : v + " min", v -> prefs.edit().putInt("auto_revert_minutes", v).apply())
+                .withKey("auto_revert_minutes"));
         playback.groups.add(src);
         Group web = new Group("Browser extension (YouTube, SoundCloud, any page)");
         web.rows.add(switchRow("Receive from the browser",
@@ -476,22 +532,25 @@ public class SettingsActivity extends AppCompatActivity {
         updates.rows.add(sliderRow("Check every (playing)",
                 "How often to check the track while music plays.",
                 1, 56, (int) (prefs.getLong(Constants.PREF_KEY_SONG_POLL_INTERVAL, 5000L) / 1000L),
-                v -> v + " s", v -> prefs.edit().putLong(Constants.PREF_KEY_SONG_POLL_INTERVAL, v * 1000L).apply()));
+                v -> v + " s", v -> prefs.edit().putLong(Constants.PREF_KEY_SONG_POLL_INTERVAL, v * 1000L).apply())
+                .withKey(Constants.PREF_KEY_SONG_POLL_INTERVAL));
         updates.rows.add(sliderRow("Check every (paused)",
                 "Slower checks while paused, to save resources.",
                 1, 56, (int) (prefs.getLong(Constants.PREF_KEY_PAUSED_POLL_INTERVAL, 15000L) / 1000L),
-                v -> v + " s", v -> prefs.edit().putLong(Constants.PREF_KEY_PAUSED_POLL_INTERVAL, v * 1000L).apply()));
+                v -> v + " s", v -> prefs.edit().putLong(Constants.PREF_KEY_PAUSED_POLL_INTERVAL, v * 1000L).apply())
+                .withKey(Constants.PREF_KEY_PAUSED_POLL_INTERVAL));
         playback.groups.add(updates);
         Group volume = new Group("Volume");
         volume.rows.add(sliderRow("Volume step",
                 "How much one button press or hold tick changes the volume.",
                 1, 20, prefs.getInt(Constants.PREF_KEY_VOLUME_STEP, Constants.VOLUME_STEP),
-                v -> v + "%", v -> prefs.edit().putInt(Constants.PREF_KEY_VOLUME_STEP, v).apply()));
+                v -> v + "%", v -> prefs.edit().putInt(Constants.PREF_KEY_VOLUME_STEP, v).apply())
+                .withKey(Constants.PREF_KEY_VOLUME_STEP));
         playback.groups.add(volume);
         sections.add(playback);
 
         // ---- Jellyfin ----
-        Section jelly = new Section("Jellyfin");
+        Section jelly = new Section("Jellyfin", "🎞", "Connections", "Your Jellyfin server.");
         Group js = new Group("Server");
         js.rows.add(textRow("Server URL", "Address of your Jellyfin server.",
                 Constants.PREF_KEY_JELLYFIN_SERVER_URL, Constants.DEFAULT_JELLYFIN_URL, "http://192.168.1.100:8096", false));
@@ -507,7 +566,7 @@ public class SettingsActivity extends AppCompatActivity {
         sections.add(jelly);
 
         // ---- Smart home ----
-        Section home = new Section("Smart home");
+        Section home = new Section("Smart home", "💡", "Connections", "Home Assistant and volume webhooks.");
         Group ha = new Group("Home Assistant");
         ha.rows.add(textRow("Server URL", "Address of Home Assistant.",
                 Constants.PREF_KEY_HA_URL, Constants.DEFAULT_HA_URL, "http://homeassistant.local:8123", false));
@@ -525,7 +584,7 @@ public class SettingsActivity extends AppCompatActivity {
         sections.add(home);
 
         // ---- Weather ----
-        Section weather = new Section("Weather");
+        Section weather = new Section("Weather", "☁", "Connections", "Where the weather comes from.");
         Group wl = new Group("Location");
         wl.rows.add(textRow("Location",
                 "A city name like Tel Aviv, or coordinates as lat,lon. Restart the app to apply.",
@@ -534,7 +593,7 @@ public class SettingsActivity extends AppCompatActivity {
         sections.add(weather);
 
         // ---- Data & account ----
-        Section data = new Section("Data & account");
+        Section data = new Section("Data & account", "🗂", "System", "Backup, cache, diagnostics, your account and reset.");
         Group backup = new Group("Backup");
         backup.rows.add(actionRow("Export settings",
                 "Saves your settings and keys to a file. Keep it private. Your Spotify login is not included.",
@@ -584,7 +643,121 @@ public class SettingsActivity extends AppCompatActivity {
                             finish();
                         })));
         data.groups.add(reset);
+        data.resettable = false;
         sections.add(data);
+    }
+
+    // ---------------------------------------------------------------------
+    // Overview: what is connected, quick switches and presets
+    // ---------------------------------------------------------------------
+
+    private Row statusRow(String title, String detail, String value, boolean good, Runnable go) {
+        return new Row(title, detail, () -> {
+            LinearLayout row = rowShell();
+            row.addView(titleBlock(title, detail));
+            TextView v = new TextView(this);
+            v.setText(value + "  \u203A");
+            v.setTextColor(good ? ACCENT : TEXT_DIM);
+            v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            v.setPadding(dp(12), 0, 0, 0);
+            row.addView(v);
+            row.setOnClickListener(x -> go.run());
+            return row;
+        });
+    }
+
+    private void jumpTo(String sectionName) {
+        for (int i = 0; i < sections.size(); i++) {
+            if (sections.get(i).name.equals(sectionName)) {
+                selected = i;
+                ((EditText) findViewById(R.id.etSearch)).setText("");
+                showSection(i);
+                return;
+            }
+        }
+    }
+
+    private Section buildOverview() {
+        Section ov = new Section("Overview", "🏠", "", "What is connected, quick switches and one-tap presets.");
+        ov.searchable = false;
+        ov.resettable = false;
+
+        Group status = new Group("Status");
+        boolean spotify = !prefs.getString(Constants.PREF_KEY_REFRESH_TOKEN, "").isEmpty();
+        status.rows.add(statusRow("Spotify", "Your Spotify account for what's playing and queue.",
+                spotify ? "Signed in" : "Not signed in", spotify, () -> jumpTo("Data & account")));
+        boolean jelly = !prefs.getString(Constants.PREF_KEY_JELLYFIN_SERVER_URL, Constants.DEFAULT_JELLYFIN_URL).isEmpty()
+                && !prefs.getString(Constants.PREF_KEY_JELLYFIN_API_KEY, Constants.DEFAULT_JELLYFIN_API_KEY).isEmpty();
+        status.rows.add(statusRow("Jellyfin", "Your media server.",
+                jelly ? "Set up" : "Not set up", jelly, () -> jumpTo("Jellyfin")));
+        String webValue;
+        boolean webGood = false;
+        if (!BrowserMedia.isEnabled(this)) {
+            webValue = "Off";
+        } else {
+            BrowserMedia.State st = BrowserMedia.fresh();
+            webGood = true;
+            webValue = st == null ? "Listening" : (st.playing ? "Playing: " : "Paused: ") + st.title;
+        }
+        status.rows.add(statusRow("Browser extension", "YouTube, SoundCloud and other pages from your PC's browser.",
+                webValue, webGood, () -> jumpTo("Playback")));
+        boolean cal = GoogleCalendarClient.isConnected(this);
+        status.rows.add(statusRow("Google Calendar", "Next event on the clock and in Project Mode.",
+                cal ? "Connected" : "Not connected", cal, () -> jumpTo("Display")));
+        com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.init(this);
+        int on = 0, total = 0;
+        for (com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo src
+                : com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.sources()) {
+            total++;
+            if (src.getEnabled()) on++;
+        }
+        final String srcValue = on + " of " + total + " on";
+        status.rows.add(statusRow("Lyric sources", "Which sites are asked for lyrics, their order and your key.",
+                srcValue, on > 0, () -> {
+                    returnFromSources = true;
+                    startActivity(new Intent(this, SourcesActivity.class));
+                }));
+        ov.groups.add(status);
+
+        Group quick = new Group("Quick settings");
+        quick.rows.add(switchRow("Keep screen on", "Stops the tablet display from sleeping.",
+                PREF_KEEP_SCREEN_ON, true, onOff -> {
+                    if (onOff) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                }));
+        quick.rows.add(switchRow("Live track updates", "Keeps checking what is playing.",
+                Constants.PREF_KEY_SPOTIFY_UPDATES_ENABLED, true, null));
+        quick.rows.add(switchRow("No background blur", "Skips the blurred album art behind the player to save power.",
+                PowerSettings.PREF_NO_BLUR, false, null));
+        ov.groups.add(quick);
+
+        Group presets = new Group("Presets");
+        presets.rows.add(actionRow("Battery saver",
+                "Lyrics at 30 fps, no background blur, slower checking and a dimmed clock screen.",
+                "Apply", false, () -> confirm("Apply battery saver?",
+                        "Changes four battery settings. You can undo it with \"Full quality\".", "Apply", () -> {
+                            prefs.edit()
+                                    .putString(PowerSettings.PREF_LYRICS_FPS, "30")
+                                    .putBoolean(PowerSettings.PREF_NO_BLUR, true)
+                                    .putBoolean(PowerSettings.PREF_SLOW_POLL, true)
+                                    .putBoolean(PowerSettings.PREF_DIM_CLOCK, true)
+                                    .apply();
+                            toast("Battery saver on");
+                            recreate();
+                        })));
+        presets.rows.add(actionRow("Full quality",
+                "Back to smooth 60 fps lyrics, blurred background, normal checking and normal clock brightness.",
+                "Apply", false, () -> {
+                    prefs.edit()
+                            .remove(PowerSettings.PREF_LYRICS_FPS).remove(PowerSettings.PREF_LOW_FPS)
+                            .remove(PowerSettings.PREF_NO_BLUR).remove(PowerSettings.PREF_SLOW_POLL)
+                            .remove(PowerSettings.PREF_DIM_CLOCK)
+                            .apply();
+                    toast("Full quality");
+                    recreate();
+                }));
+        ov.groups.add(presets);
+        return ov;
     }
 
     // ---------------------------------------------------------------------
@@ -593,14 +766,27 @@ public class SettingsActivity extends AppCompatActivity {
 
     private void buildNav() {
         LinearLayout nav = findViewById(R.id.navList);
+        String lastCategory = "";
         for (int i = 0; i < sections.size(); i++) {
             final int index = i;
+            Section sec = sections.get(i);
+            if (!sec.category.isEmpty() && !sec.category.equals(lastCategory)) {
+                lastCategory = sec.category;
+                TextView header = new TextView(this);
+                header.setText(sec.category.toUpperCase(Locale.ROOT));
+                header.setTextColor(Color.parseColor("#5B6270"));
+                header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+                header.setLetterSpacing(0.1f);
+                header.setTypeface(null, Typeface.BOLD);
+                header.setPadding(dp(16), dp(14), 0, dp(4));
+                nav.addView(header);
+            }
             TextView item = new TextView(this);
-            item.setText(sections.get(i).name);
+            item.setText(sec.icon + "   " + sec.name);
             item.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
             item.setTextColor(TEXT_DIM);
             item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setPadding(dp(16), 0, dp(12), 0);
+            item.setPadding(dp(14), 0, dp(12), 0);
             item.setClickable(true);
             item.setOnClickListener(v -> {
                 selected = index;
@@ -625,37 +811,105 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
+    /** A row, with a small green dot at its edge when its setting is not at the default. */
+    private View rowView(Row r) {
+        View v = r.make.get();
+        if (r.key == null || !prefs.contains(r.key)) return v;
+        android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+        frame.addView(v, new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        View dot = new View(this);
+        dot.setBackgroundResource(R.drawable.bg_changed_dot);
+        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(dp(6), dp(6),
+                Gravity.START | Gravity.CENTER_VERTICAL);
+        lp.setMarginStart(dp(8));
+        frame.addView(dot, lp);
+        return frame;
+    }
+
+    /** Keeps the content at a comfortable width on big screens. */
+    private void fitContent() {
+        contentScroll.post(() -> {
+            int w = contentScroll.getWidth();
+            if (w <= 0) return;
+            int pad = Math.max(dp(32), (w - dp(860)) / 2);
+            content.setPadding(pad, 0, pad, dp(48));
+            tvSectionTitle.setPadding(pad, dp(24), pad, dp(2));
+            tvSectionBlurb.setPadding(pad, 0, pad, dp(6));
+        });
+    }
+
     private void showSection(int index) {
         markNav(index);
         Section s = sections.get(index);
         tvSectionTitle.setText(s.name);
+        tvSectionBlurb.setText(s.blurb);
+        tvSectionBlurb.setVisibility(s.blurb.isEmpty() ? View.GONE : View.VISIBLE);
         content.removeAllViews();
+        boolean anyKey = false;
         for (Group g : s.groups) {
             addLabel(g.label);
             LinearLayout card = newCard();
             for (int i = 0; i < g.rows.size(); i++) {
                 if (i > 0) card.addView(divider());
-                card.addView(g.rows.get(i).make.get());
+                Row r = g.rows.get(i);
+                if (r.key != null) anyKey = true;
+                card.addView(rowView(r));
             }
             content.addView(card);
         }
+        if (s.resettable && anyKey) addResetButton(s);
+        fitContent();
         contentScroll.scrollTo(0, 0);
+    }
+
+    /** "Reset this section": puts every setting listed in it back to its default. */
+    private void addResetButton(Section s) {
+        TextView b = new TextView(this);
+        b.setText("Reset " + s.name + " to defaults");
+        b.setTextColor(Color.parseColor("#FF6B6B"));
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        b.setGravity(Gravity.CENTER);
+        b.setBackgroundResource(R.drawable.bg_btn_danger);
+        b.setPadding(dp(18), dp(12), dp(18), dp(12));
+        b.setOnClickListener(v -> confirm("Reset " + s.name + "?",
+                "Puts every setting in this section back to its default. Addresses and keys typed in here are cleared too.",
+                "Reset", () -> {
+                    SharedPreferences.Editor e = prefs.edit();
+                    for (Group g : s.groups) for (Row r : g.rows) if (r.key != null) e.remove(r.key);
+                    e.apply();
+                    toast(s.name + " reset");
+                    recreate();
+                }));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(28);
+        content.addView(b, lp);
     }
 
     private void showSearch(String query) {
         markNav(-1);
         tvSectionTitle.setText("Search");
+        tvSectionBlurb.setVisibility(View.GONE);
         content.removeAllViews();
         String q = query.toLowerCase(Locale.ROOT);
-        LinearLayout card = newCard();
         int found = 0;
         for (Section s : sections) {
+            if (!s.searchable) continue;
             for (Group g : s.groups) {
+                LinearLayout card = null;
                 for (Row r : g.rows) {
                     String hay = (r.title + " " + r.subtitle + " " + s.name + " " + g.label).toLowerCase(Locale.ROOT);
                     if (!hay.contains(q)) continue;
-                    if (found++ > 0) card.addView(divider());
-                    card.addView(r.make.get());
+                    if (card == null) {
+                        addLabel(s.name + "  \u203A  " + g.label);
+                        card = newCard();
+                        content.addView(card);
+                    } else {
+                        card.addView(divider());
+                    }
+                    card.addView(rowView(r));
+                    found++;
                 }
             }
         }
@@ -664,10 +918,10 @@ public class SettingsActivity extends AppCompatActivity {
             none.setText("No settings match \"" + query + "\"");
             none.setTextColor(TEXT_DIM);
             none.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-            none.setPadding(dp(20), dp(20), dp(20), dp(20));
-            card.addView(none);
+            none.setPadding(dp(6), dp(20), dp(20), dp(20));
+            content.addView(none);
         }
-        content.addView(card);
+        fitContent();
         contentScroll.scrollTo(0, 0);
     }
 
@@ -747,7 +1001,7 @@ public class SettingsActivity extends AppCompatActivity {
             row.addView(sw);
             row.setOnClickListener(v -> sw.toggle());
             return row;
-        });
+        }).withKey(key);
     }
 
     /** Inline pill buttons for two or three short options. */
@@ -787,7 +1041,7 @@ public class SettingsActivity extends AppCompatActivity {
             paint.run();
             row.addView(pills);
             return row;
-        });
+        }).withKey(key);
     }
 
     /** One row showing the current choice; tapping opens a list. For longer option lists. */
@@ -823,7 +1077,7 @@ public class SettingsActivity extends AppCompatActivity {
                         }).show();
             });
             return row;
-        });
+        }).withKey(key);
     }
 
     /** Title and live value on top, slider under; the value is saved when the finger lifts. */
@@ -893,7 +1147,7 @@ public class SettingsActivity extends AppCompatActivity {
             lp.topMargin = dp(10);
             row.addView(et, lp);
             return row;
-        });
+        }).withKey(key);
     }
 
     /** A row that only shows text. */
