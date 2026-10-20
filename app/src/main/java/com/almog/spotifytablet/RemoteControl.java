@@ -204,7 +204,7 @@ public final class RemoteControl {
                 }
                 case "/api/settings": {
                     SharedPreferences p = context.getSharedPreferences(Constants.PREF_NAME, Context.MODE_PRIVATE);
-                    if (method.equals("GET")) return Resp.json(200, settingsJson(p));
+                    if (method.equals("GET")) return settingsJson(p);
                     JSONObject o = new JSONObject(body);
                     Setting s = find(o.optString("key", ""));
                     if (s == null) return Resp.error(400, "unknown setting");
