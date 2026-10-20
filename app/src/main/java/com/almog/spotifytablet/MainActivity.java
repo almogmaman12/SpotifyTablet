@@ -941,6 +941,7 @@ private void fetchJellyfinVolume() {
         }
         handler.removeCallbacksAndMessages(null);
         BrowserMedia.stop();
+        if (remoteHost != null) RemoteControl.clearHost(remoteHost);
     }
 
     private float playbackSpeed = 1.0f;
@@ -1329,6 +1330,10 @@ private void fetchJellyfinVolume() {
 
     private void seekToPosition(long positionMs) {
         String activeSource = "auto".equals(mediaSource) ? currentAutoEffectiveSource : mediaSource;
+        if ("browser".equals(activeSource)) {
+            BrowserMedia.sendSeek((int) positionMs);
+            return;
+        }
         if ("spotify".equals(activeSource) && accessToken != null && !accessToken.isEmpty()) {
             Request req = new Request.Builder()
                     .url("https://api.spotify.com/v1/me/player/seek?position_ms=" + positionMs)
@@ -1886,6 +1891,9 @@ private void fetchJellyfinVolume() {
         boolean forceUpdate = (songTitle != null && "Updates Paused".equals(songTitle.getText().toString()))
                 || (newSongTitle != null && "Updates Paused".equals(newSongTitle.getText().toString()));
 
+        remoteTitle = title == null ? "" : title;
+        remoteArtist = artist == null ? "" : artist;
+        if ((trackChanged || forceUpdate) && img != null && !img.isEmpty()) RemoteControl.setCover(img);
         if (trackChanged || forceUpdate) {
             if (songTitle != null) crossfadeText(songTitle, title);
             if (newSongTitle != null) crossfadeText(newSongTitle, title);
@@ -2887,8 +2895,66 @@ private void fetchJellyfinVolume() {
         if (getRequestedOrientation() != want) setRequestedOrientation(want);
     }
 
+    private volatile String remoteTitle = "", remoteArtist = "";
+    private RemoteControl.Host remoteHost;
+
+    /** What the phone control page may see and do: the player's state, playback commands and setting changes. */
+    private RemoteControl.Host buildRemoteHost() {
+        return new RemoteControl.Host() {
+            @Override
+            public JSONObject state() throws JSONException {
+                String active = "auto".equals(mediaSource) ? currentAutoEffectiveSource : mediaSource;
+                int pos = progressMs;
+                if (isPlaying && durationMs > 0) {
+                    pos = (int) Math.min(durationMs, progressMs + (System.currentTimeMillis() - lastProgressTimestamp) * playbackSpeed);
+                }
+                boolean idle = !isPlaying && pausedSongTitle.isEmpty();
+                return new JSONObject()
+                        .put("title", idle ? "" : remoteTitle)
+                        .put("artist", idle ? "" : remoteArtist)
+                        .put("playing", isPlaying)
+                        .put("idle", idle)
+                        .put("positionMs", pos)
+                        .put("durationMs", durationMs)
+                        .put("volume", currentVolume)
+                        .put("canVolume", !"browser".equals(active))
+                        .put("source", active == null ? "" : active);
+            }
+
+            @Override
+            public void command(String cmd, long arg) {
+                runOnUiThread(() -> {
+                    String active = "auto".equals(mediaSource) ? currentAutoEffectiveSource : mediaSource;
+                    switch (cmd) {
+                        case "playpause": togglePlayPause(); break;
+                        case "next":
+                        case "previous": skipTo(cmd); break;
+                        case "seek":
+                            progressMs = (int) arg;
+                            lastProgressTimestamp = System.currentTimeMillis();
+                            seekToPosition(arg);
+                            break;
+                        case "volup": if (!"browser".equals(active)) adjustVolume(true); break;
+                        case "voldown": if (!"browser".equals(active)) adjustVolume(false); break;
+                        default: break;
+                    }
+                });
+            }
+
+            @Override
+            public void settingsChanged() {
+                // Re-reads every setting the way coming back from the Settings screen does.
+                runOnUiThread(MainActivity.this::onResume);
+            }
+        };
+    }
+
     private void syncBrowserServer() {
-        if (BrowserMedia.isEnabled(this)) {
+        if (remoteHost == null) {
+            remoteHost = buildRemoteHost();
+            RemoteControl.setHost(remoteHost);
+        }
+        if (BrowserMedia.serverWanted(this)) {
             BrowserMedia.start(this, () -> handler.post(() -> {
                 // Something changed in the browser (new video, play/pause, seek): show it now, not at the next poll.
                 if ("browser".equals(mediaSource) || "auto".equals(mediaSource)) {

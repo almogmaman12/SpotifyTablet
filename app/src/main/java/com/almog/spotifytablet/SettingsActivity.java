@@ -508,7 +508,7 @@ public class SettingsActivity extends AppCompatActivity {
                 "Lets the Chrome extension from the browser-extension folder send what is playing to this tablet.",
                 BrowserMedia.PREF_ENABLED, false, on -> {
                     // Listen right away, so the extension can connect while this screen is still open.
-                    if (on) BrowserMedia.start(getApplicationContext(), null); else BrowserMedia.stop();
+                    if (BrowserMedia.serverWanted(this)) BrowserMedia.start(getApplicationContext(), null); else BrowserMedia.stop();
                     recreate();
                 }));
         if (BrowserMedia.isEnabled(this)) {
@@ -525,6 +525,34 @@ public class SettingsActivity extends AppCompatActivity {
                     BrowserMedia.PREF_LYRICS, true, null));
         }
         playback.groups.add(web);
+        Group phone = new Group("Phone control page");
+        phone.rows.add(switchRow("Control from your phone",
+                "Serves a page on your Wi-Fi where any browser can see what is playing, control playback and change the main settings.",
+                RemoteControl.PREF_ENABLED, false, on -> {
+                    if (BrowserMedia.serverWanted(this)) BrowserMedia.start(getApplicationContext(), null); else BrowserMedia.stop();
+                    recreate();
+                }));
+        if (RemoteControl.isEnabled(this)) {
+            final boolean haveAddress = !BrowserMedia.address().startsWith("port");
+            final String link = "http://" + BrowserMedia.address() + "/?code=" + BrowserMedia.token(this);
+            phone.rows.add(infoRow("Address and code",
+                    "On your phone's browser (same Wi-Fi) open  http://" + BrowserMedia.address() + "  and enter the code  "
+                            + BrowserMedia.token(this) + "."));
+            if (haveAddress) {
+                phone.rows.add(actionRow("Copy link", "The link already contains the code, so the page opens signed in. Send it to your phone.",
+                        "Copy", false, () -> {
+                            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                            if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("Control page", link));
+                            toast("Link copied");
+                        }));
+            }
+            phone.rows.add(actionRow("New code", "Pages and extensions using the old code stop working.", "Change", false, () -> {
+                BrowserMedia.newToken(this);
+                toast("New code created");
+                recreate();
+            }));
+        }
+        playback.groups.add(phone);
         Group updates = new Group("Updates");
         updates.rows.add(switchRow("Live track updates",
                 "Keeps checking what is playing. Turn off to save battery and API quota.",

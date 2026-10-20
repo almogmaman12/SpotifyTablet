@@ -49,6 +49,7 @@ public final class BrowserMedia {
     private static volatile ServerSocket server;
     private static volatile Runnable onChange;
     private static volatile String token = "";
+    private static volatile Context appContext;
 
     private BrowserMedia() { }
 
@@ -112,7 +113,13 @@ public final class BrowserMedia {
         try { commands.add(new JSONObject().put("c", "seek").put("ms", ms)); } catch (Exception ignored) { }
     }
 
+    /** The server runs while the browser extension or the phone control page is switched on. */
+    public static boolean serverWanted(Context context) {
+        return isEnabled(context) || RemoteControl.isEnabled(context);
+    }
+
     public static synchronized void start(Context context, Runnable changed) {
+        appContext = context.getApplicationContext();
         if (changed != null) onChange = changed;
         token = token(context);
         if (server != null) return;
@@ -178,6 +185,19 @@ public final class BrowserMedia {
                 respond(out, 204, "");
                 return;
             }
+            String pathOnly = path;
+            String query = "";
+            int qi = path.indexOf('?');
+            if (qi >= 0) {
+                pathOnly = path.substring(0, qi);
+                query = path.substring(qi + 1);
+            }
+            Context ctx = appContext;
+            if (method.equals("GET") && (pathOnly.equals("/") || pathOnly.equals("/index.html"))) {
+                servePage(out, ctx);
+                return;
+            }
+            if (sent.isEmpty()) sent = queryParam(query, "t");
             if (!equalsConstTime(sent, token)) {
                 respond(out, 401, "{\"ok\":false,\"error\":\"bad token\"}");
                 return;
@@ -193,11 +213,24 @@ public final class BrowserMedia {
                 if (n < 0) break;
                 got += n;
             }
-            if (path.startsWith("/ping")) {
+            if (pathOnly.startsWith("/api/")) {
+                if (ctx == null || !RemoteControl.isEnabled(ctx)) {
+                    respond(out, 403, "{\"ok\":false,\"error\":\"The phone control page is switched off on the tablet\"}");
+                    return;
+                }
+                RemoteControl.Resp r = RemoteControl.handle(ctx, method, pathOnly, new String(body, 0, got, StandardCharsets.UTF_8));
+                respondRaw(out, r.code, r.type, r.data);
+                return;
+            }
+            if (pathOnly.startsWith("/ping")) {
                 respond(out, 200, "{\"ok\":true}");
                 return;
             }
-            if (method.equals("POST") && path.startsWith("/now")) {
+            if (method.equals("POST") && pathOnly.startsWith("/now")) {
+                if (ctx == null || !isEnabled(ctx)) {
+                    respond(out, 403, "{\"ok\":false,\"error\":\"The browser extension is switched off on the tablet\"}");
+                    return;
+                }
                 ingest(new String(body, 0, got, StandardCharsets.UTF_8));
                 JSONArray cmds = new JSONArray();
                 JSONObject cmd;
@@ -267,11 +300,45 @@ public final class BrowserMedia {
         return buf.toString("UTF-8");
     }
 
+    private static String queryParam(String query, String name) {
+        for (String part : query.split("&")) {
+            int eq = part.indexOf('=');
+            if (eq > 0 && part.substring(0, eq).equals(name)) {
+                try {
+                    return java.net.URLDecoder.decode(part.substring(eq + 1), "UTF-8");
+                } catch (Exception e) {
+                    return "";
+                }
+            }
+        }
+        return "";
+    }
+
+    /** The phone control page (assets/remote.html); anyone can load it, the code is asked for inside. */
+    private static void servePage(OutputStream out, Context ctx) throws IOException {
+        if (ctx == null || !RemoteControl.isEnabled(ctx)) {
+            respondRaw(out, 404, "text/plain; charset=utf-8",
+                    "The phone control page is switched off. Turn it on in the tablet's Settings.".getBytes(StandardCharsets.UTF_8));
+            return;
+        }
+        try (InputStream in = ctx.getAssets().open("remote.html")) {
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
+            int n;
+            while ((n = in.read(chunk)) > 0) buf.write(chunk, 0, n);
+            respondRaw(out, 200, "text/html; charset=utf-8", buf.toByteArray());
+        }
+    }
+
     private static void respond(OutputStream out, int code, String body) throws IOException {
-        String status = code == 200 ? "OK" : code == 204 ? "No Content" : code == 401 ? "Unauthorized" : code == 404 ? "Not Found" : "Error";
-        byte[] data = body.getBytes(StandardCharsets.UTF_8);
+        respondRaw(out, code, "application/json; charset=utf-8", body.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void respondRaw(OutputStream out, int code, String type, byte[] data) throws IOException {
+        String status = code == 200 ? "OK" : code == 204 ? "No Content" : code == 400 ? "Bad Request" : code == 401 ? "Unauthorized"
+                : code == 403 ? "Forbidden" : code == 404 ? "Not Found" : code == 405 ? "Method Not Allowed" : code == 503 ? "Service Unavailable" : "Error";
         String head = "HTTP/1.1 " + code + " " + status + "\r\n"
-                + "Content-Type: application/json; charset=utf-8\r\n"
+                + "Content-Type: " + type + "\r\n"
                 + "Content-Length: " + data.length + "\r\n"
                 + "Access-Control-Allow-Origin: *\r\n"
                 + "Access-Control-Allow-Headers: Content-Type, X-Token\r\n"
