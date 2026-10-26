@@ -73,7 +73,7 @@ public class MainActivity extends AppCompatActivity {
     // SONG_UPDATE_INTERVAL / PAUSED_SONG_UPDATE_INTERVAL removed — now driven by songPollInterval / pausedPollInterval (user-configurable via Settings)
     // Progress update interval for linear progress bar and clock timers.
     // LyricsView runs on its own internal Compose withFrameNanos vsync loop.
-    private static final int PROGRESS_UPDATE_INTERVAL = 50; // 20fps for progress bar/timers; saves 67% main thread wakeups
+    private static final int PROGRESS_UPDATE_INTERVAL = 100; // The 1000-step bar moves once per ~180 ms on a 3 minute song, so 10 checks a second look identical to 20
     private static final long CLOCK_MOVE_INTERVAL = 60000L;
     /** How long after playback stops the clock comes back (Settings → Display). */
     private long clockDelayMs() {
@@ -234,6 +234,8 @@ public class MainActivity extends AppCompatActivity {
         // Without this, any uncaught exception drops the tablet to the system lock screen.
         Thread.setDefaultUncaughtExceptionHandler((thread, ex) -> {
             android.util.Log.e(TAG, "Uncaught exception — restarting app", ex);
+            // Keep the trace for the debug page: this handler replaces the one that normally saves it.
+            CrashReporter.record(getApplicationContext(), thread, ex);
             android.content.Intent intent = new android.content.Intent(getApplicationContext(), MainActivity.class);
             intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK);
             android.app.PendingIntent pendingIntent = android.app.PendingIntent.getActivity(
@@ -953,7 +955,7 @@ private void fetchJellyfinVolume() {
         }
         if (!isPlaying) {
             // Paused but clock hidden: keep timer alive at a lower cadence.
-            handler.postDelayed(progressUpdater, 250);
+            handler.postDelayed(progressUpdater, 500);
             return;
         }
         if (durationMs > 0) {
@@ -1735,6 +1737,9 @@ private void fetchJellyfinVolume() {
 
         SharedPreferences prefs = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE);
 
+        // Slow the lyrics drawing down while the tablet is hot or in Battery Saver (a slower cap only, never a different look).
+        PowerSettings.startCoolDownWatch(this);
+
         // Re-assert show-over-lock / wake flags so waking the tablet always lands on this app.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
                 | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
@@ -1838,6 +1843,16 @@ private void fetchJellyfinVolume() {
     @Override
     protected void onPause() {
         super.onPause();
+        PowerSettings.stopCoolDownWatch(this);
+    }
+
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        // Android is running low on memory: drop what can be fetched again before it kills the app.
+        if (level >= TRIM_MEMORY_RUNNING_LOW) {
+            com.almog.spotifytablet.lyrics.repository.LyricsRepository.trimMemory();
+        }
     }
 
     @Override
@@ -1902,7 +1917,8 @@ private void fetchJellyfinVolume() {
                     // Keep the picture's own shape: by default Glide would crop it to the square view first,
                     // and a widescreen cover could never be shown wide (the view's centerCrop still fits it).
                     Glide.with(MainActivity.this).load(img)
-                            .override(com.bumptech.glide.request.target.Target.SIZE_ORIGINAL)
+                            .override(1280, 1280)
+                            .downsample(com.bumptech.glide.load.resource.bitmap.DownsampleStrategy.AT_MOST)
                             .dontTransform()
                             .listener(new com.bumptech.glide.request.RequestListener<Drawable>() {
                                 @Override

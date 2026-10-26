@@ -64,6 +64,12 @@ class LyricsRepository(
             DebugLog.i(TAG, "clearAllCache: in-memory LRU cache evicted")
         }
 
+        /** Frees the in-memory lyrics (the disk cache keeps them) when the system is short of memory. */
+        @JvmStatic
+        fun trimMemory() {
+            globalMemoryCache.evictAll()
+        }
+
         /**
          * Shared LRU cache across all LyricsRepository instances (ViewModel survives
          * config changes, so a per-instance cache is fine too, but sharing means the

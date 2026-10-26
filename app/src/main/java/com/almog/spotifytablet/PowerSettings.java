@@ -18,6 +18,10 @@ public final class PowerSettings {
 
     /** Shortest time between lyrics frames, from the "Lyrics frame rate" choice (0 = no cap). */
     public static volatile long minFrameNanos = 14_000_000L; // 60 fps until refresh() runs
+    private static volatile long userMinFrameNanos = 14_000_000L;
+    /** 0 = fine, 1 = hot or Battery Saver (30 fps), 2 = very hot (24 fps). Only ever slows lyrics drawing, never changes how it looks. */
+    private static volatile int coolDownLevel = 0;
+    private static Object thermalListener;
     public static volatile boolean noBackgroundBlur = false;
     public static volatile boolean slowPolling = false;
     public static volatile boolean dimClock = false;
@@ -36,6 +40,50 @@ public final class PowerSettings {
 
     private PowerSettings() {}
 
+    /** The chosen frame rate, or a slower one while the tablet is hot or in Battery Saver. */
+    private static void applyFrameCap(Context context) {
+        long floor = coolDownLevel >= 2 ? (long) (1_000_000_000d / 24 * 0.85)
+                : coolDownLevel == 1 ? (long) (1_000_000_000d / 30 * 0.85) : 0L;
+        minFrameNanos = Math.max(userMinFrameNanos, floor);
+    }
+
+    /** Starts following the tablet's temperature and Battery Saver. Safe to call again. */
+    public static synchronized void startCoolDownWatch(final Context context) {
+        final android.os.PowerManager pm = (android.os.PowerManager) context.getApplicationContext()
+                .getSystemService(Context.POWER_SERVICE);
+        if (pm == null) return;
+        final Context app = context.getApplicationContext();
+        updateCoolDown(app, pm, pm.getCurrentThermalStatus());
+        if (thermalListener != null) return;
+        final android.os.PowerManager.OnThermalStatusChangedListener l = status -> updateCoolDown(app, pm, status);
+        thermalListener = l;
+        try {
+            pm.addThermalStatusListener(l);
+        } catch (Throwable t) {
+            thermalListener = null;
+        }
+    }
+
+    public static synchronized void stopCoolDownWatch(Context context) {
+        if (thermalListener == null) return;
+        android.os.PowerManager pm = (android.os.PowerManager) context.getApplicationContext()
+                .getSystemService(Context.POWER_SERVICE);
+        try {
+            if (pm != null) pm.removeThermalStatusListener((android.os.PowerManager.OnThermalStatusChangedListener) thermalListener);
+        } catch (Throwable ignored) {
+        }
+        thermalListener = null;
+    }
+
+    private static void updateCoolDown(Context app, android.os.PowerManager pm, int thermal) {
+        int level = thermal >= android.os.PowerManager.THERMAL_STATUS_SEVERE ? 2
+                : (thermal >= android.os.PowerManager.THERMAL_STATUS_MODERATE || pm.isPowerSaveMode()) ? 1 : 0;
+        if (level == coolDownLevel) return;
+        coolDownLevel = level;
+        applyFrameCap(app);
+        DebugLog.i("PowerSettings", "Cool-down level " + level + " (thermal status " + thermal + ")");
+    }
+
     public static void refresh(Context context) {
         SharedPreferences p = context.getSharedPreferences(Constants.PREF_NAME, Context.MODE_PRIVATE);
         String fps = p.getString(PREF_LYRICS_FPS, p.getBoolean(PREF_LOW_FPS, false) ? "30" : "60");
@@ -43,7 +91,8 @@ public final class PowerSettings {
         try { n = Integer.parseInt(fps); } catch (NumberFormatException e) { n = 60; }
         // A frame is drawn when at least ~85% of the target interval has passed, so a cap of N lands on
         // the nearest rate the screen can show (a 60 Hz panel can't do 45, it does 30 or 60).
-        minFrameNanos = n <= 0 ? 0L : (long) (1_000_000_000d / n * 0.85);
+        userMinFrameNanos = n <= 0 ? 0L : (long) (1_000_000_000d / n * 0.85);
+        applyFrameCap(context);
         noBackgroundBlur = p.getBoolean(PREF_NO_BLUR, false);
         slowPolling = p.getBoolean(PREF_SLOW_POLL, false);
         dimClock = p.getBoolean(PREF_DIM_CLOCK, false);

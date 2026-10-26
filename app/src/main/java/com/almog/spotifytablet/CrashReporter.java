@@ -26,27 +26,35 @@ public final class CrashReporter {
         final Context app = context.getApplicationContext();
         final Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
-            try {
-                StringWriter trace = new StringWriter();
-                error.printStackTrace(new PrintWriter(trace));
-                String version = "?";
-                try {
-                    version = app.getPackageManager().getPackageInfo(app.getPackageName(), 0).versionName;
-                } catch (Exception ignored) {
-                }
-                String text = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date())
-                        + "\nThread: " + thread.getName()
-                        + "\nApp " + version + ", Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT
-                        + "), " + Build.MANUFACTURER + " " + Build.MODEL + "\n\n" + trace;
-                if (text.length() > MAX_CHARS) text = text.substring(0, MAX_CHARS);
-                try (FileOutputStream out = new FileOutputStream(new File(app.getFilesDir(), FILE))) {
-                    out.write(text.getBytes(StandardCharsets.UTF_8));
-                }
-            } catch (Throwable ignored) {
-                // Never let reporting hide the real crash.
-            }
+            record(app, thread, error);
             if (previous != null) previous.uncaughtException(thread, error);
         });
+    }
+
+    /** Saves a crash (time, thread, stack trace) for the debug page. Never throws. */
+    public static void record(Context context, Thread thread, Throwable error) {
+        try {
+            final Context app = context.getApplicationContext();
+            StringWriter trace = new StringWriter();
+            error.printStackTrace(new PrintWriter(trace));
+            String version = "?";
+            try {
+                version = app.getPackageManager().getPackageInfo(app.getPackageName(), 0).versionName;
+            } catch (Exception ignored) {
+            }
+            Runtime rt = Runtime.getRuntime();
+            String text = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date())
+                    + "\nThread: " + thread.getName()
+                    + "\nMemory: " + ((rt.totalMemory() - rt.freeMemory()) >> 20) + " MB used of " + (rt.maxMemory() >> 20) + " MB"
+                    + "\nApp " + version + ", Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT
+                    + "), " + Build.MANUFACTURER + " " + Build.MODEL + "\n\n" + trace;
+            if (text.length() > MAX_CHARS) text = text.substring(0, MAX_CHARS);
+            try (FileOutputStream out = new FileOutputStream(new File(app.getFilesDir(), FILE))) {
+                out.write(text.getBytes(StandardCharsets.UTF_8));
+            }
+        } catch (Throwable ignored) {
+            // Never let reporting hide the real crash.
+        }
     }
 
     /** The last crash's text, or null if there has been none. */
