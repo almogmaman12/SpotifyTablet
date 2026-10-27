@@ -119,10 +119,15 @@ public class DayDetailActivity extends AppCompatActivity {
                 txtHumidity.setText(Math.round(humidity) + "%");
                 txtWind.setText(Math.round(wind) + " קמ\"ש");
                 txtUV.setText(String.valueOf(uv));
-                Glide.with(this).load(iconUrl).into(imgIcon);
+                Glide.with(glideContext()).load(iconUrl).into(imgIcon);
             } catch (Exception e) {
                 Log.e(TAG, "Failed to parse day detail: " + e.getMessage());
             }
         }
+    }
+
+    /** For Glide loads that finish after a delay: a destroyed screen can't start one, so fall back to the app. */
+    private android.content.Context glideContext() {
+        return isDestroyed() ? getApplicationContext() : this;
     }
 }

@@ -241,7 +241,7 @@ public class WeatherActivity extends AppCompatActivity {
 
                     timeTv.setText(hour == currentHour ? "עכשיו" : String.format("%02d:00", hour));
                     tempTv.setText(Math.round(hTemp) + "°");
-                    Glide.with(WeatherActivity.this).load(hIcon).into(iconIv);
+                    Glide.with(glideContext()).load(hIcon).into(iconIv);
 
                     // Staggered fade-in animation
                     hourView.setAlpha(0f);
@@ -311,5 +311,10 @@ public class WeatherActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
         idleHandler.removeCallbacks(idleExitRunnable);
+    }
+
+    /** For Glide loads that finish after a delay: a destroyed screen can't start one, so fall back to the app. */
+    private android.content.Context glideContext() {
+        return isDestroyed() ? getApplicationContext() : this;
     }
 }

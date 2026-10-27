@@ -1463,13 +1463,13 @@ private void fetchJellyfinVolume() {
                             if (newWeatherText != null) newWeatherText.setText(shortWeatherString);
                             if (clockWeatherText != null) clockWeatherText.setText(weatherString);
                             if (weatherIcon != null) {
-                                Glide.with(MainActivity.this).load(iconUrl).into(weatherIcon);
+                                Glide.with(glideContext()).load(iconUrl).into(weatherIcon);
                             }
                             if (newWeatherIcon != null) {
-                                Glide.with(MainActivity.this).load(iconUrl).into(newWeatherIcon);
+                                Glide.with(glideContext()).load(iconUrl).into(newWeatherIcon);
                             }
                             if (clockWeatherIcon != null) {
-                                Glide.with(MainActivity.this).load(iconUrl).into(clockWeatherIcon);
+                                Glide.with(glideContext()).load(iconUrl).into(clockWeatherIcon);
                             }
                         });
 
@@ -1911,12 +1911,12 @@ private void fetchJellyfinVolume() {
             DebugLog.i("Cover", "updateUIForSong '" + title + "' cover=" + (img == null || img.isEmpty() ? "(none)" : img.startsWith("data:") ? "data" : "address"));
             if (!isDestroyed() && !isFinishing() && img != null && !img.isEmpty()) {
                 if (albumArt != null) {
-                    Glide.with(MainActivity.this).load(img).into(albumArt);
+                    Glide.with(glideContext()).load(img).into(albumArt);
                 }
                 if (newAlbumArt != null) {
                     // Keep the picture's own shape: by default Glide would crop it to the square view first,
                     // and a widescreen cover could never be shown wide (the view's centerCrop still fits it).
-                    Glide.with(MainActivity.this).load(img)
+                    Glide.with(glideContext()).load(img)
                             .override(1280, 1280)
                             .downsample(com.bumptech.glide.load.resource.bitmap.DownsampleStrategy.AT_MOST)
                             .dontTransform()
@@ -1953,7 +1953,7 @@ private void fetchJellyfinVolume() {
                     final int vw = backgroundBlur.getWidth() > 0 ? backgroundBlur.getWidth() : getResources().getDisplayMetrics().widthPixels;
                     final int vh = backgroundBlur.getHeight() > 0 ? backgroundBlur.getHeight() : getResources().getDisplayMetrics().heightPixels;
                     backgroundBlur.setRenderEffect(null);
-                    Glide.with(MainActivity.this).asBitmap().disallowHardwareConfig().override(512, 512).load(img)
+                    Glide.with(glideContext()).asBitmap().disallowHardwareConfig().override(512, 512).load(img)
                             .into(new CustomTarget<Bitmap>() {
                                 @Override
                                 public void onResourceReady(@NonNull Bitmap resource, Transition<? super Bitmap> transition) {
@@ -1974,9 +1974,9 @@ private void fetchJellyfinVolume() {
                             .getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100);
                     backgroundBlur.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(
                             blurRadius, blurRadius, android.graphics.Shader.TileMode.CLAMP));
-                    Glide.with(MainActivity.this).load(img).into(backgroundBlur);
+                    Glide.with(glideContext()).load(img).into(backgroundBlur);
                 } else {
-                    Glide.with(MainActivity.this)
+                    Glide.with(glideContext())
                             .asBitmap()
                             .load(img)
                             .into(new CustomTarget<Bitmap>() {
@@ -2456,13 +2456,13 @@ private void fetchJellyfinVolume() {
             }
             if (albumArt != null) {
                 if (!isDestroyed() && !isFinishing()) {
-                    Glide.with(MainActivity.this).clear(albumArt);
+                    Glide.with(glideContext()).clear(albumArt);
                 }
                 albumArt.setImageDrawable(null);
             }
             if (newAlbumArt != null) {
                 if (!isDestroyed() && !isFinishing()) {
-                    Glide.with(MainActivity.this).clear(newAlbumArt);
+                    Glide.with(glideContext()).clear(newAlbumArt);
                 }
                 newAlbumArt.setImageDrawable(null);
             }
@@ -3340,5 +3340,9 @@ private void fetchJellyfinVolume() {
             shape.setStroke(10, strokeColor);
         }
     }
-}
 
+    /** For Glide loads that finish after a delay: a destroyed screen can't start one, so fall back to the app. */
+    private android.content.Context glideContext() {
+        return isDestroyed() ? getApplicationContext() : this;
+    }
+}

@@ -910,7 +910,7 @@ public class ProjectModeActivity extends AppCompatActivity {
                 songTitle.setText(title);
                 artistName.setText(finalArtist);
                 if (!isDestroyed() && !isFinishing() && finalImgUrl != null && !finalImgUrl.isEmpty()) {
-                    Glide.with(ProjectModeActivity.this).load(finalImgUrl).into(albumArt);
+                    Glide.with(glideContext()).load(finalImgUrl).into(albumArt);
                 }
                 progressBar.setMax(durationMs);
                 progressBar.setProgress(progressMs);
@@ -1032,7 +1032,7 @@ public class ProjectModeActivity extends AppCompatActivity {
             if (artistName != null) artistName.setText("");
             if (albumArt != null) {
                 if (!isDestroyed() && !isFinishing()) {
-                    Glide.with(ProjectModeActivity.this).clear(albumArt);
+                    Glide.with(glideContext()).clear(albumArt);
                 }
                 albumArt.setImageDrawable(null);
             }
@@ -1193,7 +1193,7 @@ public class ProjectModeActivity extends AppCompatActivity {
                 songTitle.setText(title);
                 artistName.setText(artist);
                 if (!isDestroyed() && !isFinishing() && imgUrl != null && !imgUrl.isEmpty()) {
-                    Glide.with(ProjectModeActivity.this).load(imgUrl).into(albumArt);
+                    Glide.with(glideContext()).load(imgUrl).into(albumArt);
                 }
                 progressBar.setMax(durationMs);
                 progressBar.setProgress(progressMs);
@@ -1592,5 +1592,9 @@ public class ProjectModeActivity extends AppCompatActivity {
             focusTimer = null;
         }
     }
-}
 
+    /** For Glide loads that finish after a delay: a destroyed screen can't start one, so fall back to the app. */
+    private android.content.Context glideContext() {
+        return isDestroyed() ? getApplicationContext() : this;
+    }
+}

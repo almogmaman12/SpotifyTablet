@@ -101,7 +101,7 @@ public class DaysActivity extends AppCompatActivity {
                     txtTemp.setText(Math.round(minTemp) + "° / " + Math.round(maxTemp) + "°");
                     
                     if (!iconUrl.isEmpty()) {
-                        Glide.with(DaysActivity.this).load(iconUrl).into(imgIcon);
+                        Glide.with(glideContext()).load(iconUrl).into(imgIcon);
                     }
                 }
 
@@ -125,5 +125,10 @@ public class DaysActivity extends AppCompatActivity {
                 e.printStackTrace();
             }
         }
+    }
+
+    /** For Glide loads that finish after a delay: a destroyed screen can't start one, so fall back to the app. */
+    private android.content.Context glideContext() {
+        return isDestroyed() ? getApplicationContext() : this;
     }
 }
