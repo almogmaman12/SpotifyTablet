@@ -1246,7 +1246,7 @@ private void fetchJellyfinVolume() {
         if (accessToken == null || accessToken.isEmpty()) return;
 
         long now = System.currentTimeMillis();
-        if (now - lastQueueFetchTime < 15000 && !cachedNextTrackId.isEmpty()) {
+        if (now - lastQueueFetchTime < 15000) { // also when the queue is empty: it used to ask on every poll then
             return;
         }
         lastQueueFetchTime = now;

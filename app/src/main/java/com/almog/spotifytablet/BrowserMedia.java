@@ -152,63 +152,73 @@ public final class BrowserMedia {
 
     private static void handle(Socket c) {
         try (Socket sock = c) {
-            sock.setSoTimeout(5000);
             InputStream in = new BufferedInputStream(sock.getInputStream());
-            String requestLine = readLine(in);
-            if (requestLine == null) return;
-            String[] parts = requestLine.split(" ");
-            String method = parts.length > 0 ? parts[0] : "";
-            String path = parts.length > 1 ? parts[1] : "/";
-            int length = 0;
-            String sent = "";
-            String line;
-            while ((line = readLine(in)) != null && !line.isEmpty()) {
-                int colon = line.indexOf(':');
-                if (colon < 0) continue;
-                String name = line.substring(0, colon).trim().toLowerCase();
-                String value = line.substring(colon + 1).trim();
-                if (name.equals("content-length")) {
-                    try { length = Integer.parseInt(value); } catch (NumberFormatException ignored) { }
-                } else if (name.equals("x-token")) {
-                    sent = value;
-                }
-            }
-            OutputStream out = sock.getOutputStream();
-            if (method.equals("OPTIONS")) {
-                respond(out, 204, "");
-                return;
-            }
-            if (!equalsConstTime(sent, token)) {
-                respond(out, 401, "{\"ok\":false,\"error\":\"bad token\"}");
-                return;
-            }
-            if (length > 600_000) {
-                respond(out, 413, "{\"ok\":false}");
-                return;
-            }
-            byte[] body = new byte[length];
-            int got = 0;
-            while (got < length) {
-                int n = in.read(body, got, length - got);
-                if (n < 0) break;
-                got += n;
-            }
-            if (path.startsWith("/ping")) {
-                respond(out, 200, "{\"ok\":true}");
-                return;
-            }
-            if (method.equals("POST") && path.startsWith("/now")) {
-                ingest(new String(body, 0, got, StandardCharsets.UTF_8));
-                JSONArray cmds = new JSONArray();
-                JSONObject cmd;
-                while ((cmd = commands.poll()) != null) cmds.put(cmd);
-                respond(out, 200, new JSONObject().put("ok", true).put("cmds", cmds).toString());
-                return;
-            }
-            respond(out, 404, "{\"ok\":false}");
+            // The extension reports about once a second: one connection carries them all instead of a new
+            // connection and thread each time. It closes after 60 quiet seconds.
+            while (serveOne(sock, in)) { /* next request on the same connection */ }
         } catch (Exception e) {
             // A dropped connection is routine here.
         }
+    }
+
+    /** Answers one request. Returns true when the connection can take another. */
+    private static boolean serveOne(Socket sock, InputStream in) throws Exception {
+        sock.setSoTimeout(60_000);
+        String requestLine = readLine(in);
+        if (requestLine == null) return false;
+        sock.setSoTimeout(5000);
+        String[] parts = requestLine.split(" ");
+        String method = parts.length > 0 ? parts[0] : "";
+        String path = parts.length > 1 ? parts[1] : "/";
+        int length = 0;
+        String sent = "";
+        String line;
+        while ((line = readLine(in)) != null && !line.isEmpty()) {
+            int colon = line.indexOf(':');
+            if (colon < 0) continue;
+            String name = line.substring(0, colon).trim().toLowerCase();
+            String value = line.substring(colon + 1).trim();
+            if (name.equals("content-length")) {
+                try { length = Integer.parseInt(value); } catch (NumberFormatException ignored) { }
+            } else if (name.equals("x-token")) {
+                sent = value;
+            }
+        }
+        OutputStream out = sock.getOutputStream();
+        if (method.equals("OPTIONS")) {
+            respond(out, 204, "", false);
+            return false;
+        }
+        if (!equalsConstTime(sent, token)) {
+            respond(out, 401, "{\"ok\":false,\"error\":\"bad token\"}", false);
+            return false;
+        }
+        if (length < 0 || length > 600_000) {
+            respond(out, 413, "{\"ok\":false}", false);
+            return false;
+        }
+        byte[] body = new byte[length];
+        int got = 0;
+        while (got < length) {
+            int n = in.read(body, got, length - got);
+            if (n < 0) break;
+            got += n;
+        }
+        if (got < length) return false;
+        if (path.startsWith("/ping")) {
+            respond(out, 200, "{\"ok\":true}", true);
+            return true;
+        }
+        if (method.equals("POST") && path.startsWith("/now")) {
+            ingest(new String(body, 0, got, StandardCharsets.UTF_8));
+            JSONArray cmds = new JSONArray();
+            JSONObject cmd;
+            while ((cmd = commands.poll()) != null) cmds.put(cmd);
+            respond(out, 200, new JSONObject().put("ok", true).put("cmds", cmds).toString(), true);
+            return true;
+        }
+        respond(out, 404, "{\"ok\":false}", false);
+        return false;
     }
 
     private static void ingest(String json) throws Exception {
@@ -267,7 +277,7 @@ public final class BrowserMedia {
         return buf.toString("UTF-8");
     }
 
-    private static void respond(OutputStream out, int code, String body) throws IOException {
+    private static void respond(OutputStream out, int code, String body, boolean keepAlive) throws IOException {
         String status = code == 200 ? "OK" : code == 204 ? "No Content" : code == 401 ? "Unauthorized" : code == 404 ? "Not Found" : "Error";
         byte[] data = body.getBytes(StandardCharsets.UTF_8);
         String head = "HTTP/1.1 " + code + " " + status + "\r\n"
@@ -277,7 +287,7 @@ public final class BrowserMedia {
                 + "Access-Control-Allow-Headers: Content-Type, X-Token\r\n"
                 + "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
                 + "Access-Control-Allow-Private-Network: true\r\n"
-                + "Connection: close\r\n\r\n";
+                + (keepAlive ? "Connection: keep-alive\r\nKeep-Alive: timeout=60\r\n\r\n" : "Connection: close\r\n\r\n");
         out.write(head.getBytes(StandardCharsets.UTF_8));
         out.write(data);
         out.flush();
