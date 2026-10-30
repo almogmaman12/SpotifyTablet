@@ -523,6 +523,9 @@ public class SettingsActivity extends AppCompatActivity {
             web.rows.add(switchRow("Look up lyrics for videos",
                     "Cleans the video title (\"Artist - Song (Official Video)\") and searches the lyric sources.",
                     BrowserMedia.PREF_LYRICS, true, null));
+            web.rows.add(switchRow("Skip videos that aren't songs",
+                    "No lyric lookup for very long or very short videos, or titles like podcast, tutorial or trailer. Saves battery. Turn off if a song gets skipped.",
+                    BrowserMedia.PREF_SKIP_NON_SONGS, true, null));
         }
         playback.groups.add(web);
         Group updates = new Group("Updates");

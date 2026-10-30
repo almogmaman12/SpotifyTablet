@@ -2858,7 +2858,10 @@ private void fetchJellyfinVolume() {
             if (lyricsViewModel != null) lyricsViewModel.clearLyrics();
             boolean wantLyrics = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
                     .getBoolean(BrowserMedia.PREF_LYRICS, true);
-            if (wantLyrics) {
+            boolean skip = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
+                    .getBoolean(BrowserMedia.PREF_SKIP_NON_SONGS, true) && !BrowserMedia.worthLyricLookup(st);
+            if (wantLyrics && skip) DebugLog.i("BrowserMedia", "Not a song, no lyric lookup: " + st.title);
+            if (wantLyrics && !skip) {
                 String[] q = BrowserMedia.lyricsQuery(st);
                 fetchSyncedLyrics(q[0], q[1], "");
             }

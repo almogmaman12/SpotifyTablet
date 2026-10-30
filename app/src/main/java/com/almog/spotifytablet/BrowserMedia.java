@@ -31,6 +31,7 @@ public final class BrowserMedia {
     public static final int PORT = 8765;
     public static final String PREF_ENABLED = "browser_media_enabled";
     public static final String PREF_LYRICS = "browser_media_lyrics";
+    public static final String PREF_SKIP_NON_SONGS = "browser_media_skip_non_songs";
     private static final String PREF_TOKEN = "browser_media_token";
     /** A report older than this means the tab is gone, paused in the background, or the PC is off. */
     private static final long STALE_MS = 8_000L;
@@ -288,6 +289,27 @@ public final class BrowserMedia {
     private static final java.util.regex.Pattern NOISE_BRACKETS = java.util.regex.Pattern.compile(
             "\\s*[(\\[][^)\\]]*(official|video|audio|lyric|visuali[sz]er|\\bhd\\b|4k|\\bhq\\b|remaster|\\bmv\\b|m/v|clip)[^)\\]]*[)\\]]",
             java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    private static final java.util.regex.Pattern NOT_MUSIC_TITLE = java.util.regex.Pattern.compile(
+            "\\b(podcast|episode|ep\\.?\\s?\\d+|tutorial|review|trailer|gameplay|walkthrough|reaction|interview|vlog|"
+                    + "news|highlights|full movie|how to|unboxing|live ?stream|lecture|documentary)\\b",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /** Sites that only play music: always worth a lyric lookup. */
+    private static final String[] MUSIC_SITES = {"music.youtube.com", "open.spotify.com", "soundcloud.com", "bandcamp.com",
+            "music.apple.com", "deezer.com", "tidal.com", "listen.tidal.com", "music.amazon.com", "pandora.com"};
+
+    /**
+     * Whether a lyric lookup is worth it for this page. Plain video sites play plenty of things that are not songs, and a
+     * lookup tries every lyric source, so clear non-songs are skipped: very long or very short videos and titles that name
+     * a podcast, tutorial, trailer and the like. When unsure (no length yet, a normal-looking title) it says yes.
+     */
+    public static boolean worthLyricLookup(State s) {
+        String site = s.site == null ? "" : s.site.toLowerCase();
+        for (String m : MUSIC_SITES) if (site.equals(m) || site.endsWith("." + m)) return true;
+        if (s.durationMs > 0 && (s.durationMs > 10 * 60_000 || s.durationMs < 40_000)) return false;
+        return !NOT_MUSIC_TITLE.matcher(s.title).find();
+    }
 
     /**
      * Artist and title to look lyrics up with. Plain YouTube videos name the song "Artist - Title" under
