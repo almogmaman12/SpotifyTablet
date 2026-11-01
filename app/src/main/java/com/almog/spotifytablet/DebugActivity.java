@@ -167,12 +167,24 @@ public class DebugActivity extends AppCompatActivity {
 
     private void renderCrash() {
         String crash = CrashReporter.read(this);
-        if (crash == null) { empty("No crash recorded. Good."); return; }
-        TextView t = text(crash, 12, BAD);
-        t.setTypeface(Typeface.MONOSPACE);
-        t.setTextIsSelectable(true);
-        t.setPadding(0, dp(8), 0, dp(8));
-        list.addView(t);
+        if (crash == null) {
+            TextView none = text("No Java crash recorded.", 12, BAD);
+            none.setPadding(0, dp(8), 0, dp(4));
+            list.addView(none);
+        } else {
+            TextView t = text(crash, 12, BAD);
+            t.setTypeface(Typeface.MONOSPACE);
+            t.setTextIsSelectable(true);
+            t.setPadding(0, dp(8), 0, dp(8));
+            list.addView(t);
+        }
+        TextView head = text("How the app's recent runs ended (from Android):", 12, BAD);
+        head.setPadding(0, dp(12), 0, dp(4));
+        list.addView(head);
+        TextView exits = text(CrashReporter.exitHistory(this), 12, BAD);
+        exits.setTypeface(Typeface.MONOSPACE);
+        exits.setTextIsSelectable(true);
+        list.addView(exits);
     }
 
     private void renderLog() {
@@ -202,7 +214,8 @@ public class DebugActivity extends AppCompatActivity {
             }
         } else if (tab == 3) {
             String crash = CrashReporter.read(this);
-            if (crash != null) sb.append(crash);
+            if (crash != null) sb.append(crash).append("\n\n");
+            sb.append("How the app's recent runs ended:\n").append(CrashReporter.exitHistory(this));
         } else {
             for (DiagLog.Entry e : DiagLog.logs()) {
                 sb.append(clock.format(new Date(e.time))).append(' ').append(e.level).append(' ')

@@ -57,6 +57,61 @@ public final class CrashReporter {
         }
     }
 
+    /**
+     * Why the app's recent runs ended, from Android's own record. This catches what the crash file cannot: the system
+     * stopping the app for memory, the app not responding, or a crash in native code (none of them reach the Java handler).
+     */
+    public static String exitHistory(Context context) {
+        if (Build.VERSION.SDK_INT < 30) return "Android 11 or newer is needed for the exit history.";
+        try {
+            android.app.ActivityManager am = (android.app.ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            java.util.List<android.app.ApplicationExitInfo> list = am.getHistoricalProcessExitReasons(context.getPackageName(), 0, 8);
+            if (list == null || list.isEmpty()) return "No earlier exits recorded.";
+            SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
+            StringBuilder sb = new StringBuilder();
+            for (android.app.ApplicationExitInfo e : list) {
+                sb.append(fmt.format(new Date(e.getTimestamp()))).append("  ").append(reasonName(e.getReason()))
+                        .append("  (status ").append(e.getStatus()).append(", ")
+                        .append(e.getImportance() <= 125 ? "was on screen" : "was in the background")
+                        .append(", memory ").append(e.getRss() >> 10).append(" MB)\n");
+                if (e.getDescription() != null && !e.getDescription().isEmpty()) sb.append("    ").append(e.getDescription()).append('\n');
+                int r = e.getReason();
+                if (r == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE || r == android.app.ApplicationExitInfo.REASON_ANR) {
+                    try (java.io.InputStream in = e.getTraceInputStream()) {
+                        if (in != null) {
+                            byte[] buf = new byte[3000];
+                            int n = in.read(buf);
+                            if (n > 0) sb.append("    trace: ").append(new String(buf, 0, n, StandardCharsets.UTF_8).replace("\n", "\n    ")).append('\n');
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+            return sb.toString();
+        } catch (Throwable t) {
+            return "Could not read the exit history: " + t;
+        }
+    }
+
+    private static String reasonName(int r) {
+        switch (r) {
+            case android.app.ApplicationExitInfo.REASON_CRASH: return "CRASH (Java)";
+            case android.app.ApplicationExitInfo.REASON_CRASH_NATIVE: return "CRASH (native)";
+            case android.app.ApplicationExitInfo.REASON_ANR: return "NOT RESPONDING (ANR)";
+            case android.app.ApplicationExitInfo.REASON_LOW_MEMORY: return "KILLED, LOW MEMORY";
+            case android.app.ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE: return "KILLED, TOO MUCH RESOURCE USE";
+            case android.app.ApplicationExitInfo.REASON_SIGNALED: return "KILLED BY SIGNAL";
+            case android.app.ApplicationExitInfo.REASON_USER_REQUESTED: return "closed by you";
+            case android.app.ApplicationExitInfo.REASON_USER_STOPPED: return "force-stopped";
+            case android.app.ApplicationExitInfo.REASON_EXIT_SELF: return "app exited itself";
+            case android.app.ApplicationExitInfo.REASON_DEPENDENCY_DIED: return "a dependency died";
+            case android.app.ApplicationExitInfo.REASON_PERMISSION_CHANGE: return "permission changed";
+            case android.app.ApplicationExitInfo.REASON_INITIALIZATION_FAILURE: return "failed to start";
+            case android.app.ApplicationExitInfo.REASON_OTHER: return "other";
+            default: return "unknown (" + r + ")";
+        }
+    }
+
     /** The last crash's text, or null if there has been none. */
     public static String read(Context context) {
         File f = new File(context.getFilesDir(), FILE);
