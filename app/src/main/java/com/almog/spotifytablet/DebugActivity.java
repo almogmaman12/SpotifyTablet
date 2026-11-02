@@ -185,6 +185,13 @@ public class DebugActivity extends AppCompatActivity {
         exits.setTypeface(Typeface.MONOSPACE);
         exits.setTextIsSelectable(true);
         list.addView(exits);
+        TextView memHead = text("Memory, one line a minute (newest last). If a number keeps climbing before an exit, that is the cause:", 12, BAD);
+        memHead.setPadding(0, dp(12), 0, dp(4));
+        list.addView(memHead);
+        TextView mem = text(MemoryLog.recent(this, 60), 11, BAD);
+        mem.setTypeface(Typeface.MONOSPACE);
+        mem.setTextIsSelectable(true);
+        list.addView(mem);
     }
 
     private void renderLog() {
@@ -215,7 +222,8 @@ public class DebugActivity extends AppCompatActivity {
         } else if (tab == 3) {
             String crash = CrashReporter.read(this);
             if (crash != null) sb.append(crash).append("\n\n");
-            sb.append("How the app's recent runs ended:\n").append(CrashReporter.exitHistory(this));
+            sb.append("How the app's recent runs ended:\n").append(CrashReporter.exitHistory(this))
+                    .append("\nMemory, one line a minute:\n").append(MemoryLog.recent(this, 120));
         } else {
             for (DiagLog.Entry e : DiagLog.logs()) {
                 sb.append(clock.format(new Date(e.time))).append(' ').append(e.level).append(' ')

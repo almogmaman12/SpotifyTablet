@@ -7,5 +7,6 @@ public class App extends Application {
     public void onCreate() {
         super.onCreate();
         CrashReporter.install(this);
+        MemoryLog.start(this);
     }
 }
