@@ -26,12 +26,35 @@ public final class MemoryLog {
     private static final long EVERY_MS = 60_000L;
     private static boolean started;
 
+    // Lyrics drawing creates thousands of small native objects a minute (a gradient shader per lit word, per frame).
+    // They are freed when Java's garbage collector reaches their Java handles, but the Java heap here is tiny, so it
+    // runs only every 10 to 15 minutes and the native side balloons to 100 MB or more before then. This asks for a
+    // collection sooner, off the main thread, so Android has no reason to kill the app for memory.
+    private static final long NATIVE_LIMIT_BYTES = 70L << 20;
+    private static final long CHECK_EVERY_MS = 15_000L;
+    private static final long MIN_GAP_MS = 60_000L;
+    private static long lastCleanup;
+
     public static synchronized void start(Context context) {
         if (started) return;
         started = true;
         final Context app = context.getApplicationContext();
         final Handler handler = new Handler(Looper.getMainLooper());
         final SimpleDateFormat fmt = new SimpleDateFormat("MM-dd HH:mm", Locale.US);
+        handler.postDelayed(new Runnable() {
+            @Override public void run() {
+                try {
+                    long now = android.os.SystemClock.elapsedRealtime();
+                    if (Debug.getNativeHeapAllocatedSize() > NATIVE_LIMIT_BYTES && now - lastCleanup >= MIN_GAP_MS) {
+                        lastCleanup = now;
+                        cleanUp(app, fmt);
+                    }
+                } catch (Throwable ignored) {
+                    // Never the problem itself.
+                }
+                handler.postDelayed(this, CHECK_EVERY_MS);
+            }
+        }, CHECK_EVERY_MS);
         handler.post(new Runnable() {
             @Override public void run() {
                 try {
@@ -42,6 +65,27 @@ public final class MemoryLog {
                 handler.postDelayed(this, EVERY_MS);
             }
         });
+    }
+
+    /** Runs a garbage collection on a background thread and notes the native memory before and after. */
+    public static void cleanUp(final Context app, final SimpleDateFormat fmt) {
+        final long before = Debug.getNativeHeapAllocatedSize() >> 20;
+        Thread t = new Thread(() -> {
+            try {
+                Runtime.getRuntime().gc();
+                Thread.sleep(1500); // the native objects are released just after the collection
+                long after = Debug.getNativeHeapAllocatedSize() >> 20;
+                write(app, fmt.format(new Date()) + "  cleanup: native " + before + " MB -> " + after + " MB");
+            } catch (Throwable ignored) {
+            }
+        }, "memory-cleanup");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /** For when Android says memory is short. */
+    public static void cleanUpNow(Context context) {
+        cleanUp(context.getApplicationContext(), new SimpleDateFormat("MM-dd HH:mm", Locale.US));
     }
 
     private static String sample(SimpleDateFormat fmt) {

@@ -58,6 +58,7 @@ import com.almog.spotifytablet.lyrics.mobile.translation.TranslationMode
 import com.almog.spotifytablet.lyrics.mobile.romanization.RomanizationMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToInt
@@ -258,6 +259,11 @@ fun LyricsView(
             if (translation != null) measure(romanize, null)
             if (romanizable) measure(!romanize)
             if (translation != null && romanizable) measure(!romanize, null)
+            // The song before this one is garbage now, but the native memory behind its thousands of text layouts is
+            // only freed when a GC runs, and the small Java heap rarely makes one run: it piled up past 190 MB until
+            // Android ended the app. Collecting here, off the main thread, keeps it to about a song's worth.
+            delay(2000)
+            withContext(Dispatchers.Default) { System.gc() }
         }
 
         if (lineLayouts.isEmpty()) return@BoxWithConstraints

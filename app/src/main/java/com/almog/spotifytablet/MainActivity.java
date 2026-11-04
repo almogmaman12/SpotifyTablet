@@ -1739,6 +1739,8 @@ private void fetchJellyfinVolume() {
 
         // Slow the lyrics drawing down while the tablet is hot or in Battery Saver (a slower cap only, never a different look).
         PowerSettings.startCoolDownWatch(this);
+        handler.removeCallbacks(memoryCleanup);
+        handler.postDelayed(memoryCleanup, 5 * 60_000L);
 
         // Re-assert show-over-lock / wake flags so waking the tablet always lands on this app.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
@@ -1844,14 +1846,31 @@ private void fetchJellyfinVolume() {
     protected void onPause() {
         super.onPause();
         PowerSettings.stopCoolDownWatch(this);
+        handler.removeCallbacks(memoryCleanup);
+        collectGarbageSoon();
     }
+
+    /** Frees memory that is only released when a GC runs (see LyricsView); off the main thread. */
+    private void collectGarbageSoon() {
+        new Thread(System::gc, "memory-cleanup").start();
+    }
+
+    private final Runnable memoryCleanup = new Runnable() {
+        @Override public void run() {
+            collectGarbageSoon();
+            handler.postDelayed(this, 5 * 60_000L);
+        }
+    };
 
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
+        if (level >= TRIM_MEMORY_UI_HIDDEN) collectGarbageSoon();
         // Android is running low on memory: drop what can be fetched again before it kills the app.
         if (level >= TRIM_MEMORY_RUNNING_LOW) {
             com.almog.spotifytablet.lyrics.repository.LyricsRepository.trimMemory();
+            Glide.get(this).clearMemory();
+            MemoryLog.cleanUpNow(this);
         }
     }
 
