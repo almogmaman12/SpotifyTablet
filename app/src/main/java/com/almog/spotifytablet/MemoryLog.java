@@ -23,7 +23,12 @@ public final class MemoryLog {
 
     private static final String FILE = "memory_log.txt";
     private static final int KEEP = 240; // four hours
-    private static final long EVERY_MS = 60_000L;
+    private static final long EVERY_MS = 20_000L;      // memory check
+    private static final int LOG_EVERY = 3;              // every third check also writes a line (once a minute)
+    private static final long GUARD_COOLDOWN_MS = 60_000L;
+    private static final long TIGHT_NATIVE_PLUS_JAVA_MB = 130;
+    private static long lastGuard;
+    private static int ticks;
     private static boolean started;
 
     // Lyrics drawing creates thousands of small native objects a minute (a gradient shader per lit word, per frame).
@@ -31,9 +36,6 @@ public final class MemoryLog {
     // runs only every 10 to 15 minutes and the native side balloons to 100 MB or more before then. This asks for a
     // collection sooner, off the main thread, so Android has no reason to kill the app for memory.
     private static final long NATIVE_LIMIT_BYTES = 70L << 20;
-    private static final long CHECK_EVERY_MS = 15_000L;
-    private static final long MIN_GAP_MS = 60_000L;
-    private static long lastCleanup;
 
     public static synchronized void start(Context context) {
         if (started) return;
@@ -41,24 +43,12 @@ public final class MemoryLog {
         final Context app = context.getApplicationContext();
         final Handler handler = new Handler(Looper.getMainLooper());
         final SimpleDateFormat fmt = new SimpleDateFormat("MM-dd HH:mm", Locale.US);
-        handler.postDelayed(new Runnable() {
-            @Override public void run() {
-                try {
-                    long now = android.os.SystemClock.elapsedRealtime();
-                    if (Debug.getNativeHeapAllocatedSize() > NATIVE_LIMIT_BYTES && now - lastCleanup >= MIN_GAP_MS) {
-                        lastCleanup = now;
-                        cleanUp(app, fmt);
-                    }
-                } catch (Throwable ignored) {
-                    // Never the problem itself.
-                }
-                handler.postDelayed(this, CHECK_EVERY_MS);
-            }
-        }, CHECK_EVERY_MS);
         handler.post(new Runnable() {
             @Override public void run() {
                 try {
-                    write(app, sample(fmt));
+                    ticks++;
+                    String note = guard(app, fmt);
+                    if (ticks % LOG_EVERY == 1 || !note.isEmpty()) write(app, sample(app, fmt) + note);
                 } catch (Throwable ignored) {
                     // Logging must never be the problem.
                 }
@@ -67,28 +57,37 @@ public final class MemoryLog {
         });
     }
 
-    /** Runs a garbage collection on a background thread and notes the native memory before and after. */
-    public static void cleanUp(final Context app, final SimpleDateFormat fmt) {
-        final long before = Debug.getNativeHeapAllocatedSize() >> 20;
-        Thread t = new Thread(() -> {
+    /**
+     * Acts before Android does: when the app or the whole tablet is short of memory, frees what can be fetched again
+     * (old pictures, cached lyrics, text-layout garbage). Cheap to check, and it runs at most once a minute.
+     */
+    private static String guard(Context app, SimpleDateFormat fmt) {
+        Runtime rt = Runtime.getRuntime();
+        long mine = ((rt.totalMemory() - rt.freeMemory()) + Debug.getNativeHeapAllocatedSize()) >> 20;
+        android.app.ActivityManager.MemoryInfo si = new android.app.ActivityManager.MemoryInfo();
+        android.app.ActivityManager am = (android.app.ActivityManager) app.getSystemService(Context.ACTIVITY_SERVICE);
+        boolean systemTight = false;
+        if (am != null) {
+            am.getMemoryInfo(si);
+            systemTight = si.lowMemory || si.availMem < si.threshold * 2L;
+        }
+        long now = android.os.SystemClock.elapsedRealtime();
+        boolean nativeHigh = Debug.getNativeHeapAllocatedSize() > NATIVE_LIMIT_BYTES;
+        boolean appTight = mine >= TIGHT_NATIVE_PLUS_JAVA_MB;
+        if ((!nativeHigh && !appTight && !systemTight) || now - lastGuard < GUARD_COOLDOWN_MS) return "";
+        lastGuard = now;
+        if (appTight || systemTight) {
             try {
-                Runtime.getRuntime().gc();
-                Thread.sleep(1500); // the native objects are released just after the collection
-                long after = Debug.getNativeHeapAllocatedSize() >> 20;
-                write(app, fmt.format(new Date()) + "  cleanup: native " + before + " MB -> " + after + " MB");
+                com.bumptech.glide.Glide.get(app).clearMemory();
             } catch (Throwable ignored) {
             }
-        }, "memory-cleanup");
-        t.setDaemon(true);
-        t.start();
+            com.almog.spotifytablet.lyrics.repository.LyricsRepository.trimMemory();
+        }
+        cleanUp(app, fmt); // the collection itself, which notes native memory before and after in the log
+        return systemTight ? "  [tablet short of memory]" : appTight ? "  [app memory high]" : "";
     }
 
-    /** For when Android says memory is short. */
-    public static void cleanUpNow(Context context) {
-        cleanUp(context.getApplicationContext(), new SimpleDateFormat("MM-dd HH:mm", Locale.US));
-    }
-
-    private static String sample(SimpleDateFormat fmt) {
+    private static String sample(Context app, SimpleDateFormat fmt) {
         Runtime rt = Runtime.getRuntime();
         long javaUsed = (rt.totalMemory() - rt.freeMemory()) >> 20;
         long nativeHeap = Debug.getNativeHeapAllocatedSize() >> 20;
@@ -96,8 +95,15 @@ public final class MemoryLog {
         Debug.getMemoryInfo(mi);
         String gfx = mi.getMemoryStat("summary.graphics");
         String code = mi.getMemoryStat("summary.code");
+        long avail = -1;
+        android.app.ActivityManager am = (android.app.ActivityManager) app.getSystemService(Context.ACTIVITY_SERVICE);
+        if (am != null) {
+            android.app.ActivityManager.MemoryInfo si = new android.app.ActivityManager.MemoryInfo();
+            am.getMemoryInfo(si);
+            avail = si.availMem >> 20;
+        }
         return fmt.format(new Date()) + "  java " + javaUsed + " MB  native " + nativeHeap + " MB  graphics "
-                + kb(gfx) + " MB  code " + kb(code) + " MB  total " + (mi.getTotalPss() >> 10) + " MB";
+                + kb(gfx) + " MB  code " + kb(code) + " MB  total " + (mi.getTotalPss() >> 10) + " MB  tablet free " + avail + " MB";
     }
 
     private static String kb(String value) {
