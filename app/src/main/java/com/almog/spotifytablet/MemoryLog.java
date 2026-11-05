@@ -87,6 +87,27 @@ public final class MemoryLog {
         return systemTight ? "  [tablet short of memory]" : appTight ? "  [app memory high]" : "";
     }
 
+    /** Runs a garbage collection on a background thread and notes the native memory before and after. */
+    public static void cleanUp(final Context app, final SimpleDateFormat fmt) {
+        final long before = Debug.getNativeHeapAllocatedSize() >> 20;
+        Thread t = new Thread(() -> {
+            try {
+                Runtime.getRuntime().gc();
+                Thread.sleep(1500); // the native objects are released just after the collection
+                long after = Debug.getNativeHeapAllocatedSize() >> 20;
+                write(app, fmt.format(new Date()) + "  cleanup: native " + before + " MB -> " + after + " MB");
+            } catch (Throwable ignored) {
+            }
+        }, "memory-cleanup");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /** For when Android says memory is short. */
+    public static void cleanUpNow(Context context) {
+        cleanUp(context.getApplicationContext(), new SimpleDateFormat("MM-dd HH:mm", Locale.US));
+    }
+
     private static String sample(Context app, SimpleDateFormat fmt) {
         Runtime rt = Runtime.getRuntime();
         long javaUsed = (rt.totalMemory() - rt.freeMemory()) >> 20;
