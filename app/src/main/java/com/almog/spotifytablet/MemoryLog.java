@@ -30,6 +30,39 @@ public final class MemoryLog {
     private static long lastGuard;
     private static int ticks;
     private static boolean started;
+    private static Context appContext;
+
+    // Every death in the logs came when the app's total memory reached roughly 200 to 240 MB, after it had climbed
+    // about 4 MB a minute while lyrics played. Past the soft mark the app restarts itself at the next song change
+    // (a second's blip, and it avoids the heavy moment of measuring the next song); past the hard mark, at once.
+    private static final long RESTART_SOFT_MB = 185;
+    private static final long RESTART_HARD_MB = 210;
+    private static final long RESTART_MIN_UPTIME_MS = 5 * 60_000L; // never a restart loop
+    public static volatile boolean restartWanted;
+    private static volatile boolean tight;
+    private static volatile Runnable restartHook;
+
+    /** True while memory is short: callers skip optional work (like pre-measuring lyrics variants). */
+    public static boolean isTight() { return tight; }
+
+    public static void setRestartHook(Runnable hook) { restartHook = hook; }
+
+    /** Whether the app has run long enough, and is large enough, that it should restart now. */
+    public static boolean shouldRestartNow() { return restartWanted && uptimeMs() >= RESTART_MIN_UPTIME_MS; }
+
+    private static long uptimeMs() {
+        return android.os.SystemClock.elapsedRealtime() - android.os.Process.getStartElapsedRealtime();
+    }
+
+    /** Adds a line to the memory log (events like song changes, so jumps can be matched to what caused them). */
+    public static void note(String text) {
+        Context app = appContext;
+        if (app == null) return;
+        try {
+            write(app, new SimpleDateFormat("MM-dd HH:mm", Locale.US).format(new Date()) + "  " + text);
+        } catch (Throwable ignored) {
+        }
+    }
 
     // Lyrics drawing creates thousands of small native objects a minute (a gradient shader per lit word, per frame).
     // They are freed when Java's garbage collector reaches their Java handles, but the Java heap here is tiny, so it
@@ -41,6 +74,7 @@ public final class MemoryLog {
         if (started) return;
         started = true;
         final Context app = context.getApplicationContext();
+        appContext = app;
         final Handler handler = new Handler(Looper.getMainLooper());
         final SimpleDateFormat fmt = new SimpleDateFormat("MM-dd HH:mm", Locale.US);
         handler.post(new Runnable() {
@@ -61,7 +95,7 @@ public final class MemoryLog {
      * Acts before Android does: when the app or the whole tablet is short of memory, frees what can be fetched again
      * (old pictures, cached lyrics, text-layout garbage). Cheap to check, and it runs at most once a minute.
      */
-    private static String guard(Context app, SimpleDateFormat fmt) {
+    private static String guard(Context app, SimpleDateFormat fmt) throws Exception {
         Runtime rt = Runtime.getRuntime();
         long mine = ((rt.totalMemory() - rt.freeMemory()) + Debug.getNativeHeapAllocatedSize()) >> 20;
         android.app.ActivityManager.MemoryInfo si = new android.app.ActivityManager.MemoryInfo();
@@ -74,6 +108,24 @@ public final class MemoryLog {
         long now = android.os.SystemClock.elapsedRealtime();
         boolean nativeHigh = Debug.getNativeHeapAllocatedSize() > NATIVE_LIMIT_BYTES;
         boolean appTight = mine >= TIGHT_NATIVE_PLUS_JAVA_MB;
+        tight = nativeHigh || appTight || systemTight;
+
+        // The app's total (what Android counts against it), only measured once it is big enough to matter.
+        if (mine >= 70 && uptimeMs() >= RESTART_MIN_UPTIME_MS) {
+            Debug.MemoryInfo mi = new Debug.MemoryInfo();
+            Debug.getMemoryInfo(mi);
+            long total = mi.getTotalPss() >> 10;
+            restartWanted = total >= RESTART_SOFT_MB;
+            Runnable hook = restartHook;
+            if (total >= RESTART_HARD_MB && hook != null) {
+                write(app, fmt.format(new Date()) + "  restarting to free memory (total " + total + " MB)");
+                hook.run();
+                return "";
+            }
+        } else {
+            restartWanted = false;
+        }
+
         if ((!nativeHigh && !appTight && !systemTight) || now - lastGuard < GUARD_COOLDOWN_MS) return "";
         lastGuard = now;
         if (appTight || systemTight) {
@@ -124,7 +176,25 @@ public final class MemoryLog {
             avail = si.availMem >> 20;
         }
         return fmt.format(new Date()) + "  java " + javaUsed + " MB  native " + nativeHeap + " MB  graphics "
-                + kb(gfx) + " MB  code " + kb(code) + " MB  total " + (mi.getTotalPss() >> 10) + " MB  tablet free " + avail + " MB";
+                + kb(gfx) + " MB  code " + kb(code) + " MB  total " + (mi.getTotalPss() >> 10) + " MB  tablet free " + avail + " MB  threads " + threadCount() + "  fds " + fdCount();
+    }
+
+    private static int threadCount() {
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader("/proc/self/status"))) {
+            String l;
+            while ((l = r.readLine()) != null) if (l.startsWith("Threads:")) return Integer.parseInt(l.substring(8).trim());
+        } catch (Throwable ignored) {
+        }
+        return -1;
+    }
+
+    private static int fdCount() {
+        try {
+            String[] f = new File("/proc/self/fd").list();
+            return f == null ? -1 : f.length;
+        } catch (Throwable t) {
+            return -1;
+        }
     }
 
     private static String kb(String value) {

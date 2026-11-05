@@ -254,11 +254,18 @@ fun LyricsView(
             // What's asked for goes up first; the layouts a toggle switches to are measured after,
             // so they're ready without holding this one back.
             val measured = measure(romanize)
+            com.almog.spotifytablet.MemoryLog.note(
+                "lyrics measured: " + measured.layouts.size + " lines, " + measured.layouts.sumOf { it.words.size } + " pieces" +
+                    (if (translation != null) ", translated" else "") + (if (romanize) ", romanized" else "")
+            )
             measuredShown = ShownLyrics(documentId, measured.lines, measured.layouts, incomingType, incomingFooter, translation, measured.romanizationLines)
             val romanizable = lines.any { line -> line.words.any { it.romanizedText != null } }
-            if (translation != null) measure(romanize, null)
-            if (romanizable) measure(!romanize)
-            if (translation != null && romanizable) measure(!romanize, null)
+            // The layouts a toggle switches to are only a convenience: skipped while memory is short.
+            if (!com.almog.spotifytablet.MemoryLog.isTight()) {
+                if (translation != null) measure(romanize, null)
+                if (romanizable) measure(!romanize)
+                if (translation != null && romanizable) measure(!romanize, null)
+            }
             // The song before this one is garbage now, but the native memory behind its thousands of text layouts is
             // only freed when a GC runs, and the small Java heap rarely makes one run: it piled up past 190 MB until
             // Android ended the app. Collecting here, off the main thread, keeps it to about a song's worth.

@@ -1739,6 +1739,8 @@ private void fetchJellyfinVolume() {
 
         // Slow the lyrics drawing down while the tablet is hot or in Battery Saver (a slower cap only, never a different look).
         PowerSettings.startCoolDownWatch(this);
+        activityResumed = true;
+        MemoryLog.setRestartHook(() -> runOnUiThread(() -> restartForMemory("memory very high")));
         handler.removeCallbacks(memoryCleanup);
         handler.postDelayed(memoryCleanup, 5 * 60_000L);
 
@@ -1846,8 +1848,33 @@ private void fetchJellyfinVolume() {
     protected void onPause() {
         super.onPause();
         PowerSettings.stopCoolDownWatch(this);
+        activityResumed = false;
         handler.removeCallbacks(memoryCleanup);
         collectGarbageSoon();
+    }
+
+    private boolean activityResumed;
+    private boolean restartingForMemory;
+
+    /**
+     * Restarts the app the way the crash handler does, but on purpose, before Android ends it for using too much memory.
+     * Playback is not affected (it runs in Spotify, Jellyfin or the browser); the screen is back in about a second.
+     */
+    private void restartForMemory(String why) {
+        if (restartingForMemory || !activityResumed) return;
+        restartingForMemory = true;
+        DebugLog.w(TAG, "Restarting to free memory: " + why);
+        MemoryLog.note("restarting to free memory (" + why + ")");
+        android.content.Intent intent = new android.content.Intent(getApplicationContext(), MainActivity.class);
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        android.app.PendingIntent pendingIntent = android.app.PendingIntent.getActivity(
+                getApplicationContext(), 0, intent,
+                android.app.PendingIntent.FLAG_ONE_SHOT | android.app.PendingIntent.FLAG_IMMUTABLE);
+        android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+        if (am == null) { restartingForMemory = false; return; }
+        am.set(android.app.AlarmManager.ELAPSED_REALTIME, android.os.SystemClock.elapsedRealtime() + 600, pendingIntent);
+        android.os.Process.killProcess(android.os.Process.myPid());
+        System.exit(0);
     }
 
     /** Frees memory that is only released when a GC runs (see LyricsView); off the main thread. */
@@ -1916,6 +1943,14 @@ private void fetchJellyfinVolume() {
 //    }
 
     private void updateUIForSong(String title, String artist, String img, boolean trackChanged) {
+        if (trackChanged) {
+            MemoryLog.note("track: " + title + " | " + artist);
+            // About to measure and draw the next song's lyrics, the heaviest moment: restart first if memory is already high.
+            if (MemoryLog.shouldRestartNow()) {
+                restartForMemory("memory high at a song change");
+                return;
+            }
+        }
         //updatePlayPauseUI();
         boolean forceUpdate = (songTitle != null && "Updates Paused".equals(songTitle.getText().toString()))
                 || (newSongTitle != null && "Updates Paused".equals(newSongTitle.getText().toString()));
