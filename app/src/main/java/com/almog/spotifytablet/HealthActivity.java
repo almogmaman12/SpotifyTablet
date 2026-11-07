@@ -138,8 +138,6 @@ public class HealthActivity extends AppCompatActivity {
         }
     }
 
-    private static long MemoryLog.RESTART_SOFT_MB { return 185; }
-
     /** Restarts in the last 24 hours and why the last one happened, from Android's exit record and the app's own memory log. */
     private void addExitRows() {
         if (Build.VERSION.SDK_INT < 30) {
