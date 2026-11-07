@@ -125,6 +125,15 @@ public class MainActivity extends AppCompatActivity {
     }
     private long songPollInterval = 5000L;
     private long pausedPollInterval = 15000L;
+    private long basePollInterval = 5000L;
+    private long basePausedInterval = 15000L;
+
+    /** While the clock is up or the screen is dimmed by the schedule, Spotify and Jellyfin are asked less often (never faster than set). */
+    private void updatePollBackoff() {
+        boolean quiet = (clockOverlay != null && clockOverlay.getVisibility() == View.VISIBLE) || PowerSettings.scheduleActive();
+        songPollInterval = quiet ? Math.max(basePollInterval, 5000L) : basePollInterval;
+        pausedPollInterval = quiet ? Math.max(basePausedInterval, 20000L) : basePausedInterval;
+    }
 
     private TextView greetingText, clockGreetingText, clockTimeText, clockSongText,
             songTitle, artistName, timeDisplay, volumeText, clockQuoteText;
@@ -1848,6 +1857,9 @@ private void fetchJellyfinVolume() {
             songPollInterval *= 2;
             pausedPollInterval *= 2;
         }
+        basePollInterval = songPollInterval;
+        basePausedInterval = pausedPollInterval;
+        updatePollBackoff();
 
         // Cache prefs that are read on hot paths (e.g. every showClock call).
         cachedAodShowSong = prefs.getBoolean(Constants.PREF_KEY_AOD_SHOW_SONG, true);
@@ -2141,6 +2153,7 @@ private void fetchJellyfinVolume() {
 
             clockOverlay.setVisibility(targetVisibility);
             applyClockBrightness();
+            updatePollBackoff();
 
             if (show) {
                 handler.removeCallbacks(progressUpdater);
