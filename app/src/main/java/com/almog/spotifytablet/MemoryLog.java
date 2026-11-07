@@ -34,11 +34,14 @@ public final class MemoryLog {
 
     // Every death in the logs came when the app's total memory reached roughly 200 to 240 MB, after it had climbed
     // about 4 MB a minute while lyrics played. Past the soft mark the app restarts itself at the next song change
-    // (a second's blip, and it avoids the heavy moment of measuring the next song); past the hard mark, at once.
+    // (a second's blip, and it avoids the heavy moment of measuring the next song); past the hard mark, at the next quiet moment (nothing playing, clock showing, screen off), or at once past the ceiling.
     private static final long RESTART_SOFT_MB = 185;
     private static final long RESTART_HARD_MB = 210;
     private static final long RESTART_MIN_UPTIME_MS = 5 * 60_000L; // never a restart loop
     public static volatile boolean restartWanted;
+    /** Last measured total (MB); the activity restarts at once, not at a quiet moment, past RESTART_CEILING_MB. */
+    public static volatile long lastTotalMb;
+    public static final long RESTART_CEILING_MB = 260;
     private static volatile boolean tight;
     private static volatile Runnable restartHook;
 
@@ -116,12 +119,10 @@ public final class MemoryLog {
             Debug.getMemoryInfo(mi);
             long total = mi.getTotalPss() >> 10;
             restartWanted = total >= RESTART_SOFT_MB;
+            lastTotalMb = total;
             Runnable hook = restartHook;
-            if (total >= RESTART_HARD_MB && hook != null) {
-                write(app, fmt.format(new Date()) + "  restarting to free memory (total " + total + " MB)");
-                hook.run();
-                return "";
-            }
+            // The hook decides when: it waits for a song change, a pause, the clock or a dark screen (unless past the ceiling).
+            if (total >= RESTART_HARD_MB && hook != null) hook.run();
         } else {
             restartWanted = false;
         }

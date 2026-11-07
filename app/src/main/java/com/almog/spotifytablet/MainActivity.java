@@ -1771,7 +1771,14 @@ private void fetchJellyfinVolume() {
         // Slow the lyrics drawing down while the tablet is hot or in Battery Saver (a slower cap only, never a different look).
         PowerSettings.startCoolDownWatch(this);
         activityResumed = true;
-        MemoryLog.setRestartHook(() -> runOnUiThread(() -> restartForMemory("memory very high")));
+        MemoryLog.setRestartHook(() -> runOnUiThread(() -> {
+            // Wait for a moment nobody is watching: nothing playing, the clock showing, or the screen off.
+            // Past the ceiling it can't wait any longer, since Android would kill the app anyway.
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+            boolean quiet = !isPlaying || (clockOverlay != null && clockOverlay.getVisibility() == View.VISIBLE)
+                    || (pm != null && !pm.isInteractive());
+            if (quiet || MemoryLog.lastTotalMb >= MemoryLog.RESTART_CEILING_MB) restartForMemory("memory very high");
+        }));
         handler.removeCallbacks(memoryCleanup);
         handler.postDelayed(memoryCleanup, 5 * 60_000L);
 
@@ -2957,6 +2964,17 @@ private void fetchJellyfinVolume() {
         final boolean idChanged = !key.equals(lastBlurredTrackId);
         final boolean trackChanged = idChanged && !isSameSongOnScreen(title, artist);
         if (idChanged && !trackChanged) lastBlurredTrackId = key;
+        // A page changes its address, title and cover a moment apart. A new track is acted on only once its report has
+        // stayed the same for 1.5 s, so lyrics, blur and measuring start once instead of for every half-updated report.
+        if (trackChanged && !lastBlurredTrackId.isEmpty()) {
+            if (!key.equals(pendingBrowserKey)) { pendingBrowserKey = key; pendingBrowserSince = now; }
+            if (now - pendingBrowserSince < 1500) {
+                handler.removeCallbacks(songUpdater);
+                handler.postDelayed(songUpdater, 600);
+                return;
+            }
+        }
+        if (trackChanged) pendingBrowserKey = "";
         final String cover = !st.artworkData.isEmpty() ? st.artworkData : st.artwork;
         // The cover is reloaded for a new video, when the resized picture arrives for the address already shown (once; this
         // is what keeps YouTube covers from going black), or when its address changes. An address that keeps changing back
@@ -3000,6 +3018,8 @@ private void fetchJellyfinVolume() {
     }
 
     private String lastBrowserArtwork = "";
+    private String pendingBrowserKey = "";
+    private long pendingBrowserSince = 0L;
 
     /** Starts or stops the receiver for the browser extension to match the setting. */
     /** Settings → Display → Screen orientation. */
