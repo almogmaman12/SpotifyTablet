@@ -1781,6 +1781,12 @@ private void fetchJellyfinVolume() {
         // Slow the lyrics drawing down while the tablet is hot or in Battery Saver (a slower cap only, never a different look).
         PowerSettings.startCoolDownWatch(this);
         activityResumed = true;
+        boolean coverOn = prefs.getBoolean(CoverTheme.PREF, true);
+        if (coverOn != coverThemeOn) {
+            coverThemeOn = coverOn;
+            if (!coverOn) applyCoverColors(null);
+            else lastBlurredTrackId = ""; // the next update reads the cover's colors again
+        }
         holdScreenOn();
         android.content.IntentFilter screenFilter = new android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF);
         screenFilter.addAction(android.content.Intent.ACTION_SCREEN_ON);
@@ -2069,6 +2075,7 @@ private void fetchJellyfinVolume() {
             if (artistName != null) crossfadeText(artistName, artist);
             if (newArtistName != null) crossfadeText(newArtistName, artist);
 
+            updateCoverTheme(img);
             DebugLog.i("Cover", "updateUIForSong '" + title + "' cover=" + (img == null || img.isEmpty() ? "(none)" : img.startsWith("data:") ? "data" : "address"));
             if (!isDestroyed() && !isFinishing() && img != null && !img.isEmpty()) {
                 if (albumArt != null) {
@@ -3460,6 +3467,44 @@ private void fetchJellyfinVolume() {
         handler.post(songUpdater);
     }
 
+    // "Cover colors": 2-3 colors taken from the cover, used for the lyrics, progress bar, borders and the clock minutes.
+    private boolean coverThemeOn = true;
+    private int coverAccent = 0;
+    private volatile int coverThemeGeneration = 0;
+
+    /** Finds the new cover's colors on the blur worker (a small copy of the cover), then applies them. */
+    private void updateCoverTheme(String img) {
+        if (!coverThemeOn) return;
+        if (img == null || img.isEmpty() || isDestroyed() || isFinishing()) { applyCoverColors(null); return; }
+        final int generation = ++coverThemeGeneration;
+        Glide.with(glideContext()).asBitmap().disallowHardwareConfig().override(160, 160).load(img)
+                .into(new CustomTarget<Bitmap>() {
+                    @Override
+                    public void onResourceReady(@NonNull Bitmap resource, Transition<? super Bitmap> transition) {
+                        BLUR_EXECUTOR.execute(() -> {
+                            if (generation != coverThemeGeneration) return; // a newer cover is already waiting
+                            final int[] colors;
+                            try { colors = CoverTheme.extract(resource); } catch (Throwable t) { return; }
+                            runOnUiThread(() -> {
+                                if (isDestroyed() || generation != coverThemeGeneration) return;
+                                applyCoverColors(colors);
+                            });
+                        });
+                    }
+
+                    @Override public void onLoadCleared(Drawable placeholder) {}
+                });
+    }
+
+    /** null puts every color back to what it was before the feature. */
+    private void applyCoverColors(int[] colors) {
+        boolean on = coverThemeOn && colors != null;
+        coverAccent = on ? colors[0] : 0;
+        com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setAccentArgb(on ? colors[0] : 0);
+        if (clockMinuteView != null) clockMinuteView.setTextColor(on ? colors[1] : Color.WHITE);
+        updateSourceTheme(mediaSource);
+    }
+
     private void updateSourceTheme(String source) {
         String tempEffectiveSource = source;
         if ("auto".equals(source)) {
@@ -3467,8 +3512,10 @@ private void fetchJellyfinVolume() {
         }
         final String effectiveSource = tempEffectiveSource;
 
-        int themeColor = android.graphics.Color.parseColor("spotify".equals(effectiveSource) ? "#1DB954"
+        final int sourceColor = android.graphics.Color.parseColor("spotify".equals(effectiveSource) ? "#1DB954"
                 : "browser".equals(effectiveSource) ? "#FF5A4F" : "#A259FF");
+        // "Cover colors": the cover's accent replaces the source's color for the progress bar and borders.
+        final int themeColor = (coverThemeOn && coverAccent != 0) ? coverAccent : sourceColor;
         int sourceBtnColor = android.graphics.Color.parseColor(
                 "auto".equals(source) ? "#007BFF" : ("spotify".equals(source) ? "#1DB954" : "#A259FF")
         );

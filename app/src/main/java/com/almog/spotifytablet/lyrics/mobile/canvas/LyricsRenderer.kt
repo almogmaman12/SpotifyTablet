@@ -50,7 +50,7 @@ internal fun DrawScope.drawWipeText(
     rtl: Boolean = false,
     gradientOffsetPercent: Float = 0f,
 ) {
-    val bright = Color.White.copy(alpha = brightAlpha.coerceIn(0f, 1f))
+    val bright = LyricsTheme.text().copy(alpha = brightAlpha.coerceIn(0f, 1f))
     val dim = Color.White.copy(alpha = dimAlpha.coerceIn(0f, 1f))
     val topLeft = Offset(xPos, yPos)
 
@@ -178,7 +178,7 @@ private fun DrawScope.drawVerticalWipeText(
     dimAlpha: Float,
     shadow: Shadow?,
 ) {
-    val bright = Color.White.copy(alpha = brightAlpha.coerceIn(0f, 1f))
+    val bright = LyricsTheme.text().copy(alpha = brightAlpha.coerceIn(0f, 1f))
     val dim = Color.White.copy(alpha = dimAlpha.coerceIn(0f, 1f))
     val topLeft = Offset(xPos, yPos)
 
@@ -274,7 +274,7 @@ internal fun DrawScope.drawInterludeGroup(
         val dotGlow = dotAnim.dotGlow.coerceIn(0f, 1f)
         val dotGlowAlpha = (dotGlow * 0.9f).coerceIn(0f, 1f)
         val dotShadow = if (!lineAnim.suppressShadows && dotGlowAlpha > 0.02f) {
-            Shadow(color = Color.White.copy(alpha = dotGlowAlpha * lineAnim.opacity), blurRadius = (4f + 6f * dotGlow) * lyricSizePx / REFERENCE_LYRIC_SIZE_CSS_PX)
+            Shadow(color = LyricsTheme.glow().copy(alpha = dotGlowAlpha * lineAnim.opacity), blurRadius = (4f + 6f * dotGlow) * lyricSizePx / REFERENCE_LYRIC_SIZE_CSS_PX)
         } else null
 
         withTransform({
@@ -415,7 +415,7 @@ private fun DrawScope.drawSyllabicLetterFragment(
     val lGlowOpacity = (lState.glow * 1.85f).coerceIn(0f, 1f)  // LetterGlowMultiplier_Opacity = 185%
     val lShadow = when {
         !lineAnim.suppressShadows && lGlowOpacity > 0.02f ->
-            Shadow(color = Color.White.copy(alpha = lGlowOpacity * lineAnim.opacity), blurRadius = lGlowBlur * cssPx(wLayout.textLayoutResult, lineAnim.isBackground))
+            Shadow(color = LyricsTheme.glow().copy(alpha = lGlowOpacity * lineAnim.opacity), blurRadius = lGlowBlur * cssPx(wLayout.textLayoutResult, lineAnim.isBackground))
         else -> null
     }
 
@@ -478,7 +478,7 @@ private fun DrawScope.drawStandardWord(
     val glowOpacity = (wordAnim.glow * 0.35f).coerceIn(0f, 1f)
     val shadow = when {
         !lineAnim.suppressShadows && glowOpacity > 0.02f ->
-            Shadow(color = Color.White.copy(alpha = glowOpacity * lineAnim.opacity), blurRadius = glowBlur * cssPx(wLayout.textLayoutResult, lineAnim.isBackground))
+            Shadow(color = LyricsTheme.glow().copy(alpha = glowOpacity * lineAnim.opacity), blurRadius = glowBlur * cssPx(wLayout.textLayoutResult, lineAnim.isBackground))
         else -> null
     }
 
@@ -596,7 +596,7 @@ private fun DrawScope.drawAppleMusicLetter(
     val top = yPos + scrollOffset
     val glowAlpha = (letter.glow * lineAnim.opacity).coerceIn(0f, 1f)
     val glow = if (!lineAnim.suppressShadows && glowAlpha > 0.02f && letter.glowRadius > 0f) {
-        Shadow(color = Color.White.copy(alpha = glowAlpha), blurRadius = letter.glowRadius * lyricSize)
+        Shadow(color = LyricsTheme.glow().copy(alpha = glowAlpha), blurRadius = letter.glowRadius * lyricSize)
     } else null
     withTransform({
         translate(left = letter.xOffset * lyricSize, top = letter.yOffset * lyricSize)
@@ -646,7 +646,7 @@ internal fun DrawScope.drawLineModeLine(
     val shadow = when {
         config.isAppleMusic -> null
         !lineAnim.suppressShadows && glowAlpha > 0.02f -> Shadow(
-            color = Color.White.copy(alpha = glowAlpha * lineAnim.opacity),
+            color = LyricsTheme.glow().copy(alpha = glowAlpha * lineAnim.opacity),
             blurRadius = (4f + 8f * lineAnim.lineGlow) * lineCssPx,
         )
         else -> null

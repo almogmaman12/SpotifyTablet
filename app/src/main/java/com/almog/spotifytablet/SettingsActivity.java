@@ -286,6 +286,9 @@ public class SettingsActivity extends AppCompatActivity {
                     if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                     else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                 }));
+        screen.rows.add(switchRow("Cover colors",
+                "The lyrics, progress bar and clock minutes take their color from the album cover.",
+                CoverTheme.PREF, true, null));
         screen.rows.add(sliderRow("Background blur",
                 "How strongly the album art is blurred behind the player.",
                 10, 190, prefs.getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100),
