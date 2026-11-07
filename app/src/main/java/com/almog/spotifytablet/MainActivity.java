@@ -980,6 +980,7 @@ private void fetchJellyfinVolume() {
         }
         handler.removeCallbacksAndMessages(null);
         BrowserMedia.stop();
+        releaseScreenLock();
     }
 
     private float playbackSpeed = 1.0f;
@@ -1780,6 +1781,10 @@ private void fetchJellyfinVolume() {
         // Slow the lyrics drawing down while the tablet is hot or in Battery Saver (a slower cap only, never a different look).
         PowerSettings.startCoolDownWatch(this);
         activityResumed = true;
+        holdScreenOn();
+        android.content.IntentFilter screenFilter = new android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF);
+        screenFilter.addAction(android.content.Intent.ACTION_SCREEN_ON);
+        registerReceiver(screenStateReceiver, screenFilter);
         MemoryLog.setRestartHook(() -> runOnUiThread(() -> {
             // Wait for a moment nobody is watching: nothing playing, the clock showing, or the screen off.
             // Past the ceiling it can't wait any longer, since Android would kill the app anyway.
@@ -1901,6 +1906,58 @@ private void fetchJellyfinVolume() {
         activityResumed = false;
         handler.removeCallbacks(memoryCleanup);
         collectGarbageSoon();
+        releaseScreenLock();
+        try { unregisterReceiver(screenStateReceiver); } catch (Exception ignored) { }
+    }
+
+    // Keeps the display on while the app is in front. The window flag alone is lost whenever another window takes focus
+    // for a moment (a system dialog, the notification shade, a permission prompt) and the timeout then runs on.
+    @SuppressWarnings("deprecation")
+    private android.os.PowerManager.WakeLock screenLock;
+
+    @SuppressWarnings("deprecation")
+    private void holdScreenOn() {
+        boolean keep = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
+                .getBoolean(SettingsActivity.PREF_KEEP_SCREEN_ON, true);
+        if (!keep) { releaseScreenLock(); return; }
+        try {
+            if (screenLock == null) {
+                android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+                if (pm == null) return;
+                screenLock = pm.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "SpotifyTablet:screen");
+                screenLock.setReferenceCounted(false);
+            }
+            if (!screenLock.isHeld()) screenLock.acquire();
+        } catch (Exception e) {
+            DebugLog.w(TAG, "Screen lock failed: " + e);
+        }
+    }
+
+    private void releaseScreenLock() {
+        try {
+            if (screenLock != null && screenLock.isHeld()) screenLock.release();
+        } catch (Exception ignored) { }
+    }
+
+    /** Notes in the memory log when the screen goes off or on, so a "the screen turned off" can be matched to what the app was doing. */
+    private final android.content.BroadcastReceiver screenStateReceiver = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(android.content.Context context, android.content.Intent intent) {
+            String a = intent.getAction();
+            if (android.content.Intent.ACTION_SCREEN_OFF.equals(a)) {
+                MemoryLog.note("screen turned OFF while the app was in front (playing=" + isPlaying + ")");
+            } else if (android.content.Intent.ACTION_SCREEN_ON.equals(a)) {
+                MemoryLog.note("screen turned on");
+            }
+        }
+    };
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && activityResumed) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            holdScreenOn();
+        }
     }
 
     private boolean activityResumed;
