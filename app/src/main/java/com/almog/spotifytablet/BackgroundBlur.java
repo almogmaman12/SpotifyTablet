@@ -17,8 +17,14 @@ public final class BackgroundBlur {
 
     private BackgroundBlur() {}
 
+    // Two small bitmaps used in turn (one is on screen while the other is drawn into), and one pixel buffer, so a new
+    // cover allocates nothing. Only the blur thread touches them; the one on screen is never written to.
+    private static Bitmap[] pair = new Bitmap[2];
+    private static int next = 0;
+    private static int[] pixels;
+
     /** [sigmaPx] is the blur strength in screen pixels (the old RenderEffect radius). Blocking; call off the main thread. */
-    public static Bitmap render(Bitmap cover, int viewW, int viewH, float sigmaPx) {
+    public static synchronized Bitmap render(Bitmap cover, int viewW, int viewH, float sigmaPx) {
         int tw = Math.max(16, viewW / DOWNSCALE), th = Math.max(16, viewH / DOWNSCALE);
         // Which part of the cover the screen shows with centerCrop.
         float scale = Math.max((float) tw / cover.getWidth(), (float) th / cover.getHeight());
@@ -26,11 +32,18 @@ public final class BackgroundBlur {
         int srcH = Math.min(cover.getHeight(), Math.round(th / scale));
         int srcX = (cover.getWidth() - srcW) / 2, srcY = (cover.getHeight() - srcH) / 2;
 
-        Bitmap small = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888);
+        Bitmap small = pair[next];
+        if (small == null || small.isRecycled() || small.getWidth() != tw || small.getHeight() != th) {
+            small = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888);
+            pair[next] = small;
+        }
+        next = 1 - next;
+        small.eraseColor(0);
         Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
         new Canvas(small).drawBitmap(cover, new Rect(srcX, srcY, srcX + srcW, srcY + srcH), new Rect(0, 0, tw, th), paint);
 
-        int[] px = new int[tw * th];
+        if (pixels == null || pixels.length != tw * th) pixels = new int[tw * th];
+        int[] px = pixels;
         small.getPixels(px, 0, tw, 0, 0, tw, th);
         BlurMath.gaussian(px, tw, th, sigmaPx / DOWNSCALE);
         small.setPixels(px, 0, tw, 0, 0, tw, th);
