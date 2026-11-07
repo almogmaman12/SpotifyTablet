@@ -94,7 +94,35 @@ public class MainActivity extends AppCompatActivity {
     private long lastEventFetch = 0L;
     // "Efficient background blur": the cover is blurred once on the CPU instead of by the GPU every frame.
     private boolean efficientBlur = true;
-    private int blurGeneration = 0;
+    private volatile int blurGeneration = 0;
+    /** One worker for every background blur (a new executor, and so a new thread that never ended, used to be made each time). */
+    private static final java.util.concurrent.ExecutorService BLUR_EXECUTOR =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "blur");
+                t.setDaemon(true);
+                return t;
+            });
+    private String lastSongIdentity = "";
+    private String lastBrowserArtworkUrl = "";
+    private boolean browserArtWasData;
+    private long lastArtReload;
+
+    /** Title and artist reduced to letters and digits, so the same song from two sources compares equal. */
+    private static String songIdentity(String title, String artist) {
+        return (title == null ? "" : title).toLowerCase(java.util.Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]", "")
+                + "|" + (artist == null ? "" : artist).toLowerCase(java.util.Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]", "");
+    }
+
+    /**
+     * True when the track id differs from the last one but it is still the song already on screen: another source
+     * reporting it, or a flicker. Such a "change" must not reload the lyrics and pictures again (each reload builds
+     * thousands of text layouts and several full-size images). A cleared id (set on purpose) still forces a reload.
+     */
+    private boolean isSameSongOnScreen(String title, String artist) {
+        boolean same = !lastBlurredTrackId.isEmpty() && songIdentity(title, artist).equals(lastSongIdentity);
+        if (same) MemoryLog.note("same song, new id (a source switch or flicker), not reloaded: " + title);
+        return same;
+    }
     private long songPollInterval = 5000L;
     private long pausedPollInterval = 15000L;
 
@@ -1197,9 +1225,12 @@ private void fetchJellyfinVolume() {
             pausedSongTitle = title;
             pausedSongArtist = artist;
 
-            boolean trackChanged = !trackId.equals(lastBlurredTrackId);
+            final boolean idChanged = !trackId.equals(lastBlurredTrackId);
+            final boolean trackChanged = idChanged && !isSameSongOnScreen(title, artist);
+            if (idChanged && !trackChanged) lastBlurredTrackId = trackId;
             if (trackChanged) {
                 lastBlurredTrackId = trackId;
+                lastSongIdentity = songIdentity(title, artist);
                 if (lyricsViewModel != null) {
                     lyricsViewModel.clearLyrics();
                 }
@@ -2011,7 +2042,8 @@ private void fetchJellyfinVolume() {
                             .into(new CustomTarget<Bitmap>() {
                                 @Override
                                 public void onResourceReady(@NonNull Bitmap resource, Transition<? super Bitmap> transition) {
-                                    java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
+                                    BLUR_EXECUTOR.execute(() -> {
+                                        if (generation != blurGeneration) return; // a newer song is already waiting
                                         Bitmap blurred = BackgroundBlur.render(resource, vw, vh, sigma);
                                         runOnUiThread(() -> {
                                             // A newer song may have arrived while this one was blurring.
@@ -2770,10 +2802,13 @@ private void fetchJellyfinVolume() {
                 }
             }
             final String imgUrl = baseUrl + "/Items/" + imageId + "/Images/Primary?api_key=" + jellyfinApiKey;
-            final boolean trackChanged = !itemId.equals(lastBlurredTrackId);
+            final boolean idChanged = !itemId.equals(lastBlurredTrackId);
+            final boolean trackChanged = idChanged && !isSameSongOnScreen(title, artist);
+            if (idChanged && !trackChanged) lastBlurredTrackId = itemId;
 
             if (trackChanged) {
                 lastBlurredTrackId = itemId;
+                lastSongIdentity = songIdentity(title, artist);
                 if (lyricsViewModel != null) {
                     lyricsViewModel.clearLyrics();
                 }
@@ -2919,12 +2954,28 @@ private void fetchJellyfinVolume() {
 
         // The page can update its title and cover a moment after the address changes, so they count as part of the track.
         final String key = "web:" + st.key + "|" + st.title + "|" + st.artist;
-        final boolean trackChanged = !key.equals(lastBlurredTrackId);
+        final boolean idChanged = !key.equals(lastBlurredTrackId);
+        final boolean trackChanged = idChanged && !isSameSongOnScreen(title, artist);
+        if (idChanged && !trackChanged) lastBlurredTrackId = key;
         final String cover = !st.artworkData.isEmpty() ? st.artworkData : st.artwork;
-        final boolean artChanged = !cover.equals(lastBrowserArtwork);
+        // The cover is reloaded for a new video, when the resized picture arrives for the address already shown (once; this
+        // is what keeps YouTube covers from going black), or when its address changes. An address that keeps changing back
+        // and forth is limited to one reload per 10 seconds instead of one per report.
+        final boolean haveData = !st.artworkData.isEmpty();
+        final boolean urlChanged = !st.artwork.equals(lastBrowserArtworkUrl);
+        final boolean upgrade = haveData && !browserArtWasData && !urlChanged;
+        long nowMs = System.currentTimeMillis();
+        final boolean reload = trackChanged || upgrade || (urlChanged && nowMs - lastArtReload > 10_000);
+        if (reload) {
+            lastBrowserArtworkUrl = st.artwork;
+            browserArtWasData = haveData;
+            lastArtReload = nowMs;
+        }
+        final boolean artChanged = reload && !trackChanged;
         lastBrowserArtwork = cover;
         if (trackChanged) {
             lastBlurredTrackId = key;
+            lastSongIdentity = songIdentity(title, artist);
             if (lyricsViewModel != null) lyricsViewModel.clearLyrics();
             boolean wantLyrics = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
                     .getBoolean(BrowserMedia.PREF_LYRICS, true);
@@ -2991,7 +3042,6 @@ private void fetchJellyfinVolume() {
         }
         if ("browser".equals(currentAutoEffectiveSource) && !browserPlaying) {
             currentAutoEffectiveSource = "spotify";
-            lastBlurredTrackId = "";
             runOnUiThread(() -> updateSourceTheme("auto"));
         }
         synchronized (autoModeLock) {
