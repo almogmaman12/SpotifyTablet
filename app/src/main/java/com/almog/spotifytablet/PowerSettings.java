@@ -21,6 +21,9 @@ public final class PowerSettings {
     private static volatile long userMinFrameNanos = 14_000_000L;
     /** 0 = fine, 1 = hot or Battery Saver (30 fps), 2 = very hot (24 fps). Only ever slows lyrics drawing, never changes how it looks. */
     private static volatile int coolDownLevel = 0;
+
+    /** 0 normal, 1 hot or Battery Saver (30 fps cap), 2 very hot (24 fps cap). */
+    public static int coolDownLevel() { return coolDownLevel; }
     private static Object thermalListener;
     public static volatile boolean noBackgroundBlur = false;
     public static volatile boolean slowPolling = false;

@@ -93,6 +93,21 @@ public final class BrowserMedia {
         return "port " + PORT;
     }
 
+    /** True while the receiver is listening for the extension. */
+    public static boolean isRunning() { return server != null; }
+
+    /** Milliseconds since the extension last reported, or -1 if it never has (since the app started). */
+    public static long lastReportAgeMs() {
+        State s = latest;
+        return s == null ? -1 : System.currentTimeMillis() - s.receivedAt;
+    }
+
+    /** Title of the last report, or "". */
+    public static String lastReportTitle() {
+        State s = latest;
+        return s == null ? "" : s.title;
+    }
+
     /** The newest report, or null when nothing was reported lately. */
     public static State fresh() {
         State s = latest;

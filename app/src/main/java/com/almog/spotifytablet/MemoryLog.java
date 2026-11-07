@@ -35,7 +35,7 @@ public final class MemoryLog {
     // Every death in the logs came when the app's total memory reached roughly 200 to 240 MB, after it had climbed
     // about 4 MB a minute while lyrics played. Past the soft mark the app restarts itself at the next song change
     // (a second's blip, and it avoids the heavy moment of measuring the next song); past the hard mark, at the next quiet moment (nothing playing, clock showing, screen off), or at once past the ceiling.
-    private static final long RESTART_SOFT_MB = 185;
+    public static final long RESTART_SOFT_MB = 185;
     private static final long RESTART_HARD_MB = 210;
     private static final long RESTART_MIN_UPTIME_MS = 5 * 60_000L; // never a restart loop
     public static volatile boolean restartWanted;
@@ -53,7 +53,7 @@ public final class MemoryLog {
     /** Whether the app has run long enough, and is large enough, that it should restart now. */
     public static boolean shouldRestartNow() { return restartWanted && uptimeMs() >= RESTART_MIN_UPTIME_MS; }
 
-    private static long uptimeMs() {
+    public static long uptimeMs() {
         return android.os.SystemClock.elapsedRealtime() - android.os.Process.getStartElapsedRealtime();
     }
 
@@ -180,7 +180,7 @@ public final class MemoryLog {
                 + kb(gfx) + " MB  code " + kb(code) + " MB  total " + (mi.getTotalPss() >> 10) + " MB  tablet free " + avail + " MB  threads " + threadCount() + "  fds " + fdCount();
     }
 
-    private static int threadCount() {
+    public static int threadCount() {
         try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader("/proc/self/status"))) {
             String l;
             while ((l = r.readLine()) != null) if (l.startsWith("Threads:")) return Integer.parseInt(l.substring(8).trim());
@@ -189,7 +189,7 @@ public final class MemoryLog {
         return -1;
     }
 
-    private static int fdCount() {
+    public static int fdCount() {
         try {
             String[] f = new File("/proc/self/fd").list();
             return f == null ? -1 : f.length;

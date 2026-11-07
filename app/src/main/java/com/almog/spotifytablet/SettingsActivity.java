@@ -611,6 +611,9 @@ public class SettingsActivity extends AppCompatActivity {
                         () -> importLauncher.launch(new String[]{"application/json", "text/plain", "*/*"}))));
         data.groups.add(backup);
         Group diag = new Group("Diagnostics");
+        diag.rows.add(actionRow("Health",
+                "Memory, uptime, restarts in the last 24 hours, why the app last restarted and whether the browser extension is connected.",
+                "Open", false, () -> startActivity(new Intent(this, HealthActivity.class))));
         diag.rows.add(actionRow("Debug page",
                 "Which lyric source answered and how long it took, network calls and recent errors.",
                 "Open", false, () -> startActivity(new Intent(this, DebugActivity.class))));
