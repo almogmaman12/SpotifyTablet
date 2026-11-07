@@ -34,7 +34,8 @@ public final class BrowserMedia {
     public static final String PREF_SKIP_NON_SONGS = "browser_media_skip_non_songs";
     private static final String PREF_TOKEN = "browser_media_token";
     /** A report older than this means the tab is gone, paused in the background, or the PC is off. */
-    private static final long STALE_MS = 8_000L;
+    private static final long STALE_MS = 8_000L;         // playing: reports come every 2 s
+    private static final long STALE_PAUSED_MS = 25_000L;  // paused: reports come every 10 s
 
     public static final class State {
         public String key = "", title = "", artist = "", album = "", artwork = "", site = "";
@@ -95,7 +96,7 @@ public final class BrowserMedia {
     /** The newest report, or null when nothing was reported lately. */
     public static State fresh() {
         State s = latest;
-        if (s == null || System.currentTimeMillis() - s.receivedAt > STALE_MS) return null;
+        if (s == null || System.currentTimeMillis() - s.receivedAt > (s.playing ? STALE_MS : STALE_PAUSED_MS)) return null;
         return s;
     }
 
@@ -215,7 +216,10 @@ public final class BrowserMedia {
             JSONArray cmds = new JSONArray();
             JSONObject cmd;
             while ((cmd = commands.poll()) != null) cmds.put(cmd);
-            respond(out, 200, new JSONObject().put("ok", true).put("cmds", cmds).toString(), true);
+            State cur = latest;
+            // The extension sends the cover only when it changes; this asks for it again if the tablet has none (after a restart).
+            boolean needArt = cur != null && !cur.artwork.isEmpty() && cur.artworkData.isEmpty();
+            respond(out, 200, new JSONObject().put("ok", true).put("cmds", cmds).put("needArt", needArt).toString(), true);
             return true;
         }
         respond(out, 404, "{\"ok\":false}", false);

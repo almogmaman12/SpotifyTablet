@@ -21,7 +21,7 @@ function baseUrl() {
 function choose() {
   let best = null;
   for (const r of reports.values()) {
-    if (Date.now() - r.at > 15000) continue;
+    if (Date.now() - r.at > 25000) continue;
     if (!best) { best = r; continue; }
     if (r.data.playing !== best.data.playing) { if (r.data.playing) best = r; continue; }
     if (r.at > best.at) best = r;
@@ -58,11 +58,14 @@ async function ensureArt(url) {
   }
 }
 
+// The cover is attached once when it is ready or changes, and again only if the tablet asks for it (needArt).
+let wantArt = false;
 function withArt(data) {
   ensureArt(data.artwork);
-  if (art.url === data.artwork && art.data && (art.sentUrl !== art.url || Date.now() - art.sentAt > 30000)) {
+  if (art.url === data.artwork && art.data && (art.sentUrl !== art.url || (wantArt && Date.now() - art.sentAt > 5000))) {
     art.sentUrl = art.url;
     art.sentAt = Date.now();
+    wantArt = false;
     return { ...data, artworkData: art.data };
   }
   return data;
@@ -85,7 +88,9 @@ async function post(body) {
     });
     if (res.status === 401) { badge("code", "#d93025"); return null; }
     badge("on", "#1db954");
-    return await res.json();
+    const reply = await res.json();
+    wantArt = !!(reply && reply.needArt);
+    return reply;
   } catch (e) {
     badge("!", "#d93025");
     return null;

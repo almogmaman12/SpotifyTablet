@@ -1,5 +1,5 @@
-// Finds the media playing on this page and reports it to the background worker once a second
-// (every 3 s while paused). Also carries out play / pause / next / previous / seek from the tablet.
+// Finds the media playing on this page and reports it to the background worker every 2 s
+// (every 10 s while paused, and at once on play, pause, seek or a new video). Also carries out play / pause / next / previous / seek from the tablet.
 (() => {
   if (window.__tabletNowPlaying) return;
   window.__tabletNowPlaying = true;
@@ -12,6 +12,11 @@
   };
   // Media events do not bubble, but they can be caught on the way down.
   for (const ev of ["playing", "play", "seeked"]) document.addEventListener(ev, remember, true);
+  // These make the next report go out at once instead of waiting for the timer (see reportSoon below).
+  for (const ev of ["playing", "play", "pause", "seeked", "loadedmetadata", "emptied"]) {
+    document.addEventListener(ev, (e) => { if (e.target instanceof HTMLMediaElement) reportSoon(); }, true);
+  }
+  document.addEventListener("yt-navigate-finish", () => reportSoon(400));
 
   const isPlaying = (m) => !m.paused && !m.ended && m.readyState > 2;
 
@@ -75,7 +80,13 @@
       wasReporting = false;
       try { chrome.runtime.sendMessage({ type: "gone" }).catch(() => {}); } catch (e) { /* ignore */ }
     }
-    timer = setTimeout(tick, snap && !snap.playing ? 3000 : 1000);
+    timer = setTimeout(tick, snap && !snap.playing ? 10000 : 2000);
+  }
+  // A burst of media events (a new video fires several) becomes one report.
+  let soon = 0;
+  function reportSoon(ms) {
+    clearTimeout(soon);
+    soon = setTimeout(() => { clearTimeout(timer); tick(); }, ms || 120);
   }
   tick();
   window.addEventListener("pagehide", () => {
