@@ -93,7 +93,7 @@ public final class CrashReporter {
         }
     }
 
-    private static String reasonName(int r) {
+    public static String reasonName(int r) {
         switch (r) {
             case android.app.ApplicationExitInfo.REASON_CRASH: return "CRASH (Java)";
             case android.app.ApplicationExitInfo.REASON_CRASH_NATIVE: return "CRASH (native)";
