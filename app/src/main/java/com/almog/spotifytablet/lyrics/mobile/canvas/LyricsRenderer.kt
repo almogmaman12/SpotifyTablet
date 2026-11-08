@@ -348,7 +348,7 @@ internal fun boostedLift(yOffset: Float, boost: Float): Float =
     if (yOffset < 0f) yOffset * boost else yOffset
 
 /** Word/syllable-synced karaoke line. */
-/** A thin bar in the accent color beside the line being sung, and a small dot beside repeated lines (choruses). */
+/** A thin bar in the accent color beside the line being sung. */
 private fun DrawScope.drawActiveBar(
     layout: LineLayout,
     lineAnim: LineAnimState,
@@ -358,20 +358,7 @@ private fun DrawScope.drawActiveBar(
     config: RenderConfig,
 ) {
     if (config.isAppleMusic || lineAnim.isBackground) return
-    if (lineAnim.state != ElementState.Active) {
-        // A repeated line (a chorus) that is not being sung gets a small dot where the bar would be.
-        if (layout.isRepeated) {
-            val r = 2.5.dp.toPx()
-            val cx = if (layout.isRightAligned) lineStartX + layout.totalWidth + 10.dp.toPx() + r
-                     else (lineStartX - 10.dp.toPx() - r).coerceAtLeast(r + 2.dp.toPx())
-            drawCircle(
-                color = LyricsTheme.glow().copy(alpha = 0.6f * lineAnim.opacity.coerceIn(0.35f, 1f)),
-                radius = r,
-                center = Offset(cx, dynamicY + scrollOffset + layout.height / 2f),
-            )
-        }
-        return
-    }
+    if (lineAnim.state != ElementState.Active) return
     val bw = 3.dp.toPx()
     val gap = 10.dp.toPx()
     val h = layout.height * 0.8f
