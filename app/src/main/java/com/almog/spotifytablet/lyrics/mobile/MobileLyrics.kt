@@ -163,7 +163,16 @@ fun MobileLyricsContent(
     // Settings (SharedPreferences): romanization on/off.
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(Constants.PREF_NAME, Context.MODE_PRIVATE) }
-    val romanize = prefs.getBoolean(MobileTranslation.PREF_ROMANIZE, false)
+    // Automatic language rules: the song's own writing decides about romanizing and translating, when the manual
+    // settings leave it off.
+    val autoRules = prefs.getBoolean(MobileTranslation.PREF_AUTO_LANGUAGE, true)
+    val verdict = remember(track, autoRules) {
+        if (!autoRules || track == null) null
+        else LanguageRules.detect(track.lines.joinToString(" ") { l ->
+            l.rawText.ifBlank { l.words.joinToString(" ") { it.text } }
+        })
+    }
+    val romanize = prefs.getBoolean(MobileTranslation.PREF_ROMANIZE, false) || verdict?.romanize == true
     // The chosen lyrics font (Settings): applied before the first measure, re-read on recomposition.
     LyricsFonts.apply(context)
     // Converting (and romanizing, which loads a Japanese dictionary) happens off the main thread.
@@ -184,7 +193,12 @@ fun MobileLyricsContent(
     val documentId = remember(converted) { (converted?.lines?.hashCode() ?: 0).toString() }
 
     // Translation target ("" = off) and mode.
-    val target = prefs.getString(MobileTranslation.PREF_TRANSLATE_TARGET, "").orEmpty()
+    val manualTarget = prefs.getString(MobileTranslation.PREF_TRANSLATE_TARGET, "").orEmpty()
+    val target = when {
+        manualTarget.isNotBlank() -> manualTarget
+        verdict?.translate == true -> prefs.getString(MobileTranslation.PREF_AUTO_TARGET, "en").orEmpty()
+        else -> ""
+    }
     val mode = if (prefs.getString(MobileTranslation.PREF_TRANSLATION_MODE, "under") == "replace") {
         TranslationMode.Replace
     } else {

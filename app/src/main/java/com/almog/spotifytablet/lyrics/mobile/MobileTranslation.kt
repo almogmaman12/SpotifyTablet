@@ -31,6 +31,10 @@ object MobileTranslation {
     const val PREF_TRANSLATION_MODE = "lyrics_translation_mode"
     /** Pref (boolean): show romanization (Latin transliteration) of non-Latin lyrics. */
     const val PREF_ROMANIZE = "lyrics_romanize"
+    /** Pref (boolean, default on): [LanguageRules] decide per song whether to romanize and translate. */
+    const val PREF_AUTO_LANGUAGE = "lyrics_auto_language"
+    /** Pref: the language the automatic rules translate into (default English). */
+    const val PREF_AUTO_TARGET = "lyrics_auto_target"
 
     @Volatile private var engine: TranslationEngine? = null
     private val client: OkHttpClient by lazy { OkHttpClient.Builder().callTimeout(45, TimeUnit.SECONDS).build() }

@@ -57,6 +57,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_SONG_MOMENT = "song_moment";
     public static final String PREF_CHORUS_MODE = "chorus_mode";
     public static final String PREF_COVER_DRIFT = "cover_drift";
+    public static final String PREF_HOLIDAY_THEMES = "holiday_themes";
     public static final String PREF_SINGER_COLORS = "singer_colors";
     public static final String PREF_DYNAMIC_SPACING = "lyrics_dynamic_spacing";
     public static final String PREF_PAUSE_DOTS = "lyrics_pause_dots_enabled";
@@ -314,6 +315,9 @@ public class SettingsActivity extends AppCompatActivity {
         screen.rows.add(switchRow("Slow cover drift",
                 "The cover breathes almost invisibly while music plays. Off when the tablet is hot or in battery saver.",
                 PREF_COVER_DRIFT, true, null));
+        screen.rows.add(switchRow("Holiday clock themes",
+                "On Hanukkah, Rosh Hashanah, Sukkot, Purim, Pesach, Shavuot and the memorial and independence days, the clock screen shows the holiday's greeting (Hanukkah with the candles for the night).",
+                PREF_HOLIDAY_THEMES, true, null));
         screen.rows.add(sliderRow("Background blur",
                 "How strongly the album art is blurred behind the player.",
                 10, 190, prefs.getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100),
@@ -494,6 +498,14 @@ public class SettingsActivity extends AppCompatActivity {
         lyrics.groups.add(lookup);
 
         Group lang = new Group("Translation & romanization");
+        lang.rows.add(switchRow("Automatic language rules",
+                "Each song decides by its own writing: Hebrew and English are left alone; Japanese, Chinese, Korean, Cyrillic and Greek songs are romanized and translated; other languages are translated. The two settings below still win when you set them.",
+                "lyrics_auto_language", true, null));
+        lang.rows.add(choiceRow("Automatic rules translate to",
+                "The language used by the automatic rules (needs \"Translate to\" below to be Off).",
+                "lyrics_auto_target", "en",
+                new String[]{"English", "Hebrew", "Arabic", "Russian", "Spanish", "French", "German"},
+                new String[]{"en", "he", "ar", "ru", "es", "fr", "de"}));
         lang.rows.add(switchRow("Romanization",
                 "Latin letters for Japanese, Chinese, Korean, Cyrillic and Greek lyrics.",
                 PREF_ROMANIZE, false, null));

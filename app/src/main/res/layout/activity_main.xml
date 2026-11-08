@@ -1072,6 +1072,20 @@
                 android:visibility="gone"
                 tools:text="כניסת שבת: 19:05" />
 
+            <!-- The holiday greeting (Hanukkah candles and so on), only on a holiday and only here. -->
+            <TextView
+                android:id="@+id/clockHolidayText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="6dp"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.15"
+                android:textColor="#FFFFFFFF"
+                android:textSize="28sp"
+                android:visibility="gone"
+                tools:text="חנוכה שמח" />
+
             <LinearLayout
                 android:id="@+id/headerClockRow"
                 android:layout_width="wrap_content"

@@ -145,7 +145,7 @@ public class MainActivity extends AppCompatActivity {
     private ImageView albumArt, backgroundBlur;
     private ProgressBar progressBar;
     private MaterialButton btnPlayPause, btnNext, btnPrev, btnVolUp, btnVolDown;
-    private TextView shabbatTimeText, clockShabbatTimeText;
+    private TextView shabbatTimeText, clockShabbatTimeText, clockHolidayText;
     private OffsetDateTime shabbatCandlesTime = null;
     private OffsetDateTime shabbatHavdalahTime = null;
     private String shabbatEventName = "שבת";
@@ -783,6 +783,7 @@ private void fetchJellyfinVolume() {
         clockWeatherIcon = findViewById(R.id.clockWeatherIcon);
         shabbatTimeText = findViewById(R.id.shabbatTimeText);
         clockShabbatTimeText = findViewById(R.id.clockShabbatTimeText);
+        clockHolidayText = findViewById(R.id.clockHolidayText);
         clockQuoteText = findViewById(R.id.clockQuoteText);
         clockEventText = findViewById(R.id.clockEventText);
         newUpNextText = findViewById(R.id.newUpNextText);
@@ -2293,6 +2294,7 @@ private void fetchJellyfinVolume() {
             clockOverlay.setVisibility(targetVisibility);
             applyClockBrightness();
             updatePollBackoff();
+            if (show) updateHoliday();
 
             if (show) {
                 handler.removeCallbacks(progressUpdater);
@@ -2614,6 +2616,21 @@ private void fetchJellyfinVolume() {
         if (greetingText != null) greetingText.setText(g);
         if (newGreetingText != null) newGreetingText.setText(g);
         if (clockGreetingText != null) clockGreetingText.setText(g);
+        updateHoliday();
+    }
+
+    /** On a holiday the clock screen shows its greeting (and the Hanukkah candles) in the holiday's color. */
+    private void updateHoliday() {
+        if (clockHolidayText == null) return;
+        boolean on = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getBoolean(SettingsActivity.PREF_HOLIDAY_THEMES, true);
+        HolidayTheme.Holiday hol = on ? HolidayTheme.forTime(System.currentTimeMillis()) : null;
+        if (hol == null) {
+            clockHolidayText.setVisibility(View.GONE);
+            return;
+        }
+        clockHolidayText.setText(hol.text);
+        clockHolidayText.setTextColor(hol.color);
+        clockHolidayText.setVisibility(View.VISIBLE);
     }
 
     private String getGreetingMessage() {
