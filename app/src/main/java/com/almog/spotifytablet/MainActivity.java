@@ -203,6 +203,7 @@ public class MainActivity extends AppCompatActivity {
     private android.animation.ObjectAnimator coverDrift;
     private float glowTargetAlpha = -1f;
     private boolean glowOn = true;
+    private boolean panelWanted = true;
     private int glowStrengthPct = 100;
     private int momentHoldMs = 1900;
     private int panelStrengthPct = 8;
@@ -2346,6 +2347,8 @@ private void fetchJellyfinVolume() {
             dxHeader = targetCenter - (newCenterMediaColumn.getLeft() + colW - headerW / 2f);
         }
         playerCentered = center;
+        // With no lyrics the lyrics area shrinks to a sliver; its glass panel must not stay behind as an empty bar.
+        applyLyricsPanel(panelWanted && !center);
         widenColumn(colW, normalW, density);
         applyCoverShape();
         newCenterMediaColumn.animate().translationX(dx).setDuration(450).start();
@@ -3708,7 +3711,8 @@ private void fetchJellyfinVolume() {
         int panel = prefs.getInt(SettingsActivity.PREF_PANEL_STRENGTH, 8);
         boolean panelOn = prefs.getBoolean(SettingsActivity.PREF_LYRICS_PANEL, true) && panel > 0;
         if (panel != panelStrengthPct) panelStrengthPct = panel;
-        applyLyricsPanel(panelOn);
+        panelWanted = panelOn;
+        applyLyricsPanel(panelWanted && !playerCentered);
         int posterW = prefs.getInt(SettingsActivity.PREF_POSTER_WIDTH, 55);
         {
             posterWidthPct = posterW;
