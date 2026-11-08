@@ -294,7 +294,7 @@ internal fun DrawScope.drawInterludeGroup(
         }) {
             drawText(
                 textLayoutResult = wLayout.textLayoutResult,
-                color = Color.White,
+                color = LyricsTheme.text(),
                 alpha = dotOpacity * lineAnim.opacity,
                 shadow = dotShadow ?: Shadow.None,
                 topLeft = Offset(xPos, baseYPos),

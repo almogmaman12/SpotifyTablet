@@ -29,8 +29,8 @@ public class ReflectionImageView extends AppCompatImageView {
     @Override
     protected void onSizeChanged(int w, int h, int ow, int oh) {
         super.onSizeChanged(w, h, ow, oh);
-        // Top: 62% erased (so 38% shows), bottom: fully erased.
-        fade.setShader(new LinearGradient(0, 0, 0, h, 0x9E000000, 0xFF000000, Shader.TileMode.CLAMP));
+        // Top: 72% erased (so 28% shows), bottom: fully erased.
+        fade.setShader(new LinearGradient(0, 0, 0, h, 0xB8000000, 0xFF000000, Shader.TileMode.CLAMP));
     }
 
     @Override

@@ -320,7 +320,7 @@
             <com.almog.spotifytablet.ReflectionImageView
                 android:id="@+id/newCoverReflection"
                 android:layout_width="0dp"
-                android:layout_height="80dp"
+                android:layout_height="34dp"
                 android:layout_marginTop="2dp"
                 android:clickable="false"
                 android:focusable="false"
