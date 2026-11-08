@@ -3589,6 +3589,22 @@ private void fetchJellyfinVolume() {
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setAccentArgb(on ? colors[0] : 0);
         if (clockMinuteView != null) clockMinuteView.setTextColor(on ? colors[1] : Color.WHITE);
         setAccentGlow(on ? colors[0] : 0);
+        // A slightly richer, darker blurred cover, so the lyrics stand out instead of sitting on a milky gray.
+        if (backgroundBlur != null) {
+            if (on) {
+                android.graphics.ColorMatrix cm = new android.graphics.ColorMatrix();
+                cm.setSaturation(1.3f);
+                android.graphics.ColorMatrix dark = new android.graphics.ColorMatrix(new float[]{
+                        0.8f, 0, 0, 0, 0,
+                        0, 0.8f, 0, 0, 0,
+                        0, 0, 0.8f, 0, 0,
+                        0, 0, 0, 1, 0});
+                cm.postConcat(dark);
+                backgroundBlur.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
+            } else {
+                backgroundBlur.clearColorFilter();
+            }
+        }
         applyButtonRings(on ? Integer.valueOf(colors[0]) : null);
         updateSourceTheme(mediaSource);
     }

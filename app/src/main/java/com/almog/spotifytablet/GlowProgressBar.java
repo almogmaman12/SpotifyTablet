@@ -27,8 +27,8 @@ public class GlowProgressBar extends ProgressBar {
         float h = getHeight();
         if (w <= 0 || h <= 0) return;
         float d = getResources().getDisplayMetrics().density;
-        float barH = 4f * d;
-        float dotR = 6f * d;
+        float barH = 5f * d;
+        float dotR = 8f * d;
         float left = getPaddingLeft() + dotR;
         float right = getPaddingLeft() + w - dotR;
         if (right <= left) return;
