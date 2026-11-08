@@ -15,7 +15,9 @@ object LyricsTheme {
     var accentArgb: Int by mutableStateOf(0)
 
     /** The sung text: white with a clear tint of the accent, so it stays easy to read on the dark background. */
-    fun text(): Color = accentArgb.let { if (it == 0) Color.White else lerp(Color.White, Color(it), 0.55f) }
+    fun text(strength: Float = 1f): Color = accentArgb.let {
+        if (it == 0 || strength <= 0f) Color.White else lerp(Color.White, Color(it), 0.55f * strength.coerceAtMost(1f))
+    }
 
     /** The glow around the active words. */
     fun glow(): Color = accentArgb.let { if (it == 0) Color.White else lerp(Color.White, Color(it), 0.8f) }

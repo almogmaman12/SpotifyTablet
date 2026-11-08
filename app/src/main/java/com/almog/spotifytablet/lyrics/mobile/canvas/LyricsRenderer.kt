@@ -16,6 +16,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.drawText
 import com.almog.spotifytablet.lyrics.mobile.RenderConfig
 import com.almog.spotifytablet.lyrics.mobile.animation.AppleMusicMotion
+import com.almog.spotifytablet.lyrics.mobile.animation.ElementState
 import com.almog.spotifytablet.lyrics.mobile.animation.LineAnimState
 import com.almog.spotifytablet.lyrics.mobile.animation.WordAnimState
 
@@ -36,6 +37,9 @@ import com.almog.spotifytablet.lyrics.mobile.animation.WordAnimState
  *   rows, whole line, or — for a standalone letter — that letter's own width).
  * @param startXOffset this fragment's offset within [fullWidth].
  */
+/** The accent tint belongs to the line being sung only; sung and coming lines stay white. */
+private fun accentOf(l: LineAnimState): Float = if (l.state == ElementState.Active) 1f else 0f
+
 internal fun DrawScope.drawWipeText(
     layoutResult: TextLayoutResult,
     xPos: Float,
@@ -49,8 +53,10 @@ internal fun DrawScope.drawWipeText(
     shadow: Shadow?,
     rtl: Boolean = false,
     gradientOffsetPercent: Float = 0f,
+    /** 1 for the active line (the sung part leans to the cover's accent), 0 for every other line (plain white). */
+    accentStrength: Float = 0f,
 ) {
-    val bright = LyricsTheme.text().copy(alpha = brightAlpha.coerceIn(0f, 1f))
+    val bright = LyricsTheme.text(accentStrength).copy(alpha = brightAlpha.coerceIn(0f, 1f))
     val dim = Color.White.copy(alpha = dimAlpha.coerceIn(0f, 1f))
     val topLeft = Offset(xPos, yPos)
 
@@ -177,8 +183,9 @@ private fun DrawScope.drawVerticalWipeText(
     brightAlpha: Float,
     dimAlpha: Float,
     shadow: Shadow?,
+    accentStrength: Float = 0f,
 ) {
-    val bright = LyricsTheme.text().copy(alpha = brightAlpha.coerceIn(0f, 1f))
+    val bright = LyricsTheme.text(accentStrength).copy(alpha = brightAlpha.coerceIn(0f, 1f))
     val dim = Color.White.copy(alpha = dimAlpha.coerceIn(0f, 1f))
     val topLeft = Offset(xPos, yPos)
 
@@ -347,6 +354,13 @@ internal fun DrawScope.drawStandardLine(
 ) {
     val rtl = layout.isRtl
     val sourceWords = layout.line.words
+    // The line being sung grows a little (up to 4%), following the line's own fade-in so it never jumps.
+    val grow = if (config.isAppleMusic) 1f else 1f + 0.04f * ((lineAnim.opacity - 0.5f) / 0.5f).coerceIn(0f, 1f)
+    val growPivot = Offset(
+        if (layout.isRightAligned) lineStartX + layout.totalWidth else lineStartX,
+        dynamicY + scrollOffset + layout.height / 2f,
+    )
+    withTransform({ scale(grow, grow, growPivot) }) {
     layout.words.forEach { wLayout ->
         val wordAnim = lineAnim.wordStates.getOrNull(wLayout.sourceWordIndex) ?: return@forEach
         val anchor = scaleAnchor(
@@ -372,6 +386,7 @@ internal fun DrawScope.drawStandardLine(
             else ->
                 drawStandardWord(wLayout, wordAnim, lineAnim, xPos, yPos, textWidth, textHeight, scrollOffset, config, paintPlan, rtl, anchor)
         }
+    }
     }
 }
 
@@ -449,6 +464,7 @@ private fun DrawScope.drawSyllabicLetterFragment(
             startXOffset = wLayout.startXOffset,
             gradientPositionPercent = lState.gradientPosition,
             brightAlpha = bright,
+            accentStrength = accentOf(lineAnim),
             dimAlpha = dim,
             shadow = lShadow,
             rtl = rtl,
@@ -510,6 +526,7 @@ private fun DrawScope.drawStandardWord(
             startXOffset = wLayout.startXOffset,
             gradientPositionPercent = wordAnim.gradientPosition,
             brightAlpha = bright,
+            accentStrength = accentOf(lineAnim),
             dimAlpha = dim,
             shadow = shadow,
             rtl = rtl,
@@ -565,6 +582,7 @@ private fun DrawScope.drawAppleMusicWord(
                 startXOffset = wLayout.startXOffset,
                 gradientPositionPercent = position,
                 brightAlpha = bright,
+            accentStrength = accentOf(lineAnim),
                 dimAlpha = dim,
                 shadow = null,
                 rtl = rtl,
@@ -616,6 +634,7 @@ private fun DrawScope.drawAppleMusicLetter(
                 startXOffset = wLayout.startXOffset,
                 gradientPositionPercent = position,
                 brightAlpha = bright,
+            accentStrength = accentOf(lineAnim),
                 dimAlpha = dim,
                 shadow = glow,
                 rtl = rtl,
@@ -681,6 +700,7 @@ internal fun DrawScope.drawLineModeLine(
                     startXOffset = wLayout.relativeOffset.x,
                     gradientPositionPercent = lineAnim.lineGradientPercent,
                     brightAlpha = bright,
+            accentStrength = accentOf(lineAnim),
                     dimAlpha = dim,
                     shadow = shadow,
                     rtl = true,
@@ -696,6 +716,7 @@ internal fun DrawScope.drawLineModeLine(
                     startYOffset = wLayout.relativeOffset.y,
                     gradientPositionPercent = lineAnim.lineGradientPercent,
                     brightAlpha = bright,
+            accentStrength = accentOf(lineAnim),
                     dimAlpha = dim,
                     shadow = shadow,
                 )
