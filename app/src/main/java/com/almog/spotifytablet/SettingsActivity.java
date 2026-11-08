@@ -60,6 +60,8 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_HOLIDAY_THEMES = "holiday_themes";
     public static final String PREF_HOLIDAY_PREVIEW = "holiday_preview";
     public static final String PREF_ACTIVE_BAR = "active_bar";
+    public static final String PREF_GLASS_EDGE = "glass_edge";
+    public static final String PREF_COLOR_JOURNEY = "color_journey";
     public static final String PREF_LINE_GROW = "line_grow_pct";
     public static final String PREF_CHORUS_GROW = "chorus_grow_pct";
     public static final String PREF_ACCENT_STRENGTH = "accent_strength_pct";
@@ -368,6 +370,9 @@ public class SettingsActivity extends AppCompatActivity {
                 0, 100, prefs.getInt(PREF_ACCENT_STRENGTH, 55),
                 v -> v + "%", v -> prefs.edit().putInt(PREF_ACCENT_STRENGTH, v).apply())
                 .withKey(PREF_ACCENT_STRENGTH));
+        colors.rows.add(switchRow("Color journey",
+                "Over the course of a song the accent slowly moves from the cover's main color to its second color.",
+                PREF_COLOR_JOURNEY, true, null));
         colors.rows.add(switchRow("Cover glow",
                 "A soft glow of the cover's colors behind the blurred background.",
                 PREF_GLOW, true, null));
@@ -417,6 +422,9 @@ public class SettingsActivity extends AppCompatActivity {
                 1, 30, prefs.getInt(PREF_PANEL_STRENGTH, 8),
                 v -> v + "%", v -> prefs.edit().putInt(PREF_PANEL_STRENGTH, v).apply())
                 .withKey(PREF_PANEL_STRENGTH));
+        extras.rows.add(switchRow("Glass edge light",
+                "A thin light along the top and left edge of the glass cards (clock, header, side card and the lyrics panel).",
+                PREF_GLASS_EDGE, true, null));
         extras.rows.add(switchRow("Cover reflection",
                 "A faint mirror image of the cover's bottom edge under the picture.",
                 PREF_COVER_REFLECTION, true, null));
@@ -915,6 +923,8 @@ public class SettingsActivity extends AppCompatActivity {
         e.putBoolean(PREF_COVER_REFLECTION, full);
         e.putBoolean(PREF_COVER_DRIFT, full);
         e.putBoolean(PREF_SONG_MOMENT, full);
+        e.putBoolean(PREF_GLASS_EDGE, full || clean);
+        e.putBoolean(PREF_COLOR_JOURNEY, full);
         e.remove(PREF_ACCENT_STRENGTH).remove(PREF_GLOW_STRENGTH).remove(PREF_LINE_GROW).remove(PREF_CHORUS_GROW)
                 .remove(PREF_PANEL_STRENGTH).remove(PREF_SONG_MOMENT_TENTHS);
         e.apply();

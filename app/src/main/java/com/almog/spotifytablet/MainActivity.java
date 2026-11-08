@@ -204,6 +204,12 @@ public class MainActivity extends AppCompatActivity {
     private float glowTargetAlpha = -1f;
     private boolean glowOn = true;
     private boolean panelWanted = true;
+    private GlassEdge lyricsEdge;
+    private boolean edgesAttached = false;
+    private boolean journeyOn = true;
+    private int[] coverColors;
+    private int journeyStep = -1;
+    private long lastJourneyAt = 0L;
     private int glowStrengthPct = 100;
     private int momentHoldMs = 1900;
     private int panelStrengthPct = 8;
@@ -212,6 +218,7 @@ public class MainActivity extends AppCompatActivity {
         @Override public void run() {
             updateChorusGlow();
             syncCoverDrift();
+            updateColorJourney();
             if (activityResumed) handler.postDelayed(this, 500);
         }
     };
@@ -3569,6 +3576,25 @@ private void fetchJellyfinVolume() {
         handler.post(songUpdater);
     }
 
+    /** Over a song the accent slowly moves from the cover's main color to its second color (a new step every 5% of the song). */
+    private void updateColorJourney() {
+        if (!journeyOn || coverColors == null || !coverThemeOn || newLinearProgressBar == null) return;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - lastJourneyAt < 3000) return;
+        lastJourneyAt = now;
+        int max = newLinearProgressBar.getMax();
+        if (max <= 0) return;
+        float frac = Math.max(0f, Math.min(1f, newLinearProgressBar.getProgress() / (float) max));
+        int step = Math.round(frac * 20f);
+        if (step == journeyStep) return;
+        journeyStep = step;
+        int blended = (Integer) new android.animation.ArgbEvaluator().evaluate(step / 20f, coverColors[0], coverColors[1]);
+        coverAccent = blended;
+        com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setAccentArgb(blended);
+        applyButtonRings(Integer.valueOf(blended));
+        updateSourceTheme(mediaSource);
+    }
+
     /** The glow behind the blurred cover swells during the chorus and settles back for the verses. */
     private void updateChorusGlow() {
         if (accentGlow == null || glowColor == 0) return;
@@ -3693,6 +3719,15 @@ private void fetchJellyfinVolume() {
 
     /** The sliders and switches of Settings → Looks. */
     private void applyLooksPrefs(SharedPreferences prefs) {
+        if (!edgesAttached) {
+            edgesAttached = true;
+            if (newVerticalClock != null) GlassEdge.attach(newVerticalClock, 16);
+            if (newSidebarTopGroup != null) GlassEdge.attach(newSidebarTopGroup, 16);
+            if (newHeaderContainer != null) GlassEdge.attach(newHeaderContainer, 16);
+            if (newLyricsContainer != null) lyricsEdge = GlassEdge.attach(newLyricsContainer, 22);
+        }
+        GlassEdge.setAllShown(prefs.getBoolean(SettingsActivity.PREF_GLASS_EDGE, true));
+        journeyOn = prefs.getBoolean(SettingsActivity.PREF_COLOR_JOURNEY, true);
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme theme =
                 com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE;
         theme.setActiveBar(prefs.getBoolean(SettingsActivity.PREF_ACTIVE_BAR, true));
@@ -3730,6 +3765,7 @@ private void fetchJellyfinVolume() {
     /** The frosted panel behind the lyrics (Modern and Poster layouts). */
     private void applyLyricsPanel(boolean on) {
         if (newLyricsContainer == null) return;
+        if (lyricsEdge != null) lyricsEdge.setShown(on && getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getBoolean(SettingsActivity.PREF_GLASS_EDGE, true));
         int pad = on ? Math.round(10 * getResources().getDisplayMetrics().density) : 0;
         if (on) {
             // The fill follows the strength setting (8% is the original look); the border is a little stronger.
@@ -3816,6 +3852,8 @@ private void fetchJellyfinVolume() {
     /** null puts every color back to what it was before the feature. */
     private void applyCoverColors(int[] colors) {
         boolean on = coverThemeOn && colors != null;
+        coverColors = on ? colors : null;
+        journeyStep = -1;
         coverAccent = on ? colors[0] : 0;
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setAccentArgb(on ? colors[0] : 0);
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setAccent2Argb(on ? colors[2] : 0);
