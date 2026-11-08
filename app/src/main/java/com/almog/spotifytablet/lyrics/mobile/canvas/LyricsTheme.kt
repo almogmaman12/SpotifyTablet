@@ -26,6 +26,9 @@ object LyricsTheme {
     /** Settings: the thin bar beside the line being sung. */
     var activeBar: Boolean by mutableStateOf(true)
 
+    /** Settings: sung lines drift upward and blur more as they fall behind. */
+    var fallAway: Boolean by mutableStateOf(true)
+
     /** Settings: how much the active line grows, in percent (0 to 8). */
     var lineGrowPct: Int by mutableStateOf(4)
 

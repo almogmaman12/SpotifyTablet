@@ -3731,6 +3731,7 @@ private void fetchJellyfinVolume() {
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme theme =
                 com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE;
         theme.setActiveBar(prefs.getBoolean(SettingsActivity.PREF_ACTIVE_BAR, true));
+        theme.setFallAway(prefs.getBoolean(SettingsActivity.PREF_FALL_AWAY, true));
         theme.setLineGrowPct(prefs.getInt(SettingsActivity.PREF_LINE_GROW, 4));
         theme.setChorusGrowPct(prefs.getInt(SettingsActivity.PREF_CHORUS_GROW, 16));
         theme.setTintPct(prefs.getInt(SettingsActivity.PREF_ACCENT_STRENGTH, 55));

@@ -60,6 +60,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_HOLIDAY_THEMES = "holiday_themes";
     public static final String PREF_HOLIDAY_PREVIEW = "holiday_preview";
     public static final String PREF_ACTIVE_BAR = "active_bar";
+    public static final String PREF_FALL_AWAY = "fall_away";
     public static final String PREF_GLASS_EDGE = "glass_edge";
     public static final String PREF_COLOR_JOURNEY = "color_journey";
     public static final String PREF_LINE_GROW = "line_grow_pct";
@@ -398,6 +399,9 @@ public class SettingsActivity extends AppCompatActivity {
         fx.rows.add(switchRow("Line bar",
                 "A thin bar in the cover's color beside the line being sung.",
                 PREF_ACTIVE_BAR, true, null));
+        fx.rows.add(switchRow("Lyrics fall away",
+                "Lines that have been sung drift upward and blur more the further behind they are.",
+                PREF_FALL_AWAY, true, null));
         fx.rows.add(sliderRow("Line growth",
                 "How much the line being sung grows. 0 keeps every line the same size.",
                 0, 8, prefs.getInt(PREF_LINE_GROW, 4),
@@ -924,6 +928,7 @@ public class SettingsActivity extends AppCompatActivity {
         e.putBoolean(PREF_COVER_DRIFT, full);
         e.putBoolean(PREF_SONG_MOMENT, full);
         e.putBoolean(PREF_GLASS_EDGE, full || clean);
+        e.putBoolean(PREF_FALL_AWAY, full);
         e.putBoolean(PREF_COLOR_JOURNEY, full);
         e.remove(PREF_ACCENT_STRENGTH).remove(PREF_GLOW_STRENGTH).remove(PREF_LINE_GROW).remove(PREF_CHORUS_GROW)
                 .remove(PREF_PANEL_STRENGTH).remove(PREF_SONG_MOMENT_TENTHS);
