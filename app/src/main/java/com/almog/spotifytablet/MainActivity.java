@@ -1818,6 +1818,8 @@ private void fetchJellyfinVolume() {
         boolean reflect = prefs.getBoolean(SettingsActivity.PREF_COVER_REFLECTION, true);
         if (reflect != reflectionOn) { reflectionOn = reflect; setAlbumFrameVisibility(posterOn ? View.INVISIBLE : View.VISIBLE); lastBlurredTrackId = ""; }
         momentOn = prefs.getBoolean(SettingsActivity.PREF_SONG_MOMENT, true);
+        com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setChorusMode(prefs.getBoolean(SettingsActivity.PREF_CHORUS_MODE, true));
+        com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setSingerColors(prefs.getBoolean(SettingsActivity.PREF_SINGER_COLORS, true));
         holdScreenOn();
         android.content.IntentFilter screenFilter = new android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF);
         screenFilter.addAction(android.content.Intent.ACTION_SCREEN_ON);
@@ -3684,6 +3686,7 @@ private void fetchJellyfinVolume() {
         boolean on = coverThemeOn && colors != null;
         coverAccent = on ? colors[0] : 0;
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setAccentArgb(on ? colors[0] : 0);
+        com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setAccent2Argb(on ? colors[2] : 0);
         if (clockMinuteView != null) clockMinuteView.setTextColor(on ? colors[1] : Color.WHITE);
         setAccentGlow(on ? colors[0] : 0, on ? colors[1] : 0);
         applyCoverShadow(on ? Integer.valueOf(colors[0]) : null);

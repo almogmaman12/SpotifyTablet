@@ -14,11 +14,25 @@ import androidx.compose.ui.graphics.lerp
 object LyricsTheme {
     var accentArgb: Int by mutableStateOf(0)
 
+    /** The second singer's color (a duet's guest), picked from the cover to differ from [accentArgb]. 0 = none. */
+    var accent2Argb: Int by mutableStateOf(0)
+
+    /** Settings: duet lines of the second singer use [accent2Argb]. */
+    var singerColors: Boolean by mutableStateOf(true)
+
+    /** Settings: the chorus (repeated lines) grows bigger while it is sung. */
+    var chorusMode: Boolean by mutableStateOf(true)
+
+    /** Set by the renderer for the line it is drawing now: true when that line belongs to the second singer. */
+    @JvmField var drawingSecond: Boolean = false
+
+    private fun current(): Int = if (drawingSecond && singerColors && accent2Argb != 0) accent2Argb else accentArgb
+
     /** The sung text: white with a clear tint of the accent, so it stays easy to read on the dark background. */
-    fun text(strength: Float = 1f): Color = accentArgb.let {
+    fun text(strength: Float = 1f): Color = current().let {
         if (it == 0 || strength <= 0f) Color.White else lerp(Color.White, Color(it), 0.55f * strength.coerceAtMost(1f))
     }
 
     /** The glow around the active words. */
-    fun glow(): Color = accentArgb.let { if (it == 0) Color.White else lerp(Color.White, Color(it), 0.8f) }
+    fun glow(): Color = current().let { if (it == 0) Color.White else lerp(Color.White, Color(it), 0.8f) }
 }

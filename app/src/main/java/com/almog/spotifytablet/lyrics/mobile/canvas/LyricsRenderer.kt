@@ -250,6 +250,7 @@ internal fun DrawScope.drawInterludeGroup(
     scrollOffset: Float,
     dynamicY: Float,
 ) {
+    LyricsTheme.drawingSecond = false
     // Widened past 1 (but not below 0 — a negative scale would mirror-flip the dots) so the
     // overshoot collapse curve (DOT_GROUP_COLLAPSE_EASING) stays visible.
     val groupScale = (lineAnim.scale * lineAnim.groupScale).coerceIn(0f, 1.3f)
@@ -392,11 +393,16 @@ internal fun DrawScope.drawStandardLine(
     dynamicY: Float,
     config: RenderConfig,
 ) {
+    LyricsTheme.drawingSecond = layout.oppositeAligned
     val rtl = layout.isRtl
     val sourceWords = layout.line.words
     drawActiveBar(layout, lineAnim, lineStartX, scrollOffset, dynamicY, config)
     // The line being sung grows a little (up to 4%), following the line's own fade-in so it never jumps.
-    val grow = if (config.isAppleMusic) 1f else 1f + 0.04f * ((lineAnim.opacity - 0.5f) / 0.5f).coerceIn(0f, 1f)
+    // The chorus (repeated lines) grows more, as far as the line still fits the column.
+    val peak = if (LyricsTheme.chorusMode && layout.isRepeated && layout.maxRowWidth > 0f && layout.contentWidth > 0f) {
+        maxOf(1.04f, minOf(1.16f, layout.contentWidth / layout.maxRowWidth))
+    } else 1.04f
+    val grow = if (config.isAppleMusic) 1f else 1f + (peak - 1f) * ((lineAnim.opacity - 0.5f) / 0.5f).coerceIn(0f, 1f)
     val growPivot = Offset(
         if (layout.isRightAligned) lineStartX + layout.totalWidth else lineStartX,
         dynamicY + scrollOffset + layout.height / 2f,
@@ -694,6 +700,7 @@ internal fun DrawScope.drawLineModeLine(
     dynamicY: Float,
     config: RenderConfig,
 ) {
+    LyricsTheme.drawingSecond = layout.oppositeAligned
     val paintPlan = lyricPaintPlan(lineAnim.state, lineAnim.isBackground, lineAnim.opacity, lineAnim.blur, config, config.lineGradientAlphaDim, lineAnim.lit)
     // Reference gradient stops are fixed for the active state; inactive lines are shadow-only.
     val dim = (if (config.isAppleMusic) AppleMusicMotion.DIM_ALPHA else config.lineGradientAlphaDim) * lineAnim.opacity
@@ -775,6 +782,7 @@ internal fun DrawScope.drawStaticLine(
     scrollOffset: Float,
     dynamicY: Float,
 ) {
+    LyricsTheme.drawingSecond = false
     layout.words.forEach { wLayout ->
         val xPos = lineStartX + wLayout.relativeOffset.x
         val yPos = dynamicY + wLayout.relativeOffset.y + scrollOffset
