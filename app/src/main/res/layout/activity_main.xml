@@ -316,6 +316,20 @@
                     app:shapeAppearanceOverlay="@style/RoundedImageStyle" />
             </FrameLayout>
 
+            <!-- A faint reflection of the cover's bottom edge, under the picture and behind the progress row. -->
+            <com.almog.spotifytablet.ReflectionImageView
+                android:id="@+id/newCoverReflection"
+                android:layout_width="0dp"
+                android:layout_height="80dp"
+                android:layout_marginTop="2dp"
+                android:clickable="false"
+                android:focusable="false"
+                android:importantForAccessibility="no"
+                android:visibility="gone"
+                app:layout_constraintEnd_toEndOf="@id/newAlbumFrame"
+                app:layout_constraintStart_toStartOf="@id/newAlbumFrame"
+                app:layout_constraintTop_toBottomOf="@id/newAlbumFrame" />
+
             <!-- Linear Seek Bar & Time Duration Display Row -->
             <LinearLayout
                 android:id="@+id/newTimeProgressRow"
@@ -572,6 +586,56 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
+
+            <!-- Shown for a moment when a new song starts: its title and artist, large, over the dimmed lyrics. -->
+            <LinearLayout
+                android:id="@+id/songMoment"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:alpha="0"
+                android:clickable="false"
+                android:focusable="false"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="24dp"
+                android:visibility="gone"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <TextView
+                    android:id="@+id/songMomentTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:maxLines="3"
+                    android:ellipsize="end"
+                    android:shadowColor="#99000000"
+                    android:shadowDx="0"
+                    android:shadowDy="2"
+                    android:shadowRadius="14"
+                    android:textColor="@color/white"
+                    android:textDirection="firstStrongLtr"
+                    android:textSize="34sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/songMomentArtist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:ellipsize="end"
+                    android:shadowColor="#99000000"
+                    android:shadowDx="0"
+                    android:shadowDy="2"
+                    android:shadowRadius="12"
+                    android:textColor="#E6FFFFFF"
+                    android:textDirection="firstStrongLtr"
+                    android:textSize="20sp" />
+            </LinearLayout>
 
         </androidx.constraintlayout.widget.ConstraintLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>

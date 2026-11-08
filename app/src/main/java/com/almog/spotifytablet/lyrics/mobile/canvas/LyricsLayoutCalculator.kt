@@ -253,6 +253,11 @@ internal object LyricsLayoutCalculator {
         val metrics = LyricsLayoutMetrics(canvasWidth, density, lyricsType, fontSizeScale)
         val lineSpacing = metrics.lineGapPx
         
+        // Lines whose words show up again later (chorus, refrain). Short lines like "oh oh" are not counted.
+        fun lineKey(l: Line) = l.words.joinToString("") { it.text }.lowercase().filter { it.isLetterOrDigit() }
+        val repeatCounts = lines.filter { !it.isInterlude && !it.isBackground }
+            .map { lineKey(it) }.filter { it.length >= 8 }.groupingBy { it }.eachCount()
+
         val hasDuet = lines.any { it.oppositeAligned }
         val baseFontSize = metrics.baseFontSizeSp.sp
         val bgFontSize = baseFontSize * backgroundScale
@@ -520,7 +525,8 @@ internal object LyricsLayoutCalculator {
 
             layouts.add(LineLayout(line, wordLayouts, drawY, totalHeight, totalWidth, maxRowWidth, false, isBg,
                 line.oppositeAligned, line.isSongwriter, lineIsRtl, isRightAligned,
-                contentSlot.startPx, contentSlot.widthPx))
+                contentSlot.startPx, contentSlot.widthPx,
+                isRepeated = !isBg && (repeatCounts[lineKey(line)] ?: 0) >= 2))
             
             val bottomY = drawY + totalHeight
             currentY = maxOf(currentY, bottomY + lineSpacing)

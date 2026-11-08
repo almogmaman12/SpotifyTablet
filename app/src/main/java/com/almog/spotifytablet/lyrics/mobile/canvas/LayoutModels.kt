@@ -52,6 +52,8 @@ internal data class LineLayout(
     val contentWidth: Float = 0f,
     val supplements: List<SupplementLayout> = emptyList(),
     val lyricHeight: Float? = null,
+    /** The same words appear in another line of the song (a chorus or refrain); gets a small marker beside it. */
+    val isRepeated: Boolean = false,
 )
 
 internal data class SupplementLayout(

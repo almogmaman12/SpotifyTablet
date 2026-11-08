@@ -199,6 +199,12 @@ public class MainActivity extends AppCompatActivity {
     private View accentGlow;
     private android.widget.ImageView posterCover;
     private boolean posterOn = false;
+    private android.widget.ImageView coverReflection;
+    private View songMoment;
+    private TextView songMomentTitle, songMomentArtist;
+    private boolean reflectionOn = true, momentOn = true;
+    private long lastMomentAt = 0L;
+    private final Runnable momentHide = this::hideSongMoment;
     private String lastCoverAnimated = "";
     private android.animation.ValueAnimator glowAnimator;
     private int glowColor = 0;
@@ -668,7 +674,7 @@ private void fetchJellyfinVolume() {
         if (poster != posterOn) {
             posterOn = poster;
             if (posterCover != null) posterCover.setVisibility(poster ? View.VISIBLE : View.GONE);
-            if (newAlbumFrame != null) newAlbumFrame.setVisibility(poster ? View.INVISIBLE : View.VISIBLE);
+            setAlbumFrameVisibility(poster ? View.INVISIBLE : View.VISIBLE);
             lastBlurredTrackId = ""; // the next update loads the cover into the poster
         }
         // Only the visible layout's lyrics view should compose (the hidden one wasted CPU/battery).
@@ -699,6 +705,10 @@ private void fetchJellyfinVolume() {
         newLinearProgressBar = findViewById(R.id.newLinearProgressBar);
         accentGlow = findViewById(R.id.accentGlow);
         posterCover = findViewById(R.id.posterCover);
+        coverReflection = findViewById(R.id.newCoverReflection);
+        songMoment = findViewById(R.id.songMoment);
+        songMomentTitle = findViewById(R.id.songMomentTitle);
+        songMomentArtist = findViewById(R.id.songMomentArtist);
         newSongTitle = findViewById(R.id.newSongTitle);
         newArtistName = findViewById(R.id.newArtistName);
         newGreetingText = findViewById(R.id.newGreetingText);
@@ -1805,6 +1815,9 @@ private void fetchJellyfinVolume() {
             else lastBlurredTrackId = ""; // the next update reads the cover's colors again
         }
         applyLyricsPanel(prefs.getBoolean(SettingsActivity.PREF_LYRICS_PANEL, true));
+        boolean reflect = prefs.getBoolean(SettingsActivity.PREF_COVER_REFLECTION, true);
+        if (reflect != reflectionOn) { reflectionOn = reflect; setAlbumFrameVisibility(posterOn ? View.INVISIBLE : View.VISIBLE); lastBlurredTrackId = ""; }
+        momentOn = prefs.getBoolean(SettingsActivity.PREF_SONG_MOMENT, true);
         holdScreenOn();
         android.content.IntentFilter screenFilter = new android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF);
         screenFilter.addAction(android.content.Intent.ACTION_SCREEN_ON);
@@ -2094,6 +2107,7 @@ private void fetchJellyfinVolume() {
             if (newArtistName != null) crossfadeText(newArtistName, artist);
 
             updateCoverTheme(img);
+            if (trackChanged) showSongMoment(title, artist);
             DebugLog.i("Cover", "updateUIForSong '" + title + "' cover=" + (img == null || img.isEmpty() ? "(none)" : img.startsWith("data:") ? "data" : "address"));
             if (!isDestroyed() && !isFinishing() && img != null && !img.isEmpty()) {
                 if (albumArt != null) {
@@ -2133,6 +2147,14 @@ private void fetchJellyfinVolume() {
                             .into(newAlbumArt);
                 }
 
+                if (reflectionOn && !posterOn && coverReflection != null) {
+                    // Same request as the square cover, so Glide shares the one decoded picture.
+                    Glide.with(glideContext()).load(img)
+                            .override(1280, 1280)
+                            .downsample(com.bumptech.glide.load.resource.bitmap.DownsampleStrategy.AT_MOST)
+                            .dontTransform()
+                            .into(coverReflection);
+                }
                 if (posterOn && posterCover != null) {
                     // Same request as the square cover, so Glide shares the one decoded picture.
                     Glide.with(glideContext()).load(img)
@@ -2232,9 +2254,7 @@ private void fetchJellyfinVolume() {
                 if (oldAlbumFrame != null) {
                     oldAlbumFrame.setVisibility(show ? View.GONE : View.VISIBLE);
                 }
-                if (newAlbumFrame != null) {
-                    newAlbumFrame.setVisibility(show ? View.GONE : (posterOn ? View.INVISIBLE : View.VISIBLE));
-                }
+                setAlbumFrameVisibility(show ? View.GONE : (posterOn ? View.INVISIBLE : View.VISIBLE));
                 if (posterCover != null) {
                     posterCover.setVisibility(show || !posterOn ? View.GONE : View.VISIBLE);
                 }
@@ -3503,6 +3523,38 @@ private void fetchJellyfinVolume() {
 
         handler.removeCallbacks(songUpdater);
         handler.post(songUpdater);
+    }
+
+    /** The square cover and its reflection show and hide together. */
+    private void setAlbumFrameVisibility(int visibility) {
+        if (newAlbumFrame != null) newAlbumFrame.setVisibility(visibility);
+        if (coverReflection != null) {
+            coverReflection.setVisibility(visibility == View.VISIBLE && reflectionOn ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    /** For a moment after a new song starts: its title and artist, large, over the dimmed lyrics. */
+    private void showSongMoment(String title, String artist) {
+        if (!momentOn || songMoment == null || title == null || title.isEmpty() || isDestroyed()) return;
+        if (clockOverlay != null && clockOverlay.getVisibility() == View.VISIBLE) return;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - lastMomentAt < 8000) return; // not again right after a flicker or a quick skip
+        lastMomentAt = now;
+        songMomentTitle.setText(title);
+        songMomentArtist.setText(artist == null ? "" : artist);
+        songMomentArtist.setVisibility(artist == null || artist.isEmpty() ? View.GONE : View.VISIBLE);
+        handler.removeCallbacks(momentHide);
+        songMoment.animate().cancel();
+        songMoment.setVisibility(View.VISIBLE);
+        songMoment.animate().alpha(1f).setDuration(280).start();
+        if (newLyricsComposeView != null) newLyricsComposeView.animate().alpha(0.18f).setDuration(280).start();
+        handler.postDelayed(momentHide, 1900);
+    }
+
+    private void hideSongMoment() {
+        if (songMoment == null) return;
+        songMoment.animate().alpha(0f).setDuration(450).withEndAction(() -> songMoment.setVisibility(View.GONE)).start();
+        if (newLyricsComposeView != null) newLyricsComposeView.animate().alpha(1f).setDuration(450).start();
     }
 
     private void animateCoverIn(View v) {

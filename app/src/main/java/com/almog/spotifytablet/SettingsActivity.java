@@ -53,6 +53,8 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String STYLE_POSTER = "poster";
     public static final String PREF_KEEP_SCREEN_ON = "keep_screen_on";
     public static final String PREF_LYRICS_PANEL = "lyrics_panel";
+    public static final String PREF_COVER_REFLECTION = "cover_reflection";
+    public static final String PREF_SONG_MOMENT = "song_moment";
     public static final String PREF_DYNAMIC_SPACING = "lyrics_dynamic_spacing";
     public static final String PREF_PAUSE_DOTS = "lyrics_pause_dots_enabled";
 
@@ -294,6 +296,12 @@ public class SettingsActivity extends AppCompatActivity {
         screen.rows.add(switchRow("Glass lyrics panel",
                 "A light frosted panel behind the lyrics, like the clock and button cards.",
                 PREF_LYRICS_PANEL, true, null));
+        screen.rows.add(switchRow("Cover reflection",
+                "A faint mirror image of the cover's bottom edge under the picture.",
+                PREF_COVER_REFLECTION, true, null));
+        screen.rows.add(switchRow("Song-change title",
+                "When a new song starts, its title and artist show large over the lyrics for a moment.",
+                PREF_SONG_MOMENT, true, null));
         screen.rows.add(sliderRow("Background blur",
                 "How strongly the album art is blurred behind the player.",
                 10, 190, prefs.getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100),
