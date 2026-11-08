@@ -532,6 +532,14 @@
                     android:textSize="24sp"
                     android:textStyle="bold" />
 
+                <!-- A short line in the cover's accent under the title (colored in code; off in Settings). -->
+                <View
+                    android:id="@+id/newTitleAccent"
+                    android:layout_width="44dp"
+                    android:layout_height="3dp"
+                    android:layout_marginTop="4dp"
+                    android:visibility="gone" />
+
                 <TextView
                     android:id="@+id/newArtistName"
                     android:layout_width="wrap_content"

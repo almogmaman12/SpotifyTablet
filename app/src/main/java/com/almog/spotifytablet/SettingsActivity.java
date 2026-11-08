@@ -62,6 +62,8 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_ACTIVE_BAR = "active_bar";
     public static final String PREF_BG_CROSSFADE = "bg_crossfade";
     public static final String PREF_BG_GRAIN = "bg_grain";
+    public static final String PREF_TITLE_ACCENT = "title_accent";
+    public static final String PREF_PROGRESS_TRAIL = "progress_trail";
     public static final String PREF_FALL_AWAY = "fall_away";
     public static final String PREF_GLASS_EDGE = "glass_edge";
     public static final String PREF_COLOR_JOURNEY = "color_journey";
@@ -392,6 +394,12 @@ public class SettingsActivity extends AppCompatActivity {
                 10, 190, prefs.getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100),
                 v -> String.valueOf(v), v -> prefs.edit().putInt(Constants.PREF_KEY_BLUR_INTENSITY, v).apply())
                 .withKey(Constants.PREF_KEY_BLUR_INTENSITY));
+        colors.rows.add(switchRow("Title accent line",
+                "A short line in the cover's color under the song title. It follows the color journey.",
+                PREF_TITLE_ACCENT, true, null));
+        colors.rows.add(switchRow("Progress trail",
+                "The played part of the progress bar fades in toward the dot, and the time labels light up in the last 10 seconds of a song.",
+                PREF_PROGRESS_TRAIL, true, null));
         colors.rows.add(switchRow("Background cross-fade",
                 "When the song changes, the blurred background melts into the next one instead of switching at once.",
                 PREF_BG_CROSSFADE, true, null));
@@ -937,6 +945,8 @@ public class SettingsActivity extends AppCompatActivity {
         e.putBoolean(PREF_SONG_MOMENT, full);
         e.putBoolean(PREF_GLASS_EDGE, full || clean);
         e.putBoolean(PREF_FALL_AWAY, full);
+        e.putBoolean(PREF_TITLE_ACCENT, full);
+        e.putBoolean(PREF_PROGRESS_TRAIL, full || clean);
         e.putBoolean(PREF_BG_CROSSFADE, full || clean);
         e.putBoolean(PREF_BG_GRAIN, full);
         e.putBoolean(PREF_COLOR_JOURNEY, full);

@@ -14,6 +14,9 @@ import android.widget.ProgressBar;
  * (the cover's accent when "Cover colors" is on). It draws itself, so the progress and tint code is unchanged.
  */
 public class GlowProgressBar extends ProgressBar {
+    /** Settings: the played part fades in from the start of the bar to the dot, like a trail. */
+    public static boolean trail = true;
+
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
 
@@ -44,8 +47,13 @@ public class GlowProgressBar extends ProgressBar {
         rect.set(left, cy - barH / 2, right, cy + barH / 2);
         canvas.drawRoundRect(rect, barH / 2, barH / 2, paint);
         paint.setColor(accent);
+        if (trail && x - left > barH) {
+            paint.setShader(new android.graphics.LinearGradient(left, 0, x, 0,
+                    (accent & 0x00FFFFFF) | 0x3A000000, accent, android.graphics.Shader.TileMode.CLAMP));
+        }
         rect.set(left, cy - barH / 2, Math.max(left + barH, x), cy + barH / 2);
         canvas.drawRoundRect(rect, barH / 2, barH / 2, paint);
+        paint.setShader(null);
         // Glow: two soft rings under the solid dot.
         paint.setColor((accent & 0x00FFFFFF) | 0x26000000);
         canvas.drawCircle(x, cy, dotR * 1.0f, paint);

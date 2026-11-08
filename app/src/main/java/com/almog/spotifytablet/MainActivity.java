@@ -145,6 +145,10 @@ public class MainActivity extends AppCompatActivity {
     private ImageView albumArt, backgroundBlur;
     private View backgroundGrain;
     private boolean bgCrossfade = true;
+    private View newTitleAccent;
+    private boolean titleAccentOn = true;
+    private boolean timeEndingOn = true;
+    private boolean timeEnding = false;
     private ProgressBar progressBar;
     private MaterialButton btnPlayPause, btnNext, btnPrev, btnVolUp, btnVolDown;
     private TextView shabbatTimeText, clockShabbatTimeText, clockHolidayText;
@@ -741,6 +745,7 @@ private void fetchJellyfinVolume() {
         newWeatherIcon = findViewById(R.id.newWeatherIcon);
         newTimeDisplayStart = findViewById(R.id.newTimeDisplayStart);
         newTimeDisplayEnd = findViewById(R.id.newTimeDisplayEnd);
+        newTitleAccent = findViewById(R.id.newTitleAccent);
         newClockHour = findViewById(R.id.newClockHour);
         newClockMinute = findViewById(R.id.newClockMinute);
 
@@ -1462,6 +1467,7 @@ private void fetchJellyfinVolume() {
             if (timeDisplay != null) timeDisplay.setText(currentTimeStr + " / " + endStr);
             if (newTimeDisplayStart != null) newTimeDisplayStart.setText(currentTimeStr);
             if (newTimeDisplayEnd != null) newTimeDisplayEnd.setText(endStr);
+            updateTimeEnding(ms, false);
         }
 
         if (lyricsViewModel != null) {
@@ -3580,6 +3586,27 @@ private void fetchJellyfinVolume() {
         handler.post(songUpdater);
     }
 
+    /** Colors the short line under the song title in the current theme color. */
+    private void paintTitleAccent(int color) {
+        if (newTitleAccent == null || !titleAccentOn) return;
+        android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
+        d.setCornerRadius(4f * getResources().getDisplayMetrics().density);
+        d.setColor(color != 0 ? color : 0x66FFFFFF);
+        newTitleAccent.setBackground(d);
+    }
+
+    /** In the last 10 seconds of a song the two time labels light up in a bright tint of the accent. */
+    private void updateTimeEnding(int ms, boolean force) {
+        boolean ending = timeEndingOn && durationMs > 0 && ms >= 0 && durationMs - ms <= 10_000 && durationMs > 20_000 && isPlaying;
+        if (!force && ending == timeEnding) return;
+        timeEnding = ending;
+        int base = 0xFFCCCCCC;
+        int accent = (coverThemeOn && coverAccent != 0) ? coverAccent : Color.WHITE;
+        int lit = androidx.core.graphics.ColorUtils.blendARGB(accent, Color.WHITE, 0.55f);
+        if (newTimeDisplayStart != null) newTimeDisplayStart.setTextColor(ending ? lit : base);
+        if (newTimeDisplayEnd != null) newTimeDisplayEnd.setTextColor(ending ? lit : base);
+    }
+
     /** Puts the new blurred cover behind the player, fading from the old one when the switch is on. */
     private void showBlurredBackground(Bitmap blurred) {
         Drawable old = backgroundBlur.getDrawable();
@@ -3751,6 +3778,15 @@ private void fetchJellyfinVolume() {
         GlassEdge.setAllShown(prefs.getBoolean(SettingsActivity.PREF_GLASS_EDGE, true));
         journeyOn = prefs.getBoolean(SettingsActivity.PREF_COLOR_JOURNEY, true);
         bgCrossfade = prefs.getBoolean(SettingsActivity.PREF_BG_CROSSFADE, true);
+        titleAccentOn = prefs.getBoolean(SettingsActivity.PREF_TITLE_ACCENT, true);
+        boolean trailOn = prefs.getBoolean(SettingsActivity.PREF_PROGRESS_TRAIL, true);
+        GlowProgressBar.trail = trailOn;
+        timeEndingOn = trailOn;
+        if (newLinearProgressBar != null) newLinearProgressBar.invalidate();
+        if (newTitleAccent != null) newTitleAccent.setVisibility(titleAccentOn ? View.VISIBLE : View.GONE);
+        paintTitleAccent(lastAppliedThemeColor == -1 ? 0 : lastAppliedThemeColor);
+        timeEnding = !timeEndingOn && timeEnding;
+        updateTimeEnding(progressMs, true);
         if (backgroundGrain != null) backgroundGrain.setVisibility(prefs.getBoolean(SettingsActivity.PREF_BG_GRAIN, true) ? View.VISIBLE : View.GONE);
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme theme =
                 com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE;
@@ -3927,6 +3963,7 @@ private void fetchJellyfinVolume() {
             return;
         }
         lastAppliedThemeColor = themeColor;
+        paintTitleAccent(themeColor);
         lastAppliedSource = source;
 
         runOnUiThread(() -> {
