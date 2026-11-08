@@ -202,6 +202,7 @@ public class MainActivity extends AppCompatActivity {
     private String lastCoverAnimated = "";
     private android.animation.ValueAnimator glowAnimator;
     private int glowColor = 0;
+    private int glowColor2 = 0;
     private TextView newSongTitle, newArtistName, newGreetingText, newWeatherText, newTimeDisplayStart, newTimeDisplayEnd, newVolumeText;
     private ImageView newWeatherIcon;
     private TextView newClockHour, newClockMinute;
@@ -1803,6 +1804,7 @@ private void fetchJellyfinVolume() {
             if (!coverOn) applyCoverColors(null);
             else lastBlurredTrackId = ""; // the next update reads the cover's colors again
         }
+        applyLyricsPanel(prefs.getBoolean(SettingsActivity.PREF_LYRICS_PANEL, true));
         holdScreenOn();
         android.content.IntentFilter screenFilter = new android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF);
         screenFilter.addAction(android.content.Intent.ACTION_SCREEN_ON);
@@ -3509,31 +3511,74 @@ private void fetchJellyfinVolume() {
         v.setAlpha(0.15f);
         v.setScaleX(0.94f);
         v.setScaleY(0.94f);
-        v.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(420)
+        // The square cover also straightens up from a slight tilt (the poster does not rotate).
+        v.setRotation(v == newAlbumFrame ? (Math.random() < 0.5 ? -2.5f : 2.5f) : 0f);
+        v.animate().alpha(1f).scaleX(1f).scaleY(1f).rotation(0f).setDuration(420)
                 .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
     }
 
-    /** The glow behind the blurred cover eases from the old accent to the new one. */
-    private void setAccentGlow(int color) {
+    /** The glow behind the blurred cover: the main accent rising from the bottom, the second color softly from the top. */
+    private void setAccentGlow(int color, int color2) {
         if (accentGlow == null) return;
         if (glowAnimator != null) glowAnimator.cancel();
-        final int from = glowColor;
+        final int from = glowColor, from2 = glowColor2;
         glowColor = color;
+        glowColor2 = color2;
         if (color == 0) { accentGlow.setVisibility(View.GONE); return; }
         if (clockOverlay == null || clockOverlay.getVisibility() != View.VISIBLE) accentGlow.setVisibility(View.VISIBLE);
         final int start = from == 0 ? (color & 0x00FFFFFF) : from;
-        final android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
-        g.setGradientType(android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT);
-        g.setGradientCenter(0.5f, 1.0f);
-        g.setGradientRadius(getResources().getDisplayMetrics().widthPixels * 0.8f);
-        accentGlow.setBackground(g);
-        glowAnimator = android.animation.ValueAnimator.ofObject(new android.animation.ArgbEvaluator(), start, color);
+        final int start2 = from2 == 0 ? (color2 & 0x00FFFFFF) : from2;
+        final float radius = getResources().getDisplayMetrics().widthPixels * 0.8f;
+        final android.graphics.drawable.GradientDrawable bottom = new android.graphics.drawable.GradientDrawable();
+        bottom.setGradientType(android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT);
+        bottom.setGradientCenter(0.5f, 1.0f);
+        bottom.setGradientRadius(radius);
+        final android.graphics.drawable.GradientDrawable top = new android.graphics.drawable.GradientDrawable();
+        top.setGradientType(android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT);
+        top.setGradientCenter(0.5f, 0.0f);
+        top.setGradientRadius(radius * 0.8f);
+        accentGlow.setBackground(new android.graphics.drawable.LayerDrawable(
+                new android.graphics.drawable.Drawable[]{bottom, top}));
+        final android.animation.ArgbEvaluator ev = new android.animation.ArgbEvaluator();
+        glowAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f);
         glowAnimator.setDuration(700);
         glowAnimator.addUpdateListener(a -> {
-            int c = (Integer) a.getAnimatedValue();
-            g.setColors(new int[]{(c & 0x00FFFFFF) | 0x66000000, c & 0x00FFFFFF});
+            float f = (Float) a.getAnimatedValue();
+            int c = (Integer) ev.evaluate(f, start, color);
+            int c2 = (Integer) ev.evaluate(f, start2, color2);
+            bottom.setColors(new int[]{(c & 0x00FFFFFF) | 0x66000000, c & 0x00FFFFFF});
+            top.setColors(new int[]{(c2 & 0x00FFFFFF) | 0x40000000, c2 & 0x00FFFFFF});
         });
         glowAnimator.start();
+    }
+
+    /** The frosted panel behind the lyrics (Modern and Poster layouts). */
+    private void applyLyricsPanel(boolean on) {
+        if (newLyricsContainer == null) return;
+        int pad = on ? Math.round(10 * getResources().getDisplayMetrics().density) : 0;
+        newLyricsContainer.setBackgroundResource(on ? R.drawable.lyrics_panel : 0);
+        newLyricsContainer.setPadding(pad, pad, pad, pad);
+    }
+
+    /** The square cover casts a soft shadow in the accent color (null puts the plain look back). */
+    private void applyCoverShadow(Integer accent) {
+        if (newAlbumArt == null || android.os.Build.VERSION.SDK_INT < 28) return;
+        float d = getResources().getDisplayMetrics().density;
+        if (accent == null) {
+            newAlbumArt.setElevation(0f);
+            newAlbumArt.setOutlineSpotShadowColor(Color.BLACK);
+            newAlbumArt.setOutlineAmbientShadowColor(Color.BLACK);
+            return;
+        }
+        // The shadow falls outside the picture, so the views around it must not clip it.
+        View p = newAlbumFrame;
+        for (int i = 0; i < 2 && p != null; i++) {
+            if (p instanceof ViewGroup) ((ViewGroup) p).setClipChildren(false);
+            p = p.getParent() instanceof View ? (View) p.getParent() : null;
+        }
+        newAlbumArt.setElevation(18 * d);
+        newAlbumArt.setOutlineSpotShadowColor(accent);
+        newAlbumArt.setOutlineAmbientShadowColor(accent);
     }
 
     /** A ring in the accent color shows while a transport button is pressed (null puts the plain buttons back). */
@@ -3588,7 +3633,8 @@ private void fetchJellyfinVolume() {
         coverAccent = on ? colors[0] : 0;
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setAccentArgb(on ? colors[0] : 0);
         if (clockMinuteView != null) clockMinuteView.setTextColor(on ? colors[1] : Color.WHITE);
-        setAccentGlow(on ? colors[0] : 0);
+        setAccentGlow(on ? colors[0] : 0, on ? colors[1] : 0);
+        applyCoverShadow(on ? Integer.valueOf(colors[0]) : null);
         // A slightly richer, darker blurred cover, so the lyrics stand out instead of sitting on a milky gray.
         if (backgroundBlur != null) {
             if (on) {

@@ -1,5 +1,6 @@
 package com.almog.spotifytablet.lyrics.mobile.canvas
 
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -14,6 +15,7 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.unit.dp
 import com.almog.spotifytablet.lyrics.mobile.RenderConfig
 import com.almog.spotifytablet.lyrics.mobile.animation.AppleMusicMotion
 import com.almog.spotifytablet.lyrics.mobile.animation.ElementState
@@ -344,6 +346,30 @@ internal fun boostedLift(yOffset: Float, boost: Float): Float =
     if (yOffset < 0f) yOffset * boost else yOffset
 
 /** Word/syllable-synced karaoke line. */
+/** A thin bar in the accent color beside the line being sung (it follows the singing from line to line). */
+private fun DrawScope.drawActiveBar(
+    layout: LineLayout,
+    lineAnim: LineAnimState,
+    lineStartX: Float,
+    scrollOffset: Float,
+    dynamicY: Float,
+    config: RenderConfig,
+) {
+    if (config.isAppleMusic || lineAnim.isBackground || lineAnim.state != ElementState.Active) return
+    val bw = 3.dp.toPx()
+    val gap = 10.dp.toPx()
+    val h = layout.height * 0.8f
+    val y = dynamicY + scrollOffset + (layout.height - h) / 2f
+    val x = if (layout.isRightAligned) lineStartX + layout.totalWidth + gap
+            else (lineStartX - gap - bw).coerceAtLeast(2.dp.toPx())
+    drawRoundRect(
+        color = LyricsTheme.glow().copy(alpha = 0.9f * lineAnim.opacity.coerceIn(0f, 1f)),
+        topLeft = Offset(x, y),
+        size = Size(bw, h),
+        cornerRadius = CornerRadius(bw / 2f),
+    )
+}
+
 internal fun DrawScope.drawStandardLine(
     layout: LineLayout,
     lineAnim: LineAnimState,
@@ -354,6 +380,7 @@ internal fun DrawScope.drawStandardLine(
 ) {
     val rtl = layout.isRtl
     val sourceWords = layout.line.words
+    drawActiveBar(layout, lineAnim, lineStartX, scrollOffset, dynamicY, config)
     // The line being sung grows a little (up to 4%), following the line's own fade-in so it never jumps.
     val grow = if (config.isAppleMusic) 1f else 1f + 0.04f * ((lineAnim.opacity - 0.5f) / 0.5f).coerceIn(0f, 1f)
     val growPivot = Offset(
@@ -678,6 +705,7 @@ internal fun DrawScope.drawLineModeLine(
         if (layout.isRightAligned) lineStartX + layout.totalWidth else lineStartX,
         dynamicY + scrollOffset + layout.height / 2f,
     )
+    drawActiveBar(layout, lineAnim, lineStartX, scrollOffset, dynamicY, config)
     withTransform({
         scale(lineAnim.scale, lineAnim.scale, pivot)
     }) {
