@@ -56,6 +56,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_COVER_REFLECTION = "cover_reflection";
     public static final String PREF_SONG_MOMENT = "song_moment";
     public static final String PREF_CHORUS_MODE = "chorus_mode";
+    public static final String PREF_COVER_DRIFT = "cover_drift";
     public static final String PREF_SINGER_COLORS = "singer_colors";
     public static final String PREF_DYNAMIC_SPACING = "lyrics_dynamic_spacing";
     public static final String PREF_PAUSE_DOTS = "lyrics_pause_dots_enabled";
@@ -305,11 +306,14 @@ public class SettingsActivity extends AppCompatActivity {
                 "When a new song starts, its title and artist show large over the lyrics for a moment.",
                 PREF_SONG_MOMENT, true, null));
         screen.rows.add(switchRow("Chorus mode",
-                "The chorus (lines that repeat) grows bigger while it is sung.",
+                "The chorus (lines that repeat) grows bigger while it is sung, and the glow behind the cover swells.",
                 PREF_CHORUS_MODE, true, null));
         screen.rows.add(switchRow("Singer colors",
                 "In duets the second singer's lines use a different color from the cover.",
                 PREF_SINGER_COLORS, true, null));
+        screen.rows.add(switchRow("Slow cover drift",
+                "The cover breathes almost invisibly while music plays. Off when the tablet is hot or in battery saver.",
+                PREF_COVER_DRIFT, true, null));
         screen.rows.add(sliderRow("Background blur",
                 "How strongly the album art is blurred behind the player.",
                 10, 190, prefs.getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100),

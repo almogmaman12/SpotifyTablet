@@ -199,6 +199,16 @@ public class MainActivity extends AppCompatActivity {
     private View accentGlow;
     private android.widget.ImageView posterCover;
     private boolean posterOn = false;
+    private boolean coverDriftOn = true;
+    private android.animation.ObjectAnimator coverDrift;
+    private float glowTargetAlpha = -1f;
+    private final Runnable visualTick = new Runnable() {
+        @Override public void run() {
+            updateChorusGlow();
+            syncCoverDrift();
+            if (activityResumed) handler.postDelayed(this, 500);
+        }
+    };
     private android.widget.ImageView coverReflection;
     private View songMoment;
     private TextView songMomentTitle, songMomentArtist;
@@ -1818,6 +1828,9 @@ private void fetchJellyfinVolume() {
         boolean reflect = prefs.getBoolean(SettingsActivity.PREF_COVER_REFLECTION, true);
         if (reflect != reflectionOn) { reflectionOn = reflect; setAlbumFrameVisibility(posterOn ? View.INVISIBLE : View.VISIBLE); lastBlurredTrackId = ""; }
         momentOn = prefs.getBoolean(SettingsActivity.PREF_SONG_MOMENT, true);
+        coverDriftOn = prefs.getBoolean(SettingsActivity.PREF_COVER_DRIFT, true);
+        handler.removeCallbacks(visualTick);
+        handler.post(visualTick);
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setChorusMode(prefs.getBoolean(SettingsActivity.PREF_CHORUS_MODE, true));
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setSingerColors(prefs.getBoolean(SettingsActivity.PREF_SINGER_COLORS, true));
         holdScreenOn();
@@ -1945,6 +1958,8 @@ private void fetchJellyfinVolume() {
         activityResumed = false;
         handler.removeCallbacks(memoryCleanup);
         collectGarbageSoon();
+        handler.removeCallbacks(visualTick);
+        syncCoverDrift();
         releaseScreenLock();
         try { unregisterReceiver(screenStateReceiver); } catch (Exception ignored) { }
     }
@@ -3527,6 +3542,46 @@ private void fetchJellyfinVolume() {
         handler.post(songUpdater);
     }
 
+    /** The glow behind the blurred cover swells during the chorus and settles back for the verses. */
+    private void updateChorusGlow() {
+        if (accentGlow == null || glowColor == 0) return;
+        boolean chorus = com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.chorusNow
+                && com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.getChorusMode() && isPlaying;
+        float target = chorus ? 1f : 0.75f; // the drawable is 33% stronger than before, so 0.75 is the old look
+        if (target == glowTargetAlpha) return;
+        glowTargetAlpha = target;
+        accentGlow.animate().alpha(target).setDuration(900).start();
+    }
+
+    /** The square cover breathes almost invisibly (a 3% zoom and a few pixels of drift over about 30 s). */
+    private void syncCoverDrift() {
+        boolean want = coverDriftOn && activityResumed && isPlaying && !posterOn && newAlbumArt != null
+                && PowerSettings.coolDownLevel() == 0 && !PowerSettings.slowPolling
+                && (clockOverlay == null || clockOverlay.getVisibility() != View.VISIBLE);
+        if (want && coverDrift == null) {
+            float d = getResources().getDisplayMetrics().density;
+            coverDrift = android.animation.ObjectAnimator.ofPropertyValuesHolder(newAlbumArt,
+                    android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.03f),
+                    android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.03f),
+                    android.animation.PropertyValuesHolder.ofFloat(View.TRANSLATION_X, 0f, 3f * d),
+                    android.animation.PropertyValuesHolder.ofFloat(View.TRANSLATION_Y, 0f, -2f * d));
+            coverDrift.setDuration(28000);
+            coverDrift.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+            coverDrift.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+            coverDrift.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+            coverDrift.start();
+        } else if (!want && coverDrift != null) {
+            coverDrift.cancel();
+            coverDrift = null;
+            if (newAlbumArt != null) {
+                newAlbumArt.setScaleX(1f);
+                newAlbumArt.setScaleY(1f);
+                newAlbumArt.setTranslationX(0f);
+                newAlbumArt.setTranslationY(0f);
+            }
+        }
+    }
+
     /** The square cover and its reflection show and hide together. */
     private void setAlbumFrameVisibility(int visibility) {
         if (newAlbumFrame != null) newAlbumFrame.setVisibility(visibility);
@@ -3600,8 +3655,8 @@ private void fetchJellyfinVolume() {
             float f = (Float) a.getAnimatedValue();
             int c = (Integer) ev.evaluate(f, start, color);
             int c2 = (Integer) ev.evaluate(f, start2, color2);
-            bottom.setColors(new int[]{(c & 0x00FFFFFF) | 0x66000000, c & 0x00FFFFFF});
-            top.setColors(new int[]{(c2 & 0x00FFFFFF) | 0x40000000, c2 & 0x00FFFFFF});
+            bottom.setColors(new int[]{(c & 0x00FFFFFF) | 0x88000000, c & 0x00FFFFFF});
+            top.setColors(new int[]{(c2 & 0x00FFFFFF) | 0x55000000, c2 & 0x00FFFFFF});
         });
         glowAnimator.start();
     }

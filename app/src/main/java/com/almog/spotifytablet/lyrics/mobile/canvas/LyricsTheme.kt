@@ -26,6 +26,9 @@ object LyricsTheme {
     /** Set by the renderer for the line it is drawing now: true when that line belongs to the second singer. */
     @JvmField var drawingSecond: Boolean = false
 
+    /** True while the line being sung belongs to a chorus (set by the renderer, read now and then by the activity). */
+    @JvmField @Volatile var chorusNow: Boolean = false
+
     private fun current(): Int = if (drawingSecond && singerColors && accent2Argb != 0) accent2Argb else accentArgb
 
     /** The sung text: white with a clear tint of the accent, so it stays easy to read on the dark background. */

@@ -251,6 +251,7 @@ internal fun DrawScope.drawInterludeGroup(
     dynamicY: Float,
 ) {
     LyricsTheme.drawingSecond = false
+    if (lineAnim.state == ElementState.Active) LyricsTheme.chorusNow = false
     // Widened past 1 (but not below 0 — a negative scale would mirror-flip the dots) so the
     // overshoot collapse curve (DOT_GROUP_COLLAPSE_EASING) stays visible.
     val groupScale = (lineAnim.scale * lineAnim.groupScale).coerceIn(0f, 1.3f)
@@ -394,6 +395,7 @@ internal fun DrawScope.drawStandardLine(
     config: RenderConfig,
 ) {
     LyricsTheme.drawingSecond = layout.oppositeAligned
+    if (lineAnim.state == ElementState.Active && !layout.isBackground) LyricsTheme.chorusNow = layout.isRepeated
     val rtl = layout.isRtl
     val sourceWords = layout.line.words
     drawActiveBar(layout, lineAnim, lineStartX, scrollOffset, dynamicY, config)
