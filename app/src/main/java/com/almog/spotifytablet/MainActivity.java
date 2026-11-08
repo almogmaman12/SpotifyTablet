@@ -143,6 +143,8 @@ public class MainActivity extends AppCompatActivity {
     private RelativeLayout clockOverlay;
     private View clockContent;
     private ImageView albumArt, backgroundBlur;
+    private View backgroundGrain;
+    private boolean bgCrossfade = true;
     private ProgressBar progressBar;
     private MaterialButton btnPlayPause, btnNext, btnPrev, btnVolUp, btnVolDown;
     private TextView shabbatTimeText, clockShabbatTimeText, clockHolidayText;
@@ -781,6 +783,8 @@ private void fetchJellyfinVolume() {
         clockOverlay = findViewById(R.id.clockOverlay);
         clockContent = findViewById(R.id.clockContent);
         backgroundBlur = findViewById(R.id.backgroundBlur);
+        backgroundGrain = findViewById(R.id.backgroundGrain);
+        if (backgroundGrain != null) backgroundGrain.setBackground(new GrainDrawable());
         oldAlbumFrame = findViewById(R.id.albumFrame);
         albumArt = findViewById(R.id.albumArt);
         progressBar = findViewById(R.id.progressFrameBar);
@@ -2216,7 +2220,7 @@ private void fetchJellyfinVolume() {
                                         runOnUiThread(() -> {
                                             // A newer song may have arrived while this one was blurring.
                                             if (isDestroyed() || generation != blurGeneration || backgroundBlur == null) return;
-                                            backgroundBlur.setImageBitmap(blurred);
+                                            showBlurredBackground(blurred);
                                         });
                                     });
                                 }
@@ -3576,6 +3580,24 @@ private void fetchJellyfinVolume() {
         handler.post(songUpdater);
     }
 
+    /** Puts the new blurred cover behind the player, fading from the old one when the switch is on. */
+    private void showBlurredBackground(Bitmap blurred) {
+        Drawable old = backgroundBlur.getDrawable();
+        if (old instanceof android.graphics.drawable.TransitionDrawable) {
+            // A fade is still running: continue from the picture it was fading to.
+            old = ((android.graphics.drawable.TransitionDrawable) old).getDrawable(1);
+        }
+        if (!bgCrossfade || old == null || !hasWindowFocus()) {
+            backgroundBlur.setImageBitmap(blurred);
+            return;
+        }
+        android.graphics.drawable.TransitionDrawable fade = new android.graphics.drawable.TransitionDrawable(
+                new Drawable[]{old, new android.graphics.drawable.BitmapDrawable(getResources(), blurred)});
+        fade.setCrossFadeEnabled(true);
+        backgroundBlur.setImageDrawable(fade);
+        fade.startTransition(900);
+    }
+
     /** Over a song the accent slowly moves from the cover's main color to its second color (a new step every 5% of the song). */
     private void updateColorJourney() {
         if (!journeyOn || coverColors == null || !coverThemeOn || newLinearProgressBar == null) return;
@@ -3728,6 +3750,8 @@ private void fetchJellyfinVolume() {
         }
         GlassEdge.setAllShown(prefs.getBoolean(SettingsActivity.PREF_GLASS_EDGE, true));
         journeyOn = prefs.getBoolean(SettingsActivity.PREF_COLOR_JOURNEY, true);
+        bgCrossfade = prefs.getBoolean(SettingsActivity.PREF_BG_CROSSFADE, true);
+        if (backgroundGrain != null) backgroundGrain.setVisibility(prefs.getBoolean(SettingsActivity.PREF_BG_GRAIN, true) ? View.VISIBLE : View.GONE);
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme theme =
                 com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE;
         theme.setActiveBar(prefs.getBoolean(SettingsActivity.PREF_ACTIVE_BAR, true));

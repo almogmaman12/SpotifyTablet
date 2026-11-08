@@ -60,6 +60,8 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_HOLIDAY_THEMES = "holiday_themes";
     public static final String PREF_HOLIDAY_PREVIEW = "holiday_preview";
     public static final String PREF_ACTIVE_BAR = "active_bar";
+    public static final String PREF_BG_CROSSFADE = "bg_crossfade";
+    public static final String PREF_BG_GRAIN = "bg_grain";
     public static final String PREF_FALL_AWAY = "fall_away";
     public static final String PREF_GLASS_EDGE = "glass_edge";
     public static final String PREF_COLOR_JOURNEY = "color_journey";
@@ -390,6 +392,12 @@ public class SettingsActivity extends AppCompatActivity {
                 10, 190, prefs.getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100),
                 v -> String.valueOf(v), v -> prefs.edit().putInt(Constants.PREF_KEY_BLUR_INTENSITY, v).apply())
                 .withKey(Constants.PREF_KEY_BLUR_INTENSITY));
+        colors.rows.add(switchRow("Background cross-fade",
+                "When the song changes, the blurred background melts into the next one instead of switching at once.",
+                PREF_BG_CROSSFADE, true, null));
+        colors.rows.add(switchRow("Film grain",
+                "A very fine, still grain over the background. It hides the color bands of a soft blur on an older screen.",
+                PREF_BG_GRAIN, true, null));
         colors.rows.add(switchRow("Efficient background blur",
                 "Blurs the album art once instead of on every frame. Looks the same and keeps the tablet cooler. Turn off only if the background looks wrong.",
                 "efficient_blur", true, null));
@@ -929,6 +937,8 @@ public class SettingsActivity extends AppCompatActivity {
         e.putBoolean(PREF_SONG_MOMENT, full);
         e.putBoolean(PREF_GLASS_EDGE, full || clean);
         e.putBoolean(PREF_FALL_AWAY, full);
+        e.putBoolean(PREF_BG_CROSSFADE, full || clean);
+        e.putBoolean(PREF_BG_GRAIN, full);
         e.putBoolean(PREF_COLOR_JOURNEY, full);
         e.remove(PREF_ACCENT_STRENGTH).remove(PREF_GLOW_STRENGTH).remove(PREF_LINE_GROW).remove(PREF_CHORUS_GROW)
                 .remove(PREF_PANEL_STRENGTH).remove(PREF_SONG_MOMENT_TENTHS);

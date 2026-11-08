@@ -19,6 +19,17 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <!-- A fine, still film grain over the blurred cover (off or on in Settings). -->
+    <View
+        android:id="@+id/backgroundGrain"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <!-- The cover's accent as a soft glow rising from the bottom, over the blurred cover (colored in code). -->
     <View
         android:id="@+id/accentGlow"
