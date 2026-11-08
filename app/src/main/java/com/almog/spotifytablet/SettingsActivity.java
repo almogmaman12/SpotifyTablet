@@ -50,6 +50,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_HOME_STYLE = "home_screen_style";
     public static final String STYLE_OLD = "old";
     public static final String STYLE_NEW = "new";
+    public static final String STYLE_POSTER = "poster";
     public static final String PREF_KEEP_SCREEN_ON = "keep_screen_on";
     public static final String PREF_DYNAMIC_SPACING = "lyrics_dynamic_spacing";
     public static final String PREF_PAUSE_DOTS = "lyrics_pause_dots_enabled";
@@ -276,9 +277,9 @@ public class SettingsActivity extends AppCompatActivity {
         Section display = new Section("Display", "🖥", "Appearance", "Layout, clock, always-on display and the screen itself.");
         Group layout = new Group("Layout");
         layout.rows.add(segmentRow("Home layout",
-                "Modern Split has the lyrics stage with controls and clock on the left.",
+                "Modern Split has the lyrics stage with controls and clock on the left. Poster is the same with the cover as a big faded picture.",
                 PREF_HOME_STYLE, STYLE_NEW,
-                new String[]{"Modern Split", "Classic"}, new String[]{STYLE_NEW, STYLE_OLD}));
+                new String[]{"Modern Split", "Poster", "Classic"}, new String[]{STYLE_NEW, STYLE_POSTER, STYLE_OLD}));
         display.groups.add(layout);
         Group screen = new Group("Screen");
         screen.rows.add(switchRow("Keep screen on",

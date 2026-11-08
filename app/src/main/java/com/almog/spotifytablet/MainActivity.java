@@ -196,6 +196,12 @@ public class MainActivity extends AppCompatActivity {
     private View newAlbumFrame, oldAlbumFrame, newSongInfoContainer;
     private ImageView newAlbumArt;
     private ProgressBar newLinearProgressBar;
+    private View accentGlow;
+    private android.widget.ImageView posterCover;
+    private boolean posterOn = false;
+    private String lastCoverAnimated = "";
+    private android.animation.ValueAnimator glowAnimator;
+    private int glowColor = 0;
     private TextView newSongTitle, newArtistName, newGreetingText, newWeatherText, newTimeDisplayStart, newTimeDisplayEnd, newVolumeText;
     private ImageView newWeatherIcon;
     private TextView newClockHour, newClockMinute;
@@ -656,6 +662,14 @@ private void fetchJellyfinVolume() {
             if (oldMainContent != null) oldMainContent.setVisibility(View.GONE);
             if (newMainContent != null) newMainContent.setVisibility(View.VISIBLE);
         }
+        // Poster layout: the Modern layout with the cover as a big faded poster on the left instead of the square cover.
+        boolean poster = SettingsActivity.STYLE_POSTER.equals(currentHomeStyle);
+        if (poster != posterOn) {
+            posterOn = poster;
+            if (posterCover != null) posterCover.setVisibility(poster ? View.VISIBLE : View.GONE);
+            if (newAlbumFrame != null) newAlbumFrame.setVisibility(poster ? View.INVISIBLE : View.VISIBLE);
+            lastBlurredTrackId = ""; // the next update loads the cover into the poster
+        }
         // Only the visible layout's lyrics view should compose (the hidden one wasted CPU/battery).
         boolean oldStyle = SettingsActivity.STYLE_OLD.equals(currentHomeStyle);
         com.almog.spotifytablet.lyrics.bridge.LyricsComposeBridge.setActive(lyricsComposeView, oldStyle);
@@ -682,6 +696,8 @@ private void fetchJellyfinVolume() {
         newSongInfoContainer = findViewById(R.id.newSongInfoContainer);
         newAlbumArt = findViewById(R.id.newAlbumArt);
         newLinearProgressBar = findViewById(R.id.newLinearProgressBar);
+        accentGlow = findViewById(R.id.accentGlow);
+        posterCover = findViewById(R.id.posterCover);
         newSongTitle = findViewById(R.id.newSongTitle);
         newArtistName = findViewById(R.id.newArtistName);
         newGreetingText = findViewById(R.id.newGreetingText);
@@ -2103,11 +2119,25 @@ private void fetchJellyfinVolume() {
                                         coverRatio = (float) r.getIntrinsicWidth() / r.getIntrinsicHeight();
                                         applyCoverShape();
                                     }
+                                    // A new cover eases in (a short fade and settle) instead of swapping.
+                                    if (!img.equals(lastCoverAnimated)) {
+                                        lastCoverAnimated = img;
+                                        animateCoverIn(posterOn ? posterCover : newAlbumFrame);
+                                    }
                                     DebugLog.i("Cover", "loaded " + r.getIntrinsicWidth() + "x" + r.getIntrinsicHeight() + " from " + src);
                                     return false;
                                 }
                             })
                             .into(newAlbumArt);
+                }
+
+                if (posterOn && posterCover != null) {
+                    // Same request as the square cover, so Glide shares the one decoded picture.
+                    Glide.with(glideContext()).load(img)
+                            .override(1280, 1280)
+                            .downsample(com.bumptech.glide.load.resource.bitmap.DownsampleStrategy.AT_MOST)
+                            .dontTransform()
+                            .into(posterCover);
                 }
 
                 if (PowerSettings.noBackgroundBlur) {
@@ -2201,7 +2231,13 @@ private void fetchJellyfinVolume() {
                     oldAlbumFrame.setVisibility(show ? View.GONE : View.VISIBLE);
                 }
                 if (newAlbumFrame != null) {
-                    newAlbumFrame.setVisibility(show ? View.GONE : View.VISIBLE);
+                    newAlbumFrame.setVisibility(show ? View.GONE : (posterOn ? View.INVISIBLE : View.VISIBLE));
+                }
+                if (posterCover != null) {
+                    posterCover.setVisibility(show || !posterOn ? View.GONE : View.VISIBLE);
+                }
+                if (accentGlow != null) {
+                    accentGlow.setVisibility(show || glowColor == 0 ? View.GONE : View.VISIBLE);
                 }
             }
 
@@ -3467,6 +3503,56 @@ private void fetchJellyfinVolume() {
         handler.post(songUpdater);
     }
 
+    private void animateCoverIn(View v) {
+        if (v == null || PowerSettings.slowPolling) return;
+        v.animate().cancel();
+        v.setAlpha(0.15f);
+        v.setScaleX(0.94f);
+        v.setScaleY(0.94f);
+        v.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(420)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+    }
+
+    /** The glow behind the blurred cover eases from the old accent to the new one. */
+    private void setAccentGlow(int color) {
+        if (accentGlow == null) return;
+        if (glowAnimator != null) glowAnimator.cancel();
+        final int from = glowColor;
+        glowColor = color;
+        if (color == 0) { accentGlow.setVisibility(View.GONE); return; }
+        if (clockOverlay == null || clockOverlay.getVisibility() != View.VISIBLE) accentGlow.setVisibility(View.VISIBLE);
+        final int start = from == 0 ? (color & 0x00FFFFFF) : from;
+        final android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+        g.setGradientType(android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT);
+        g.setGradientCenter(0.5f, 1.0f);
+        g.setGradientRadius(getResources().getDisplayMetrics().widthPixels * 0.8f);
+        accentGlow.setBackground(g);
+        glowAnimator = android.animation.ValueAnimator.ofObject(new android.animation.ArgbEvaluator(), start, color);
+        glowAnimator.setDuration(700);
+        glowAnimator.addUpdateListener(a -> {
+            int c = (Integer) a.getAnimatedValue();
+            g.setColors(new int[]{(c & 0x00FFFFFF) | 0x66000000, c & 0x00FFFFFF});
+        });
+        glowAnimator.start();
+    }
+
+    /** A ring in the accent color shows while a transport button is pressed (null puts the plain buttons back). */
+    private void applyButtonRings(Integer accent) {
+        View[] buttons = {newBtnPrev, newBtnPlayPause, newBtnNext, btnPrev, btnPlayPause, btnNext};
+        for (View b : buttons) {
+            if (b == null) continue;
+            if (accent == null) { b.setForeground(null); continue; }
+            android.graphics.drawable.GradientDrawable ring = new android.graphics.drawable.GradientDrawable();
+            ring.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            ring.setColor((accent & 0x00FFFFFF) | 0x2A000000);
+            ring.setStroke(Math.round(3 * getResources().getDisplayMetrics().density), (accent & 0x00FFFFFF) | 0xDD000000);
+            android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
+            states.addState(new int[]{android.R.attr.state_pressed}, ring);
+            states.addState(new int[]{}, new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            b.setForeground(states);
+        }
+    }
+
     // "Cover colors": 2-3 colors taken from the cover, used for the lyrics, progress bar, borders and the clock minutes.
     private boolean coverThemeOn = true;
     private int coverAccent = 0;
@@ -3502,6 +3588,8 @@ private void fetchJellyfinVolume() {
         coverAccent = on ? colors[0] : 0;
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setAccentArgb(on ? colors[0] : 0);
         if (clockMinuteView != null) clockMinuteView.setTextColor(on ? colors[1] : Color.WHITE);
+        setAccentGlow(on ? colors[0] : 0);
+        applyButtonRings(on ? Integer.valueOf(colors[0]) : null);
         updateSourceTheme(mediaSource);
     }
 
