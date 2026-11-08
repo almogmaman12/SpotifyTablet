@@ -357,7 +357,7 @@ private fun DrawScope.drawActiveBar(
     dynamicY: Float,
     config: RenderConfig,
 ) {
-    if (config.isAppleMusic || lineAnim.isBackground) return
+    if (!LyricsTheme.activeBar || config.isAppleMusic || lineAnim.isBackground) return
     if (lineAnim.state != ElementState.Active) return
     val bw = 3.dp.toPx()
     val gap = 10.dp.toPx()
@@ -388,9 +388,10 @@ internal fun DrawScope.drawStandardLine(
     drawActiveBar(layout, lineAnim, lineStartX, scrollOffset, dynamicY, config)
     // The line being sung grows a little (up to 4%), following the line's own fade-in so it never jumps.
     // The chorus (repeated lines) grows more, as far as the line still fits the column.
+    val baseGrow = 1f + LyricsTheme.lineGrowPct / 100f
     val peak = if (LyricsTheme.chorusMode && layout.isRepeated && layout.maxRowWidth > 0f && layout.contentWidth > 0f) {
-        maxOf(1.04f, minOf(1.16f, layout.contentWidth / layout.maxRowWidth))
-    } else 1.04f
+        maxOf(baseGrow, minOf(1f + LyricsTheme.chorusGrowPct / 100f, layout.contentWidth / layout.maxRowWidth))
+    } else baseGrow
     val grow = if (config.isAppleMusic) 1f else 1f + (peak - 1f) * ((lineAnim.opacity - 0.5f) / 0.5f).coerceIn(0f, 1f)
     val growPivot = Offset(
         if (layout.isRightAligned) lineStartX + layout.totalWidth else lineStartX,
