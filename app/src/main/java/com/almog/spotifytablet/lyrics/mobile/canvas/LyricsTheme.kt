@@ -26,6 +26,12 @@ object LyricsTheme {
     /** Settings: the thin bar beside the line being sung. */
     var activeBar: Boolean by mutableStateOf(true)
 
+    /** Settings (experimental): the line that becomes active drops in from slightly above and settles with a small overshoot. */
+    var lineLanding: Boolean by mutableStateOf(false)
+
+    /** Settings (experimental): held words stretch a little wider while they are held. */
+    var noteStretch: Boolean by mutableStateOf(false)
+
     /** Settings: sung lines drift upward and blur more as they fall behind. */
     var fallAway: Boolean by mutableStateOf(true)
 

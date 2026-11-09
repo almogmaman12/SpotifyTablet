@@ -3792,6 +3792,13 @@ private void fetchJellyfinVolume() {
                 com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE;
         theme.setActiveBar(prefs.getBoolean(SettingsActivity.PREF_ACTIVE_BAR, true));
         theme.setFallAway(prefs.getBoolean(SettingsActivity.PREF_FALL_AWAY, true));
+        theme.setLineLanding(prefs.getBoolean(SettingsActivity.PREF_LINE_LANDING, false));
+        theme.setNoteStretch(prefs.getBoolean(SettingsActivity.PREF_NOTE_STRETCH, false));
+        int vignette = prefs.getInt(SettingsActivity.PREF_BG_VIGNETTE, 35);
+        if (vignette != BackgroundBlur.vignettePct) {
+            BackgroundBlur.vignettePct = vignette;
+            lastBlurredTrackId = ""; // the next update blurs the cover again with the new edge
+        }
         theme.setLineGrowPct(prefs.getInt(SettingsActivity.PREF_LINE_GROW, 4));
         theme.setChorusGrowPct(prefs.getInt(SettingsActivity.PREF_CHORUS_GROW, 16));
         theme.setTintPct(prefs.getInt(SettingsActivity.PREF_ACCENT_STRENGTH, 55));

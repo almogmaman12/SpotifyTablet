@@ -15,6 +15,9 @@ public final class BackgroundBlur {
     /** The blurred copy is this many times smaller than the screen. */
     private static final int DOWNSCALE = 8;
 
+    /** Settings: how dark the edges of the background get, in percent (0 is off). Read on the blur thread. */
+    public static volatile int vignettePct = 0;
+
     private BackgroundBlur() {}
 
     // Two small bitmaps used in turn (one is on screen while the other is drawn into), and one pixel buffer, so a new
@@ -47,6 +50,16 @@ public final class BackgroundBlur {
         small.getPixels(px, 0, tw, 0, 0, tw, th);
         BlurMath.gaussian(px, tw, th, sigmaPx / DOWNSCALE);
         small.setPixels(px, 0, tw, 0, 0, tw, th);
+        int v = vignettePct;
+        if (v > 0) {
+            // Darkens the corners smoothly, inside the picture itself, so there is never an edge over the lyrics.
+            float r = (float) Math.hypot(tw, th) / 2f;
+            Paint vp = new Paint(Paint.ANTI_ALIAS_FLAG);
+            vp.setShader(new android.graphics.RadialGradient(tw / 2f, th / 2f, r,
+                    new int[]{0x00000000, 0x00000000, ((int) (Math.min(100, v) * 2.2f) << 24)},
+                    new float[]{0f, 0.45f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+            new Canvas(small).drawRect(0, 0, tw, th, vp);
+        }
         return small;
     }
 }
