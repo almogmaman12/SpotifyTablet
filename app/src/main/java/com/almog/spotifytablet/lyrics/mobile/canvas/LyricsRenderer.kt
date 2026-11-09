@@ -357,7 +357,7 @@ private fun DrawScope.drawActiveBar(
     dynamicY: Float,
     config: RenderConfig,
 ) {
-    if (config.isAppleMusic || lineAnim.isBackground) return
+    if (!LyricsTheme.activeBar || config.isAppleMusic || lineAnim.isBackground) return
     if (lineAnim.state != ElementState.Active) return
     val bw = 3.dp.toPx()
     val gap = 10.dp.toPx()
@@ -388,15 +388,20 @@ internal fun DrawScope.drawStandardLine(
     drawActiveBar(layout, lineAnim, lineStartX, scrollOffset, dynamicY, config)
     // The line being sung grows a little (up to 4%), following the line's own fade-in so it never jumps.
     // The chorus (repeated lines) grows more, as far as the line still fits the column.
+    val baseGrow = 1f + LyricsTheme.lineGrowPct / 100f
     val peak = if (LyricsTheme.chorusMode && layout.isRepeated && layout.maxRowWidth > 0f && layout.contentWidth > 0f) {
-        maxOf(1.04f, minOf(1.16f, layout.contentWidth / layout.maxRowWidth))
-    } else 1.04f
+        maxOf(baseGrow, minOf(1f + LyricsTheme.chorusGrowPct / 100f, layout.contentWidth / layout.maxRowWidth))
+    } else baseGrow
     val grow = if (config.isAppleMusic) 1f else 1f + (peak - 1f) * ((lineAnim.opacity - 0.5f) / 0.5f).coerceIn(0f, 1f)
     val growPivot = Offset(
         if (layout.isRightAligned) lineStartX + layout.totalWidth else lineStartX,
         dynamicY + scrollOffset + layout.height / 2f,
     )
-    withTransform({ scale(grow, grow, growPivot) }) {
+    // Sung lines fall away: the further behind they are (the distance blur grows with it), the higher they drift and the softer they get.
+    val falling = LyricsTheme.fallAway && !config.isAppleMusic && lineAnim.state == ElementState.Sung && !lineAnim.isBackground
+    val fallBlur = if (falling) lineAnim.blur * 1.5f else lineAnim.blur
+    val fallLift = if (falling) -minOf(lineAnim.blur, 6f) * 1.2f * cssPx(layout.words.firstOrNull()?.textLayoutResult ?: return, false) else 0f
+    withTransform({ scale(grow, grow, growPivot); if (fallLift != 0f) translate(top = fallLift) }) {
     layout.words.forEach { wLayout ->
         val wordAnim = lineAnim.wordStates.getOrNull(wLayout.sourceWordIndex) ?: return@forEach
         val anchor = scaleAnchor(
@@ -409,7 +414,7 @@ internal fun DrawScope.drawStandardLine(
         val textWidth = wLayout.textLayoutResult.size.width.toFloat()
         val textHeight = wLayout.textLayoutResult.size.height.toFloat()
 
-        val paintPlan = lyricPaintPlan(lineAnim.state, lineAnim.isBackground, lineAnim.opacity, lineAnim.blur, config, lit = lineAnim.lit)
+        val paintPlan = lyricPaintPlan(lineAnim.state, lineAnim.isBackground, lineAnim.opacity, fallBlur, config, lit = lineAnim.lit)
 
         val wordText = sourceWords.getOrNull(wLayout.sourceWordIndex)?.text.orEmpty()
         when {

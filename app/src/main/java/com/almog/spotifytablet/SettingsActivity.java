@@ -58,6 +58,23 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_CHORUS_MODE = "chorus_mode";
     public static final String PREF_COVER_DRIFT = "cover_drift";
     public static final String PREF_HOLIDAY_THEMES = "holiday_themes";
+    public static final String PREF_HOLIDAY_PREVIEW = "holiday_preview";
+    public static final String PREF_ACTIVE_BAR = "active_bar";
+    public static final String PREF_BG_CROSSFADE = "bg_crossfade";
+    public static final String PREF_BG_GRAIN = "bg_grain";
+    public static final String PREF_TITLE_ACCENT = "title_accent";
+    public static final String PREF_PROGRESS_TRAIL = "progress_trail";
+    public static final String PREF_FALL_AWAY = "fall_away";
+    public static final String PREF_GLASS_EDGE = "glass_edge";
+    public static final String PREF_COLOR_JOURNEY = "color_journey";
+    public static final String PREF_LINE_GROW = "line_grow_pct";
+    public static final String PREF_CHORUS_GROW = "chorus_grow_pct";
+    public static final String PREF_ACCENT_STRENGTH = "accent_strength_pct";
+    public static final String PREF_GLOW = "cover_glow";
+    public static final String PREF_GLOW_STRENGTH = "glow_strength_pct";
+    public static final String PREF_PANEL_STRENGTH = "panel_strength_pct";
+    public static final String PREF_SONG_MOMENT_TENTHS = "song_moment_tenths";
+    public static final String PREF_POSTER_WIDTH = "poster_width_pct";
     public static final String PREF_SINGER_COLORS = "singer_colors";
     public static final String PREF_DYNAMIC_SPACING = "lyrics_dynamic_spacing";
     public static final String PREF_PAUSE_DOTS = "lyrics_pause_dots_enabled";
@@ -294,38 +311,6 @@ public class SettingsActivity extends AppCompatActivity {
                     if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                     else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                 }));
-        screen.rows.add(switchRow("Cover colors",
-                "The lyrics, progress bar and clock minutes take their color from the album cover.",
-                CoverTheme.PREF, true, null));
-        screen.rows.add(switchRow("Glass lyrics panel",
-                "A light frosted panel behind the lyrics, like the clock and button cards.",
-                PREF_LYRICS_PANEL, true, null));
-        screen.rows.add(switchRow("Cover reflection",
-                "A faint mirror image of the cover's bottom edge under the picture.",
-                PREF_COVER_REFLECTION, true, null));
-        screen.rows.add(switchRow("Song-change title",
-                "When a new song starts, its title and artist show large over the lyrics for a moment.",
-                PREF_SONG_MOMENT, true, null));
-        screen.rows.add(switchRow("Chorus mode",
-                "The chorus (lines that repeat) grows bigger while it is sung, and the glow behind the cover swells.",
-                PREF_CHORUS_MODE, true, null));
-        screen.rows.add(switchRow("Singer colors",
-                "In duets the second singer's lines use a different color from the cover.",
-                PREF_SINGER_COLORS, true, null));
-        screen.rows.add(switchRow("Slow cover drift",
-                "The cover breathes almost invisibly while music plays. Off when the tablet is hot or in battery saver.",
-                PREF_COVER_DRIFT, true, null));
-        screen.rows.add(switchRow("Holiday clock themes",
-                "On Hanukkah, Rosh Hashanah, Sukkot, Purim, Pesach, Shavuot and the memorial and independence days, the clock screen shows the holiday's greeting (Hanukkah with the candles for the night).",
-                PREF_HOLIDAY_THEMES, true, null));
-        screen.rows.add(sliderRow("Background blur",
-                "How strongly the album art is blurred behind the player.",
-                10, 190, prefs.getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100),
-                v -> String.valueOf(v), v -> prefs.edit().putInt(Constants.PREF_KEY_BLUR_INTENSITY, v).apply())
-                .withKey(Constants.PREF_KEY_BLUR_INTENSITY));
-        screen.rows.add(switchRow("Efficient background blur",
-                "Blurs the album art once instead of on every frame. Looks the same and keeps the tablet cooler. Turn off only if the background looks wrong.",
-                "efficient_blur", true, null));
         screen.rows.add(segmentRow("Clock format",
                 "12-hour or 24-hour time on the clock. \"System\" follows the tablet's own setting.",
                 ClockFormat.PREF_CLOCK_FORMAT, "24",
@@ -377,6 +362,136 @@ public class SettingsActivity extends AppCompatActivity {
                 }));
         display.groups.add(startup);
         sections.add(display);
+
+        // ---- Looks (everything visual that goes beyond the basic layout) ----
+        Section looks = new Section("Looks", "✨", "Appearance",
+                "Colors from the cover, glow, lyric effects and the extras around the player. Each has its own strength.");
+        Group colors = new Group("Colors and glow");
+        colors.rows.add(switchRow("Cover colors",
+                "The lyrics, progress bar, buttons and clock minutes take their color from the album cover.",
+                CoverTheme.PREF, true, null));
+        colors.rows.add(sliderRow("Lyrics color strength",
+                "How strongly the sung words lean to the cover's color. 55 is the default, 0 keeps them white.",
+                0, 100, prefs.getInt(PREF_ACCENT_STRENGTH, 55),
+                v -> v + "%", v -> prefs.edit().putInt(PREF_ACCENT_STRENGTH, v).apply())
+                .withKey(PREF_ACCENT_STRENGTH));
+        colors.rows.add(switchRow("Color journey",
+                "Over the course of a song the accent slowly moves from the cover's main color to its second color.",
+                PREF_COLOR_JOURNEY, true, null));
+        colors.rows.add(switchRow("Cover glow",
+                "A soft glow of the cover's colors behind the blurred background.",
+                PREF_GLOW, true, null));
+        colors.rows.add(sliderRow("Glow strength",
+                "How bright the glow is. It swells during the chorus.",
+                30, 150, prefs.getInt(PREF_GLOW_STRENGTH, 100),
+                v -> v + "%", v -> prefs.edit().putInt(PREF_GLOW_STRENGTH, v).apply())
+                .withKey(PREF_GLOW_STRENGTH));
+        colors.rows.add(switchRow("Singer colors",
+                "In duets the second singer's lines use a different color from the cover.",
+                PREF_SINGER_COLORS, true, null));
+        colors.rows.add(sliderRow("Background blur",
+                "How strongly the album art is blurred behind the player.",
+                10, 190, prefs.getInt(Constants.PREF_KEY_BLUR_INTENSITY, 100),
+                v -> String.valueOf(v), v -> prefs.edit().putInt(Constants.PREF_KEY_BLUR_INTENSITY, v).apply())
+                .withKey(Constants.PREF_KEY_BLUR_INTENSITY));
+        colors.rows.add(switchRow("Title accent line",
+                "A short line in the cover's color under the song title. It follows the color journey.",
+                PREF_TITLE_ACCENT, true, null));
+        colors.rows.add(switchRow("Progress trail",
+                "The played part of the progress bar fades in toward the dot, and the time labels light up in the last 10 seconds of a song.",
+                PREF_PROGRESS_TRAIL, true, null));
+        colors.rows.add(switchRow("Background cross-fade",
+                "When the song changes, the blurred background melts into the next one instead of switching at once.",
+                PREF_BG_CROSSFADE, true, null));
+        colors.rows.add(switchRow("Film grain",
+                "A very fine, still grain over the background. It hides the color bands of a soft blur on an older screen.",
+                PREF_BG_GRAIN, true, null));
+        colors.rows.add(switchRow("Efficient background blur",
+                "Blurs the album art once instead of on every frame. Looks the same and keeps the tablet cooler. Turn off only if the background looks wrong.",
+                "efficient_blur", true, null));
+        looks.groups.add(colors);
+
+        Group fx = new Group("Lyric effects");
+        fx.rows.add(switchRow("Line bar",
+                "A thin bar in the cover's color beside the line being sung.",
+                PREF_ACTIVE_BAR, true, null));
+        fx.rows.add(switchRow("Lyrics fall away",
+                "Lines that have been sung drift upward and blur more the further behind they are.",
+                PREF_FALL_AWAY, true, null));
+        fx.rows.add(sliderRow("Line growth",
+                "How much the line being sung grows. 0 keeps every line the same size.",
+                0, 8, prefs.getInt(PREF_LINE_GROW, 4),
+                v -> v + "%", v -> prefs.edit().putInt(PREF_LINE_GROW, v).apply())
+                .withKey(PREF_LINE_GROW));
+        fx.rows.add(switchRow("Chorus mode",
+                "The chorus (lines that repeat) grows bigger while it is sung, and the glow behind the cover swells.",
+                PREF_CHORUS_MODE, true, null));
+        fx.rows.add(sliderRow("Chorus growth",
+                "The most a chorus line grows. A long line grows less so it still fits.",
+                4, 25, prefs.getInt(PREF_CHORUS_GROW, 16),
+                v -> v + "%", v -> prefs.edit().putInt(PREF_CHORUS_GROW, v).apply())
+                .withKey(PREF_CHORUS_GROW));
+        looks.groups.add(fx);
+
+        Group extras = new Group("Around the player");
+        extras.rows.add(switchRow("Glass lyrics panel",
+                "A light frosted panel behind the lyrics, like the clock and button cards.",
+                PREF_LYRICS_PANEL, true, null));
+        extras.rows.add(sliderRow("Panel strength",
+                "How visible the panel is. 8 is the default.",
+                1, 30, prefs.getInt(PREF_PANEL_STRENGTH, 8),
+                v -> v + "%", v -> prefs.edit().putInt(PREF_PANEL_STRENGTH, v).apply())
+                .withKey(PREF_PANEL_STRENGTH));
+        extras.rows.add(switchRow("Glass edge light",
+                "A thin light along the top and left edge of the glass cards (clock, header, side card and the lyrics panel).",
+                PREF_GLASS_EDGE, true, null));
+        extras.rows.add(switchRow("Cover reflection",
+                "A faint mirror image of the cover's bottom edge under the picture.",
+                PREF_COVER_REFLECTION, true, null));
+        extras.rows.add(switchRow("Slow cover drift",
+                "The cover breathes almost invisibly while music plays. Off when the tablet is hot or in battery saver.",
+                PREF_COVER_DRIFT, true, null));
+        extras.rows.add(switchRow("Song-change title",
+                "When a new song starts, its title and artist show large over the lyrics for a moment.",
+                PREF_SONG_MOMENT, true, null));
+        extras.rows.add(sliderRow("Title time",
+                "How long the song-change title stays.",
+                10, 40, prefs.getInt(PREF_SONG_MOMENT_TENTHS, 19),
+                v -> (v / 10f) + " s", v -> prefs.edit().putInt(PREF_SONG_MOMENT_TENTHS, v).apply())
+                .withKey(PREF_SONG_MOMENT_TENTHS));
+        looks.groups.add(extras);
+
+        Group posterGroup = new Group("Poster layout");
+        posterGroup.rows.add(sliderRow("Poster width",
+                "How much of the screen the poster cover covers (Home layout must be Poster).",
+                40, 70, prefs.getInt(PREF_POSTER_WIDTH, 55),
+                v -> v + "%", v -> prefs.edit().putInt(PREF_POSTER_WIDTH, v).apply())
+                .withKey(PREF_POSTER_WIDTH));
+        looks.groups.add(posterGroup);
+
+        Group clockLook = new Group("Clock screen");
+        clockLook.rows.add(switchRow("Holiday clock themes",
+                "On Hanukkah, Rosh Hashanah, Sukkot, Purim, Pesach, Shavuot and the memorial and independence days, the clock screen shows the holiday's greeting (Hanukkah with the candles for the night).",
+                PREF_HOLIDAY_THEMES, true, null));
+        clockLook.rows.add(choiceRow("Preview a holiday",
+                "Shows a holiday on the clock screen so you can see it. Set it back to Off afterwards.",
+                PREF_HOLIDAY_PREVIEW, "",
+                new String[]{"Off", "Hanukkah, 1 candle", "Hanukkah, 5 candles", "Hanukkah, 8 candles", "Rosh Hashanah", "Sukkot",
+                        "Purim", "Pesach", "Memorial Day", "Independence Day", "Shavuot"},
+                new String[]{"", "hanukkah1", "hanukkah5", "hanukkah8", "rosh", "sukkot", "purim", "pesach", "zikaron", "atzmaut", "shavuot"}));
+        looks.groups.add(clockLook);
+
+        Group lookPresets = new Group("Look presets");
+        lookPresets.rows.add(actionRow("Full",
+                "Everything on at its default strength.", "Apply", false, () -> applyLooksPreset("full")));
+        lookPresets.rows.add(actionRow("Clean",
+                "Cover colors, glow and the line bar only. No panel, reflection, drift, song title, chorus growth or singer colors.",
+                "Apply", false, () -> applyLooksPreset("clean")));
+        lookPresets.rows.add(actionRow("Minimal",
+                "All the extra effects off, plain white lyrics. Easiest on the battery.",
+                "Apply", false, () -> applyLooksPreset("minimal")));
+        looks.groups.add(lookPresets);
+        sections.add(looks);
 
         // ---- Battery ----
         Section battery = new Section("Battery", "🔋", "Appearance", "Save power, and dim the clock screen.");
@@ -773,6 +888,10 @@ public class SettingsActivity extends AppCompatActivity {
                 }));
         quick.rows.add(switchRow("Live track updates", "Keeps checking what is playing.",
                 Constants.PREF_KEY_SPOTIFY_UPDATES_ENABLED, true, null));
+        quick.rows.add(switchRow("Cover colors", "Colors from the album cover for the lyrics, glow and progress bar.",
+                CoverTheme.PREF, true, null));
+        quick.rows.add(switchRow("Song-change title", "Shows the title large for a moment when a song starts.",
+                PREF_SONG_MOMENT, true, null));
         quick.rows.add(switchRow("No background blur", "Skips the blurred album art behind the player to save power.",
                 PowerSettings.PREF_NO_BLUR, false, null));
         ov.groups.add(quick);
@@ -802,8 +921,40 @@ public class SettingsActivity extends AppCompatActivity {
                     toast("Full quality");
                     recreate();
                 }));
+        presets.rows.add(actionRow("Looks: Clean",
+                "Keeps the cover colors and glow, turns off the extra effects.", "Apply", false, () -> applyLooksPreset("clean")));
+        presets.rows.add(actionRow("Looks: Full",
+                "Every look effect on at its default strength.", "Apply", false, () -> applyLooksPreset("full")));
         ov.groups.add(presets);
         return ov;
+    }
+
+
+    /** Sets all the switches of the Looks section at once; the strengths go back to their defaults. */
+    private void applyLooksPreset(String which) {
+        boolean full = "full".equals(which), clean = "clean".equals(which);
+        SharedPreferences.Editor e = prefs.edit();
+        e.putBoolean(CoverTheme.PREF, full || clean);
+        e.putBoolean(PREF_GLOW, full || clean);
+        e.putBoolean(PREF_ACTIVE_BAR, full || clean);
+        e.putBoolean(PREF_CHORUS_MODE, full);
+        e.putBoolean(PREF_SINGER_COLORS, full);
+        e.putBoolean(PREF_LYRICS_PANEL, full);
+        e.putBoolean(PREF_COVER_REFLECTION, full);
+        e.putBoolean(PREF_COVER_DRIFT, full);
+        e.putBoolean(PREF_SONG_MOMENT, full);
+        e.putBoolean(PREF_GLASS_EDGE, full || clean);
+        e.putBoolean(PREF_FALL_AWAY, full);
+        e.putBoolean(PREF_TITLE_ACCENT, full);
+        e.putBoolean(PREF_PROGRESS_TRAIL, full || clean);
+        e.putBoolean(PREF_BG_CROSSFADE, full || clean);
+        e.putBoolean(PREF_BG_GRAIN, full);
+        e.putBoolean(PREF_COLOR_JOURNEY, full);
+        e.remove(PREF_ACCENT_STRENGTH).remove(PREF_GLOW_STRENGTH).remove(PREF_LINE_GROW).remove(PREF_CHORUS_GROW)
+                .remove(PREF_PANEL_STRENGTH).remove(PREF_SONG_MOMENT_TENTHS);
+        e.apply();
+        toast("Looks: " + (full ? "Full" : clean ? "Clean" : "Minimal"));
+        recreate();
     }
 
     // ---------------------------------------------------------------------

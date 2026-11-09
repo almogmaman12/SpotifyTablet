@@ -23,6 +23,21 @@ object LyricsTheme {
     /** Settings: the chorus (repeated lines) grows bigger while it is sung. */
     var chorusMode: Boolean by mutableStateOf(true)
 
+    /** Settings: the thin bar beside the line being sung. */
+    var activeBar: Boolean by mutableStateOf(true)
+
+    /** Settings: sung lines drift upward and blur more as they fall behind. */
+    var fallAway: Boolean by mutableStateOf(true)
+
+    /** Settings: how much the active line grows, in percent (0 to 8). */
+    var lineGrowPct: Int by mutableStateOf(4)
+
+    /** Settings: how much the chorus grows at most, in percent (4 to 25). */
+    var chorusGrowPct: Int by mutableStateOf(16)
+
+    /** Settings: how strongly the sung text leans to the accent, in percent (0 to 100; 55 is the original strength). */
+    var tintPct: Int by mutableStateOf(55)
+
     /** Set by the renderer for the line it is drawing now: true when that line belongs to the second singer. */
     @JvmField var drawingSecond: Boolean = false
 
@@ -33,9 +48,11 @@ object LyricsTheme {
 
     /** The sung text: white with a clear tint of the accent, so it stays easy to read on the dark background. */
     fun text(strength: Float = 1f): Color = current().let {
-        if (it == 0 || strength <= 0f) Color.White else lerp(Color.White, Color(it), 0.55f * strength.coerceAtMost(1f))
+        if (it == 0 || strength <= 0f) Color.White else lerp(Color.White, Color(it), (tintPct / 100f) * strength.coerceAtMost(1f))
     }
 
     /** The glow around the active words. */
-    fun glow(): Color = current().let { if (it == 0) Color.White else lerp(Color.White, Color(it), 0.8f) }
+    fun glow(): Color = current().let {
+        if (it == 0) Color.White else lerp(Color.White, Color(it), (0.8f * tintPct / 55f).coerceIn(0f, 1f))
+    }
 }

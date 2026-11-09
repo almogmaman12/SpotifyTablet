@@ -19,6 +19,17 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <!-- A fine, still film grain over the blurred cover (off or on in Settings). -->
+    <View
+        android:id="@+id/backgroundGrain"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <!-- The cover's accent as a soft glow rising from the bottom, over the blurred cover (colored in code). -->
     <View
         android:id="@+id/accentGlow"
@@ -520,6 +531,14 @@
                     android:textDirection="firstStrongLtr"
                     android:textSize="24sp"
                     android:textStyle="bold" />
+
+                <!-- A short line in the cover's accent under the title (colored in code; off in Settings). -->
+                <View
+                    android:id="@+id/newTitleAccent"
+                    android:layout_width="44dp"
+                    android:layout_height="3dp"
+                    android:layout_marginTop="4dp"
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/newArtistName"

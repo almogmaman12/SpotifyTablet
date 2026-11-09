@@ -18,6 +18,30 @@ public final class HolidayTheme {
         Holiday(String text, int color) { this.text = text; this.color = color; }
     }
 
+    private static Holiday hanukkah(int nights) {
+        StringBuilder candles = new StringBuilder();
+        for (int i = 0; i < nights; i++) candles.append("🕯");
+        return new Holiday("🕎  חנוכה שמח\n" + candles, 0xFF7FB2FF);
+    }
+
+    /** For trying a holiday's look from Settings: the holiday with this id, or null for none. */
+    public static Holiday preview(String id) {
+        if (id == null) return null;
+        switch (id) {
+            case "hanukkah1": return hanukkah(1);
+            case "hanukkah5": return hanukkah(5);
+            case "hanukkah8": return hanukkah(8);
+            case "rosh": return new Holiday("🍎🍯  שנה טובה", 0xFFFFB347);
+            case "sukkot": return new Holiday("🌿  סוכות שמח", 0xFF8BC34A);
+            case "purim": return new Holiday("🎭  פורים שמח", 0xFFFF7ACB);
+            case "pesach": return new Holiday("🍷  פסח שמח", 0xFFE6CF8A);
+            case "zikaron": return new Holiday("🕯  יום הזיכרון", 0xFFB8B8B8);
+            case "atzmaut": return new Holiday("🇮🇱  יום העצמאות שמח", 0xFF6DB3FF);
+            case "shavuot": return new Holiday("🌾  חג שבועות שמח", 0xFFA6E3A1);
+            default: return null;
+        }
+    }
+
     /** The holiday for [nowMs], or null on an ordinary day. */
     public static Holiday forTime(long nowMs) {
         Calendar greg = Calendar.getInstance();
@@ -37,9 +61,7 @@ public final class HolidayTheme {
             first.set(HebrewCalendar.DAY_OF_MONTH, 25);
             int nights = h.get(HebrewCalendar.DAY_OF_YEAR) - first.get(HebrewCalendar.DAY_OF_YEAR) + 1;
             if (nights >= 1 && nights <= 8) {
-                StringBuilder candles = new StringBuilder();
-                for (int i = 0; i < nights; i++) candles.append("🕯");
-                return new Holiday("🕎  חנוכה שמח\n" + candles, 0xFF7FB2FF);
+                return hanukkah(nights);
             }
         }
         if (month == HebrewCalendar.TISHRI) {

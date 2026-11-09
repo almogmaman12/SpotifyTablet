@@ -143,6 +143,12 @@ public class MainActivity extends AppCompatActivity {
     private RelativeLayout clockOverlay;
     private View clockContent;
     private ImageView albumArt, backgroundBlur;
+    private View backgroundGrain;
+    private boolean bgCrossfade = true;
+    private View newTitleAccent;
+    private boolean titleAccentOn = true;
+    private boolean timeEndingOn = true;
+    private boolean timeEnding = false;
     private ProgressBar progressBar;
     private MaterialButton btnPlayPause, btnNext, btnPrev, btnVolUp, btnVolDown;
     private TextView shabbatTimeText, clockShabbatTimeText, clockHolidayText;
@@ -202,10 +208,23 @@ public class MainActivity extends AppCompatActivity {
     private boolean coverDriftOn = true;
     private android.animation.ObjectAnimator coverDrift;
     private float glowTargetAlpha = -1f;
+    private boolean glowOn = true;
+    private boolean panelWanted = true;
+    private GlassEdge lyricsEdge;
+    private boolean edgesAttached = false;
+    private boolean journeyOn = true;
+    private int[] coverColors;
+    private int journeyStep = -1;
+    private long lastJourneyAt = 0L;
+    private int glowStrengthPct = 100;
+    private int momentHoldMs = 1900;
+    private int panelStrengthPct = 8;
+    private int posterWidthPct = 55;
     private final Runnable visualTick = new Runnable() {
         @Override public void run() {
             updateChorusGlow();
             syncCoverDrift();
+            updateColorJourney();
             if (activityResumed) handler.postDelayed(this, 500);
         }
     };
@@ -726,6 +745,7 @@ private void fetchJellyfinVolume() {
         newWeatherIcon = findViewById(R.id.newWeatherIcon);
         newTimeDisplayStart = findViewById(R.id.newTimeDisplayStart);
         newTimeDisplayEnd = findViewById(R.id.newTimeDisplayEnd);
+        newTitleAccent = findViewById(R.id.newTitleAccent);
         newClockHour = findViewById(R.id.newClockHour);
         newClockMinute = findViewById(R.id.newClockMinute);
 
@@ -768,6 +788,8 @@ private void fetchJellyfinVolume() {
         clockOverlay = findViewById(R.id.clockOverlay);
         clockContent = findViewById(R.id.clockContent);
         backgroundBlur = findViewById(R.id.backgroundBlur);
+        backgroundGrain = findViewById(R.id.backgroundGrain);
+        if (backgroundGrain != null) backgroundGrain.setBackground(new GrainDrawable());
         oldAlbumFrame = findViewById(R.id.albumFrame);
         albumArt = findViewById(R.id.albumArt);
         progressBar = findViewById(R.id.progressFrameBar);
@@ -1445,6 +1467,7 @@ private void fetchJellyfinVolume() {
             if (timeDisplay != null) timeDisplay.setText(currentTimeStr + " / " + endStr);
             if (newTimeDisplayStart != null) newTimeDisplayStart.setText(currentTimeStr);
             if (newTimeDisplayEnd != null) newTimeDisplayEnd.setText(endStr);
+            updateTimeEnding(ms, false);
         }
 
         if (lyricsViewModel != null) {
@@ -1825,11 +1848,11 @@ private void fetchJellyfinVolume() {
             if (!coverOn) applyCoverColors(null);
             else lastBlurredTrackId = ""; // the next update reads the cover's colors again
         }
-        applyLyricsPanel(prefs.getBoolean(SettingsActivity.PREF_LYRICS_PANEL, true));
         boolean reflect = prefs.getBoolean(SettingsActivity.PREF_COVER_REFLECTION, true);
         if (reflect != reflectionOn) { reflectionOn = reflect; setAlbumFrameVisibility(posterOn ? View.INVISIBLE : View.VISIBLE); lastBlurredTrackId = ""; }
         momentOn = prefs.getBoolean(SettingsActivity.PREF_SONG_MOMENT, true);
         coverDriftOn = prefs.getBoolean(SettingsActivity.PREF_COVER_DRIFT, true);
+        applyLooksPrefs(prefs);
         handler.removeCallbacks(visualTick);
         handler.post(visualTick);
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setChorusMode(prefs.getBoolean(SettingsActivity.PREF_CHORUS_MODE, true));
@@ -2203,7 +2226,7 @@ private void fetchJellyfinVolume() {
                                         runOnUiThread(() -> {
                                             // A newer song may have arrived while this one was blurring.
                                             if (isDestroyed() || generation != blurGeneration || backgroundBlur == null) return;
-                                            backgroundBlur.setImageBitmap(blurred);
+                                            showBlurredBackground(blurred);
                                         });
                                     });
                                 }
@@ -2341,6 +2364,8 @@ private void fetchJellyfinVolume() {
             dxHeader = targetCenter - (newCenterMediaColumn.getLeft() + colW - headerW / 2f);
         }
         playerCentered = center;
+        // With no lyrics the lyrics area shrinks to a sliver; its glass panel must not stay behind as an empty bar.
+        applyLyricsPanel(panelWanted && !center);
         widenColumn(colW, normalW, density);
         applyCoverShape();
         newCenterMediaColumn.animate().translationX(dx).setDuration(450).start();
@@ -2623,7 +2648,9 @@ private void fetchJellyfinVolume() {
     private void updateHoliday() {
         if (clockHolidayText == null) return;
         boolean on = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getBoolean(SettingsActivity.PREF_HOLIDAY_THEMES, true);
-        HolidayTheme.Holiday hol = on ? HolidayTheme.forTime(System.currentTimeMillis()) : null;
+        String preview = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getString(SettingsActivity.PREF_HOLIDAY_PREVIEW, "");
+        HolidayTheme.Holiday hol = !preview.isEmpty() ? HolidayTheme.preview(preview)
+                : on ? HolidayTheme.forTime(System.currentTimeMillis()) : null;
         if (hol == null) {
             clockHolidayText.setVisibility(View.GONE);
             return;
@@ -3559,12 +3586,73 @@ private void fetchJellyfinVolume() {
         handler.post(songUpdater);
     }
 
+    /** Colors the short line under the song title in the current theme color. */
+    private void paintTitleAccent(int color) {
+        if (newTitleAccent == null || !titleAccentOn) return;
+        android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
+        d.setCornerRadius(4f * getResources().getDisplayMetrics().density);
+        d.setColor(color != 0 ? color : 0x66FFFFFF);
+        newTitleAccent.setBackground(d);
+    }
+
+    /** In the last 10 seconds of a song the two time labels light up in a bright tint of the accent. */
+    private void updateTimeEnding(int ms, boolean force) {
+        boolean ending = timeEndingOn && durationMs > 0 && ms >= 0 && durationMs - ms <= 10_000 && durationMs > 20_000 && isPlaying;
+        if (!force && ending == timeEnding) return;
+        timeEnding = ending;
+        int base = 0xFFCCCCCC;
+        int accent = (coverThemeOn && coverAccent != 0) ? coverAccent : Color.WHITE;
+        int lit = androidx.core.graphics.ColorUtils.blendARGB(accent, Color.WHITE, 0.55f);
+        if (newTimeDisplayStart != null) newTimeDisplayStart.setTextColor(ending ? lit : base);
+        if (newTimeDisplayEnd != null) newTimeDisplayEnd.setTextColor(ending ? lit : base);
+    }
+
+    /** Puts the new blurred cover behind the player, fading from the old one when the switch is on. */
+    private void showBlurredBackground(Bitmap blurred) {
+        Drawable old = backgroundBlur.getDrawable();
+        if (old instanceof android.graphics.drawable.TransitionDrawable) {
+            // A fade is still running: continue from the picture it was fading to.
+            old = ((android.graphics.drawable.TransitionDrawable) old).getDrawable(1);
+        }
+        if (!bgCrossfade || old == null || !hasWindowFocus()) {
+            backgroundBlur.setImageBitmap(blurred);
+            return;
+        }
+        android.graphics.drawable.TransitionDrawable fade = new android.graphics.drawable.TransitionDrawable(
+                new Drawable[]{old, new android.graphics.drawable.BitmapDrawable(getResources(), blurred)});
+        fade.setCrossFadeEnabled(true);
+        backgroundBlur.setImageDrawable(fade);
+        fade.startTransition(900);
+    }
+
+    /** Over a song the accent slowly moves from the cover's main color to its second color (a new step every 5% of the song). */
+    private void updateColorJourney() {
+        if (!journeyOn || coverColors == null || !coverThemeOn || newLinearProgressBar == null) return;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - lastJourneyAt < 3000) return;
+        lastJourneyAt = now;
+        int max = newLinearProgressBar.getMax();
+        if (max <= 0) return;
+        float frac = Math.max(0f, Math.min(1f, newLinearProgressBar.getProgress() / (float) max));
+        int step = Math.round(frac * 20f);
+        if (step == journeyStep) return;
+        journeyStep = step;
+        int blended = (Integer) new android.animation.ArgbEvaluator().evaluate(step / 20f, coverColors[0], coverColors[1]);
+        coverAccent = blended;
+        com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setAccentArgb(blended);
+        applyButtonRings(Integer.valueOf(blended));
+        updateSourceTheme(mediaSource);
+    }
+
     /** The glow behind the blurred cover swells during the chorus and settles back for the verses. */
     private void updateChorusGlow() {
         if (accentGlow == null || glowColor == 0) return;
+        accentGlow.setVisibility(glowOn && !(clockOverlay != null && clockOverlay.getVisibility() == View.VISIBLE) ? View.VISIBLE : View.GONE);
         boolean chorus = com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.chorusNow
                 && com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.getChorusMode() && isPlaying;
-        float target = chorus ? 1f : 0.75f; // the drawable is 33% stronger than before, so 0.75 is the old look
+        float gs = glowStrengthPct / 100f;
+        // The drawable is 33% stronger than before, so 0.75 is the old look; the strength setting scales both.
+        float target = glowOn ? Math.min(1f, (chorus ? 1f : 0.75f) * gs) : 0f;
         if (target == glowTargetAlpha) return;
         glowTargetAlpha = target;
         accentGlow.animate().alpha(target).setDuration(900).start();
@@ -3622,7 +3710,7 @@ private void fetchJellyfinVolume() {
         songMoment.setVisibility(View.VISIBLE);
         songMoment.animate().alpha(1f).setDuration(280).start();
         if (newLyricsComposeView != null) newLyricsComposeView.animate().alpha(0.18f).setDuration(280).start();
-        handler.postDelayed(momentHide, 1900);
+        handler.postDelayed(momentHide, momentHoldMs);
     }
 
     private void hideSongMoment() {
@@ -3651,7 +3739,7 @@ private void fetchJellyfinVolume() {
         glowColor = color;
         glowColor2 = color2;
         if (color == 0) { accentGlow.setVisibility(View.GONE); return; }
-        if (clockOverlay == null || clockOverlay.getVisibility() != View.VISIBLE) accentGlow.setVisibility(View.VISIBLE);
+        if (glowOn && (clockOverlay == null || clockOverlay.getVisibility() != View.VISIBLE)) accentGlow.setVisibility(View.VISIBLE);
         final int start = from == 0 ? (color & 0x00FFFFFF) : from;
         final int start2 = from2 == 0 ? (color2 & 0x00FFFFFF) : from2;
         final float radius = getResources().getDisplayMetrics().widthPixels * 0.8f;
@@ -3678,11 +3766,80 @@ private void fetchJellyfinVolume() {
         glowAnimator.start();
     }
 
+    /** The sliders and switches of Settings → Looks. */
+    private void applyLooksPrefs(SharedPreferences prefs) {
+        if (!edgesAttached) {
+            edgesAttached = true;
+            if (newVerticalClock != null) GlassEdge.attach(newVerticalClock, 16);
+            if (newSidebarTopGroup != null) GlassEdge.attach(newSidebarTopGroup, 16);
+            if (newHeaderContainer != null) GlassEdge.attach(newHeaderContainer, 16);
+            if (newLyricsContainer != null) lyricsEdge = GlassEdge.attach(newLyricsContainer, 22);
+        }
+        GlassEdge.setAllShown(prefs.getBoolean(SettingsActivity.PREF_GLASS_EDGE, true));
+        journeyOn = prefs.getBoolean(SettingsActivity.PREF_COLOR_JOURNEY, true);
+        bgCrossfade = prefs.getBoolean(SettingsActivity.PREF_BG_CROSSFADE, true);
+        titleAccentOn = prefs.getBoolean(SettingsActivity.PREF_TITLE_ACCENT, true);
+        boolean trailOn = prefs.getBoolean(SettingsActivity.PREF_PROGRESS_TRAIL, true);
+        GlowProgressBar.trail = trailOn;
+        timeEndingOn = trailOn;
+        if (newLinearProgressBar != null) newLinearProgressBar.invalidate();
+        if (newTitleAccent != null) newTitleAccent.setVisibility(titleAccentOn ? View.VISIBLE : View.GONE);
+        paintTitleAccent(lastAppliedThemeColor == -1 ? 0 : lastAppliedThemeColor);
+        timeEnding = !timeEndingOn && timeEnding;
+        updateTimeEnding(progressMs, true);
+        if (backgroundGrain != null) backgroundGrain.setVisibility(prefs.getBoolean(SettingsActivity.PREF_BG_GRAIN, true) ? View.VISIBLE : View.GONE);
+        com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme theme =
+                com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE;
+        theme.setActiveBar(prefs.getBoolean(SettingsActivity.PREF_ACTIVE_BAR, true));
+        theme.setFallAway(prefs.getBoolean(SettingsActivity.PREF_FALL_AWAY, true));
+        theme.setLineGrowPct(prefs.getInt(SettingsActivity.PREF_LINE_GROW, 4));
+        theme.setChorusGrowPct(prefs.getInt(SettingsActivity.PREF_CHORUS_GROW, 16));
+        theme.setTintPct(prefs.getInt(SettingsActivity.PREF_ACCENT_STRENGTH, 55));
+        boolean glow = prefs.getBoolean(SettingsActivity.PREF_GLOW, true);
+        int glowPct = prefs.getInt(SettingsActivity.PREF_GLOW_STRENGTH, 100);
+        if (glow != glowOn || glowPct != glowStrengthPct) {
+            glowOn = glow;
+            glowStrengthPct = glowPct;
+            glowTargetAlpha = -1f;
+            if (accentGlow != null && glowColor != 0) accentGlow.setVisibility(glowOn ? View.VISIBLE : View.GONE);
+        }
+        momentHoldMs = prefs.getInt(SettingsActivity.PREF_SONG_MOMENT_TENTHS, 19) * 100;
+        int panel = prefs.getInt(SettingsActivity.PREF_PANEL_STRENGTH, 8);
+        boolean panelOn = prefs.getBoolean(SettingsActivity.PREF_LYRICS_PANEL, true) && panel > 0;
+        if (panel != panelStrengthPct) panelStrengthPct = panel;
+        panelWanted = panelOn;
+        applyLyricsPanel(panelWanted && !playerCentered);
+        int posterW = prefs.getInt(SettingsActivity.PREF_POSTER_WIDTH, 55);
+        {
+            posterWidthPct = posterW;
+            if (posterCover != null && posterCover.getLayoutParams() instanceof androidx.constraintlayout.widget.ConstraintLayout.LayoutParams) {
+                androidx.constraintlayout.widget.ConstraintLayout.LayoutParams lp =
+                        (androidx.constraintlayout.widget.ConstraintLayout.LayoutParams) posterCover.getLayoutParams();
+                if (Math.abs(lp.matchConstraintPercentWidth - posterW / 100f) > 0.001f) {
+                    lp.matchConstraintPercentWidth = posterW / 100f;
+                    posterCover.setLayoutParams(lp);
+                }
+            }
+        }
+    }
+
     /** The frosted panel behind the lyrics (Modern and Poster layouts). */
     private void applyLyricsPanel(boolean on) {
         if (newLyricsContainer == null) return;
+        if (lyricsEdge != null) lyricsEdge.setShown(on && getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getBoolean(SettingsActivity.PREF_GLASS_EDGE, true));
         int pad = on ? Math.round(10 * getResources().getDisplayMetrics().density) : 0;
-        newLyricsContainer.setBackgroundResource(on ? R.drawable.lyrics_panel : 0);
+        if (on) {
+            // The fill follows the strength setting (8% is the original look); the border is a little stronger.
+            int fill = Math.min(255, Math.round(panelStrengthPct * 2.55f));
+            int line = Math.min(255, fill + 0x10);
+            android.graphics.drawable.GradientDrawable panel = new android.graphics.drawable.GradientDrawable();
+            panel.setColor((fill << 24) | 0xFFFFFF);
+            panel.setStroke(Math.max(1, Math.round(getResources().getDisplayMetrics().density)), (line << 24) | 0xFFFFFF);
+            panel.setCornerRadius(22 * getResources().getDisplayMetrics().density);
+            newLyricsContainer.setBackground(panel);
+        } else {
+            newLyricsContainer.setBackground(null);
+        }
         newLyricsContainer.setPadding(pad, pad, pad, pad);
     }
 
@@ -3756,6 +3913,8 @@ private void fetchJellyfinVolume() {
     /** null puts every color back to what it was before the feature. */
     private void applyCoverColors(int[] colors) {
         boolean on = coverThemeOn && colors != null;
+        coverColors = on ? colors : null;
+        journeyStep = -1;
         coverAccent = on ? colors[0] : 0;
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setAccentArgb(on ? colors[0] : 0);
         com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE.setAccent2Argb(on ? colors[2] : 0);
@@ -3804,6 +3963,7 @@ private void fetchJellyfinVolume() {
             return;
         }
         lastAppliedThemeColor = themeColor;
+        paintTitleAccent(themeColor);
         lastAppliedSource = source;
 
         runOnUiThread(() -> {
