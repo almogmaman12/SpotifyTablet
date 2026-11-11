@@ -64,6 +64,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_BG_GRAIN = "bg_grain";
     public static final String PREF_TITLE_ACCENT = "title_accent";
     public static final String PREF_PROGRESS_TRAIL = "progress_trail";
+    public static final String PREF_READABILITY = "readability";
     public static final String PREF_FALL_AWAY = "fall_away";
     public static final String PREF_GLASS_EDGE = "glass_edge";
     public static final String PREF_COLOR_JOURNEY = "color_journey";
@@ -400,6 +401,9 @@ public class SettingsActivity extends AppCompatActivity {
         colors.rows.add(switchRow("Progress trail",
                 "The played part of the progress bar fades in toward the dot, and the time labels light up in the last 10 seconds of a song.",
                 PREF_PROGRESS_TRAIL, true, null));
+        colors.rows.add(switchRow("Keep lyrics readable",
+                "On a bright cover the background dims and the lyrics panel turns dark, so the active line never blends into the background. Dark covers look exactly as before.",
+                PREF_READABILITY, true, null));
         colors.rows.add(switchRow("Background cross-fade",
                 "When the song changes, the blurred background melts into the next one instead of switching at once.",
                 PREF_BG_CROSSFADE, true, null));

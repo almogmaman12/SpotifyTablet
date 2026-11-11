@@ -15,6 +15,9 @@ public final class BackgroundBlur {
     /** The blurred copy is this many times smaller than the screen. */
     private static final int DOWNSCALE = 8;
 
+    /** How bright the latest blurred background is, 0 (black) to 1 (white); read on the main thread after a render. */
+    public static volatile float lastLuma = 0f;
+
     private BackgroundBlur() {}
 
     // Two small bitmaps used in turn (one is on screen while the other is drawn into), and one pixel buffer, so a new
@@ -47,6 +50,13 @@ public final class BackgroundBlur {
         small.getPixels(px, 0, tw, 0, 0, tw, th);
         BlurMath.gaussian(px, tw, th, sigmaPx / DOWNSCALE);
         small.setPixels(px, 0, tw, 0, 0, tw, th);
+        long sum = 0;
+        int n = 0;
+        for (int i = 0; i < px.length; i += 3, n++) {
+            int c = px[i];
+            sum += (299 * ((c >> 16) & 0xFF) + 587 * ((c >> 8) & 0xFF) + 114 * (c & 0xFF)) / 1000;
+        }
+        lastLuma = n > 0 ? sum / (n * 255f) : 0f;
         return small;
     }
 }

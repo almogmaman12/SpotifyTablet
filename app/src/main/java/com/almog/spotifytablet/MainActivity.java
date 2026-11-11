@@ -145,6 +145,9 @@ public class MainActivity extends AppCompatActivity {
     private ImageView albumArt, backgroundBlur;
     private View backgroundGrain;
     private boolean bgCrossfade = true;
+    private boolean readabilityOn = true;
+    private float bgBright = 0f;       // 0 for a dark background, up to 1 for a bright one
+    private boolean panelShown = false;
     private View newTitleAccent;
     private boolean titleAccentOn = true;
     private boolean timeEndingOn = true;
@@ -2208,6 +2211,7 @@ private void fetchJellyfinVolume() {
                 if (PowerSettings.noBackgroundBlur) {
                     // Battery saver: no blurred cover behind the lyrics.
                     if (backgroundBlur != null) backgroundBlur.setImageDrawable(null);
+                    applyReadability(0f);
                 } else if (efficientBlur) {
                     // Same look, blurred once on a small copy instead of by the GPU on every frame.
                     final int sigma = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
@@ -3607,6 +3611,18 @@ private void fetchJellyfinVolume() {
         if (newTimeDisplayEnd != null) newTimeDisplayEnd.setTextColor(ending ? lit : base);
     }
 
+    /**
+     * Keeps the active lyrics readable on a bright cover: the blurred background dims and the lyrics panel turns dark
+     * (a dark background is left exactly as it was). [luma] is the background's brightness, 0 to 1.
+     */
+    private void applyReadability(float luma) {
+        float k = readabilityOn ? Math.max(0f, Math.min(1f, (luma - 0.30f) / 0.35f)) : 0f;
+        boolean changed = Math.abs(k - bgBright) > 0.02f;
+        bgBright = k;
+        if (backgroundBlur != null) backgroundBlur.setAlpha(0.6f - 0.25f * k);
+        if (changed && newLyricsContainer != null) applyLyricsPanel(panelShown);
+    }
+
     /** Puts the new blurred cover behind the player, fading from the old one when the switch is on. */
     private void showBlurredBackground(Bitmap blurred) {
         Drawable old = backgroundBlur.getDrawable();
@@ -3614,6 +3630,7 @@ private void fetchJellyfinVolume() {
             // A fade is still running: continue from the picture it was fading to.
             old = ((android.graphics.drawable.TransitionDrawable) old).getDrawable(1);
         }
+        applyReadability(BackgroundBlur.lastLuma);
         if (!bgCrossfade || old == null || !hasWindowFocus()) {
             backgroundBlur.setImageBitmap(blurred);
             return;
@@ -3778,6 +3795,8 @@ private void fetchJellyfinVolume() {
         GlassEdge.setAllShown(prefs.getBoolean(SettingsActivity.PREF_GLASS_EDGE, true));
         journeyOn = prefs.getBoolean(SettingsActivity.PREF_COLOR_JOURNEY, true);
         bgCrossfade = prefs.getBoolean(SettingsActivity.PREF_BG_CROSSFADE, true);
+        readabilityOn = prefs.getBoolean(SettingsActivity.PREF_READABILITY, true);
+        applyReadability(BackgroundBlur.lastLuma);
         titleAccentOn = prefs.getBoolean(SettingsActivity.PREF_TITLE_ACCENT, true);
         boolean trailOn = prefs.getBoolean(SettingsActivity.PREF_PROGRESS_TRAIL, true);
         GlowProgressBar.trail = trailOn;
@@ -3826,14 +3845,18 @@ private void fetchJellyfinVolume() {
     /** The frosted panel behind the lyrics (Modern and Poster layouts). */
     private void applyLyricsPanel(boolean on) {
         if (newLyricsContainer == null) return;
+        panelShown = on;
         if (lyricsEdge != null) lyricsEdge.setShown(on && getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).getBoolean(SettingsActivity.PREF_GLASS_EDGE, true));
         int pad = on ? Math.round(10 * getResources().getDisplayMetrics().density) : 0;
         if (on) {
             // The fill follows the strength setting (8% is the original look); the border is a little stronger.
             int fill = Math.min(255, Math.round(panelStrengthPct * 2.55f));
             int line = Math.min(255, fill + 0x10);
+            // On a bright background the pale panel would make the white lyrics blend in: it turns dark instead.
+            int tone = Math.round(255 * (1f - bgBright));
+            int panelFill = Math.min(255, fill + Math.round(bgBright * 0x50));
             android.graphics.drawable.GradientDrawable panel = new android.graphics.drawable.GradientDrawable();
-            panel.setColor((fill << 24) | 0xFFFFFF);
+            panel.setColor((panelFill << 24) | (tone << 16) | (tone << 8) | tone);
             panel.setStroke(Math.max(1, Math.round(getResources().getDisplayMetrics().density)), (line << 24) | 0xFFFFFF);
             panel.setCornerRadius(22 * getResources().getDisplayMetrics().density);
             newLyricsContainer.setBackground(panel);
