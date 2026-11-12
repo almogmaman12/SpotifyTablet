@@ -401,7 +401,14 @@ internal fun DrawScope.drawStandardLine(
     val falling = LyricsTheme.fallAway && !config.isAppleMusic && lineAnim.state == ElementState.Sung && !lineAnim.isBackground
     val fallBlur = if (falling) lineAnim.blur * 1.5f else lineAnim.blur
     val fallLift = if (falling) -minOf(lineAnim.blur, 6f) * 1.2f * cssPx(layout.words.firstOrNull()?.textLayoutResult ?: return, false) else 0f
-    withTransform({ scale(grow, grow, growPivot); if (fallLift != 0f) translate(top = fallLift) }) {
+    // Landing: as the line fades in (opacity 0.5 to 1) it drops from a little above and settles with a small overshoot.
+    val landLift = if (LyricsTheme.lineLanding && !config.isAppleMusic && lineAnim.state == ElementState.Active && !lineAnim.isBackground) {
+        val t = ((lineAnim.opacity - 0.5f) / 0.5f).coerceIn(0f, 1f)
+        val u = t - 1f
+        val easeOutBack = 1f + 4f * u * u * u + 3f * u * u
+        (1f - easeOutBack) * -0.18f * lyricSizePx(layout.words.firstOrNull()?.textLayoutResult ?: return, false)
+    } else 0f
+    withTransform({ scale(grow, grow, growPivot); if (fallLift + landLift != 0f) translate(top = fallLift + landLift) }) {
     layout.words.forEach { wLayout ->
         val wordAnim = lineAnim.wordStates.getOrNull(wLayout.sourceWordIndex) ?: return@forEach
         val anchor = scaleAnchor(
@@ -541,6 +548,9 @@ private fun DrawScope.drawStandardWord(
 
     val wordScale = boostedScale(wordAnim.scale, config.wordMotionBoost)
     val wordYShift = boostedLift(wordAnim.yOffset, config.wordMotionBoost) * lyricSizePx(wLayout.textLayoutResult, lineAnim.isBackground)
+    // Held words (the ones whose scale rises the most) get a little wider, at most 12%.
+    val stretchX = if (LyricsTheme.noteStretch && lineAnim.state == ElementState.Active && !lineAnim.isBackground)
+        1f + ((wordScale - 1f) * 2f).coerceIn(0f, 0.12f) else 1f
     val pivotX = xPos + textWidth * anchor
     val pivotY = yPos + textHeight / 2f
 
@@ -552,7 +562,7 @@ private fun DrawScope.drawStandardWord(
 
     withTransform({
         translate(top = scrollOffset)
-        scale(scaleX = wordScale, scaleY = wordScale, pivot = Offset(pivotX, pivotY))
+        scale(scaleX = wordScale * stretchX, scaleY = wordScale, pivot = Offset(pivotX, pivotY))
         translate(top = wordYShift)
     }) {
         if (paintPlan is LyricPaintPlan.InactiveShadow) drawInactiveText(

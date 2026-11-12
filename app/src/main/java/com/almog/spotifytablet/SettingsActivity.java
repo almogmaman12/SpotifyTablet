@@ -64,6 +64,9 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_BG_GRAIN = "bg_grain";
     public static final String PREF_TITLE_ACCENT = "title_accent";
     public static final String PREF_PROGRESS_TRAIL = "progress_trail";
+    public static final String PREF_LINE_LANDING = "line_landing";
+    public static final String PREF_NOTE_STRETCH = "note_stretch";
+    public static final String PREF_BG_VIGNETTE = "bg_vignette";
     public static final String PREF_FALL_AWAY = "fall_away";
     public static final String PREF_GLASS_EDGE = "glass_edge";
     public static final String PREF_COLOR_JOURNEY = "color_journey";
@@ -400,6 +403,11 @@ public class SettingsActivity extends AppCompatActivity {
         colors.rows.add(switchRow("Progress trail",
                 "The played part of the progress bar fades in toward the dot, and the time labels light up in the last 10 seconds of a song.",
                 PREF_PROGRESS_TRAIL, true, null));
+        colors.rows.add(sliderRow("Background vignette",
+                "Darkens the corners of the blurred background, never the lyrics. 0 turns it off.",
+                0, 100, prefs.getInt(PREF_BG_VIGNETTE, 35),
+                v -> v == 0 ? "off" : v + "%", v -> prefs.edit().putInt(PREF_BG_VIGNETTE, v).apply())
+                .withKey(PREF_BG_VIGNETTE));
         colors.rows.add(switchRow("Background cross-fade",
                 "When the song changes, the blurred background melts into the next one instead of switching at once.",
                 PREF_BG_CROSSFADE, true, null));
@@ -418,6 +426,12 @@ public class SettingsActivity extends AppCompatActivity {
         fx.rows.add(switchRow("Lyrics fall away",
                 "Lines that have been sung drift upward and blur more the further behind they are.",
                 PREF_FALL_AWAY, true, null));
+        fx.rows.add(switchRow("Line landing (experimental)",
+                "The line that becomes active drops in from slightly above and settles with a small bounce. Off by default: try it and see if you like it.",
+                PREF_LINE_LANDING, false, null));
+        fx.rows.add(switchRow("Long-note stretch (experimental)",
+                "Words that are held for a long time stretch a little wider while they are held. Off by default: try it and see if you like it.",
+                PREF_NOTE_STRETCH, false, null));
         fx.rows.add(sliderRow("Line growth",
                 "How much the line being sung grows. 0 keeps every line the same size.",
                 0, 8, prefs.getInt(PREF_LINE_GROW, 4),
