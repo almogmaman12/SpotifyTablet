@@ -30,8 +30,8 @@ internal fun lyricPaintPlan(
         }
         isBackground && state == ElementState.NotSung -> 0.3f
         isBackground -> 0.6f
-        state == ElementState.NotSung -> dimAlpha
-        else -> config.gradientAlphaBright
+        state == ElementState.NotSung -> dimAlpha * LyricsTheme.dimFactor()
+        else -> config.gradientAlphaBright * LyricsTheme.sungFactor()
     }
     return LyricPaintPlan.InactiveShadow(
         alpha = (stateAlpha * opacity).coerceIn(0f, 1f),

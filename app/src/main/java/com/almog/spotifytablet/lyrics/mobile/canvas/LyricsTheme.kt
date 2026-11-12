@@ -26,6 +26,16 @@ object LyricsTheme {
     /** Settings: the thin bar beside the line being sung. */
     var activeBar: Boolean by mutableStateOf(true)
 
+    /**
+     * Settings: how much the line being sung stands out from the rest, in percent (0 is the original look). It makes the sung and
+     * coming lines dimmer, the active words fully bright, and puts a soft dark halo behind the active words.
+     */
+    var contrastPct: Int by mutableStateOf(60)
+
+    fun dimFactor(): Float = 1f - 0.25f * contrastPct / 100f
+    fun sungFactor(): Float = 1f - 0.35f * contrastPct / 100f
+    fun activeBoost(): Float = 1f + 0.18f * contrastPct / 100f
+
     /** Settings (experimental): the line that becomes active drops in from slightly above and settles with a small overshoot. */
     var lineLanding: Boolean by mutableStateOf(false)
 

@@ -3811,6 +3811,7 @@ private void fetchJellyfinVolume() {
                 com.almog.spotifytablet.lyrics.mobile.canvas.LyricsTheme.INSTANCE;
         theme.setActiveBar(prefs.getBoolean(SettingsActivity.PREF_ACTIVE_BAR, true));
         theme.setFallAway(prefs.getBoolean(SettingsActivity.PREF_FALL_AWAY, true));
+        theme.setContrastPct(prefs.getInt(SettingsActivity.PREF_LYRIC_CONTRAST, 60));
         theme.setLineLanding(prefs.getBoolean(SettingsActivity.PREF_LINE_LANDING, false));
         theme.setNoteStretch(prefs.getBoolean(SettingsActivity.PREF_NOTE_STRETCH, false));
         int vignette = prefs.getInt(SettingsActivity.PREF_BG_VIGNETTE, 35);

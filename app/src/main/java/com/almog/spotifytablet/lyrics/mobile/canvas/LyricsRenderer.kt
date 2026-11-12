@@ -110,6 +110,15 @@ internal fun DrawScope.drawWipeText(
         startX = 0f,
         endX = w,
     )
+    if (accentStrength > 0f && LyricsTheme.contrastPct > 0) {
+        // A soft dark halo behind the words being sung, so they stand out from any background colour.
+        val size = with(layoutResult.layoutInput.density) { layoutResult.layoutInput.style.fontSize.toPx() }
+        drawText(
+            layoutResult, color = Color.Transparent,
+            shadow = Shadow(Color.Black.copy(alpha = 0.5f * LyricsTheme.contrastPct / 100f), Offset(0f, size * 0.03f), size * 0.16f),
+            topLeft = topLeft,
+        )
+    }
     drawGlowThenText(layoutResult, topLeft, shadow) { drawGradientText(layoutResult, brush, topLeft) }
 }
 
@@ -489,8 +498,8 @@ private fun DrawScope.drawSyllabicLetterFragment(
     // side (0.85×0.497≈0.42) can never render darker than an inactive line's dim stop
     // (0.35×0.51≈0.18).
     val isBg = lineAnim.isBackground
-    val dim = (if (isBg) 0.3f else config.gradientAlphaDim) * lineAnim.opacity
-    val bright = (if (isBg) 0.6f else config.gradientAlphaBright) * lineAnim.opacity
+    val dim = (if (isBg) 0.3f else config.gradientAlphaDim) * lineAnim.opacity * (if (isBg) 1f else LyricsTheme.dimFactor())
+    val bright = (if (isBg) 0.6f else config.gradientAlphaBright) * lineAnim.opacity * (if (isBg) 1f else LyricsTheme.activeBoost())
 
     withTransform({
         // The reference nests letter spans inside the word element: the word's own
@@ -557,8 +566,8 @@ private fun DrawScope.drawStandardWord(
     // Reference gradient stops are fixed for every state (bright 0.85/0.6bg, dim 0.35/0.3bg);
     // only --gradient-position moves. Multiplying by line opacity is the only "fade" layer.
     val isBg = lineAnim.isBackground
-    val dim = (if (isBg) 0.3f else config.gradientAlphaDim) * lineAnim.opacity
-    val bright = (if (isBg) 0.6f else config.gradientAlphaBright) * lineAnim.opacity
+    val dim = (if (isBg) 0.3f else config.gradientAlphaDim) * lineAnim.opacity * (if (isBg) 1f else LyricsTheme.dimFactor())
+    val bright = (if (isBg) 0.6f else config.gradientAlphaBright) * lineAnim.opacity * (if (isBg) 1f else LyricsTheme.activeBoost())
 
     withTransform({
         translate(top = scrollOffset)

@@ -68,6 +68,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_NOTE_STRETCH = "note_stretch";
     public static final String PREF_BG_VIGNETTE = "bg_vignette";
     public static final String PREF_READABILITY = "readability";
+    public static final String PREF_LYRIC_CONTRAST = "lyric_contrast";
     public static final String PREF_FALL_AWAY = "fall_away";
     public static final String PREF_GLASS_EDGE = "glass_edge";
     public static final String PREF_COLOR_JOURNEY = "color_journey";
@@ -427,6 +428,11 @@ public class SettingsActivity extends AppCompatActivity {
         fx.rows.add(switchRow("Line bar",
                 "A thin bar in the cover's color beside the line being sung.",
                 PREF_ACTIVE_BAR, true, null));
+        fx.rows.add(sliderRow("Active line contrast",
+                "Makes the line being sung stand out: sung and coming lines get dimmer, the active words fully bright with a soft dark halo. 0 is the original look.",
+                0, 100, prefs.getInt(PREF_LYRIC_CONTRAST, 60),
+                v -> v == 0 ? "off" : v + "%", v -> prefs.edit().putInt(PREF_LYRIC_CONTRAST, v).apply())
+                .withKey(PREF_LYRIC_CONTRAST));
         fx.rows.add(switchRow("Lyrics fall away",
                 "Lines that have been sung drift upward and blur more the further behind they are.",
                 PREF_FALL_AWAY, true, null));
