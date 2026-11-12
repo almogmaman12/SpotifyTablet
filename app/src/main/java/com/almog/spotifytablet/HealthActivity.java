@@ -94,8 +94,8 @@ public class HealthActivity extends AppCompatActivity {
         Debug.MemoryInfo mi = new Debug.MemoryInfo();
         Debug.getMemoryInfo(mi);
         long total = mi.getTotalPss() >> 10;
-        row("App memory", total + " MB", total >= MemoryLog.RESTART_SOFT_MB ? BAD : total >= 150 ? WARN : OK,
-                "What Android counts against the app. The app restarts itself near " + MemoryLog.RESTART_SOFT_MB + " MB, before Android ends it.");
+        row("App memory", total + " MB", total >= MemoryLog.RESTART_SOFT_MB ? BAD : total >= 200 ? WARN : OK,
+                "What Android counts against the app. The app restarts itself only if this gets near " + MemoryLog.RESTART_SOFT_MB + " MB, or is high and still climbing, before Android ends it.");
         Runtime rt = Runtime.getRuntime();
         row("Java / native / graphics",
                 ((rt.totalMemory() - rt.freeMemory()) >> 20) + " / " + (Debug.getNativeHeapAllocatedSize() >> 20) + " / "
