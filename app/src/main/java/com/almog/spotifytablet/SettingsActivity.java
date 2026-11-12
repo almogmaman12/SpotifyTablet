@@ -67,6 +67,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_LINE_LANDING = "line_landing";
     public static final String PREF_NOTE_STRETCH = "note_stretch";
     public static final String PREF_BG_VIGNETTE = "bg_vignette";
+    public static final String PREF_READABILITY = "readability";
     public static final String PREF_FALL_AWAY = "fall_away";
     public static final String PREF_GLASS_EDGE = "glass_edge";
     public static final String PREF_COLOR_JOURNEY = "color_journey";
@@ -408,6 +409,9 @@ public class SettingsActivity extends AppCompatActivity {
                 0, 100, prefs.getInt(PREF_BG_VIGNETTE, 35),
                 v -> v == 0 ? "off" : v + "%", v -> prefs.edit().putInt(PREF_BG_VIGNETTE, v).apply())
                 .withKey(PREF_BG_VIGNETTE));
+        colors.rows.add(switchRow("Keep lyrics readable",
+                "On a bright cover the background dims and the lyrics panel turns dark, so the active line never blends into the background. Dark covers look exactly as before.",
+                PREF_READABILITY, true, null));
         colors.rows.add(switchRow("Background cross-fade",
                 "When the song changes, the blurred background melts into the next one instead of switching at once.",
                 PREF_BG_CROSSFADE, true, null));

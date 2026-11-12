@@ -17,6 +17,8 @@ public final class BackgroundBlur {
 
     /** Settings: how dark the edges of the background get, in percent (0 is off). Read on the blur thread. */
     public static volatile int vignettePct = 0;
+    /** How bright the latest blurred background is, 0 (black) to 1 (white); read on the main thread after a render. */
+    public static volatile float lastLuma = 0f;
 
     private BackgroundBlur() {}
 
@@ -50,6 +52,13 @@ public final class BackgroundBlur {
         small.getPixels(px, 0, tw, 0, 0, tw, th);
         BlurMath.gaussian(px, tw, th, sigmaPx / DOWNSCALE);
         small.setPixels(px, 0, tw, 0, 0, tw, th);
+        long sum = 0;
+        int n = 0;
+        for (int i = 0; i < px.length; i += 3, n++) {
+            int c = px[i];
+            sum += (299 * ((c >> 16) & 0xFF) + 587 * ((c >> 8) & 0xFF) + 114 * (c & 0xFF)) / 1000;
+        }
+        lastLuma = n > 0 ? sum / (n * 255f) : 0f;
         int v = vignettePct;
         if (v > 0) {
             // Darkens the corners smoothly, inside the picture itself, so there is never an edge over the lyrics.
