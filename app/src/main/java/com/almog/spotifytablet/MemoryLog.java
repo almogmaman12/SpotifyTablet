@@ -32,16 +32,24 @@ public final class MemoryLog {
     private static boolean started;
     private static Context appContext;
 
-    // Every death in the logs came when the app's total memory reached roughly 200 to 240 MB, after it had climbed
-    // about 4 MB a minute while lyrics played. Past the soft mark the app restarts itself at the next song change
-    // (a second's blip, and it avoids the heavy moment of measuring the next song); past the hard mark, at the next quiet moment (nothing playing, clock showing, screen off), or at once past the ceiling.
-    public static final long RESTART_SOFT_MB = 185;
-    private static final long RESTART_HARD_MB = 210;
-    private static final long RESTART_MIN_UPTIME_MS = 5 * 60_000L; // never a restart loop
+    // The old deaths came when the total climbed about 4 MB a minute up to 200-240 MB. Since the fixes the total is flat
+    // for hours (about 185-190 MB with 600 MB of the tablet free), so a fixed mark near 185 only restarted a healthy app
+    // every few minutes. The app now restarts itself (at the next song change or quiet moment) only when memory is
+    // really high (SOFT), or high AND still climbing, or the whole tablet is short of memory. It never restarts within
+    // the first 20 minutes unless it is past HARD.
+    public static final long RESTART_SOFT_MB = 235;
+    private static final long RESTART_HARD_MB = 255;
+    private static final long RESTART_CLIMBING_MB = 200;      // high enough to care about if it keeps growing
+    private static final long RESTART_CLIMB_PER_15MIN_MB = 30; // growth that counts as "still climbing"
+    private static final long RESTART_SYSTEM_TIGHT_MB = 170;  // with the tablet itself short of memory
+    private static final long RESTART_MIN_UPTIME_MS = 20 * 60_000L; // never a restart loop
+    private static final int HIST = 45;                       // 45 checks of 20 s = 15 minutes
+    private static final long[] hist = new long[HIST];
+    private static int histN;
     public static volatile boolean restartWanted;
     /** Last measured total (MB); the activity restarts at once, not at a quiet moment, past RESTART_CEILING_MB. */
     public static volatile long lastTotalMb;
-    public static final long RESTART_CEILING_MB = 260;
+    public static final long RESTART_CEILING_MB = 300;
     private static volatile boolean tight;
     private static volatile Runnable restartHook;
 
@@ -114,15 +122,23 @@ public final class MemoryLog {
         tight = nativeHigh || appTight || systemTight;
 
         // The app's total (what Android counts against it), only measured once it is big enough to matter.
-        if (mine >= 70 && uptimeMs() >= RESTART_MIN_UPTIME_MS) {
+        if (mine >= 70 && uptimeMs() >= 3 * 60_000L) {
             Debug.MemoryInfo mi = new Debug.MemoryInfo();
             Debug.getMemoryInfo(mi);
             long total = mi.getTotalPss() >> 10;
-            restartWanted = total >= RESTART_SOFT_MB;
+            // Growth over the last 15 minutes (only once the history covers about that long).
+            hist[histN % HIST] = total;
+            histN++;
+            long growth = histN >= HIST ? total - hist[histN % HIST] : 0;
+            boolean want = total >= RESTART_SOFT_MB
+                    || (total >= RESTART_CLIMBING_MB && growth >= RESTART_CLIMB_PER_15MIN_MB)
+                    || (systemTight && total >= RESTART_SYSTEM_TIGHT_MB);
+            if (uptimeMs() < RESTART_MIN_UPTIME_MS && total < RESTART_HARD_MB) want = false;
+            restartWanted = want;
             lastTotalMb = total;
             Runnable hook = restartHook;
             // The hook decides when: it waits for a song change, a pause, the clock or a dark screen (unless past the ceiling).
-            if (total >= RESTART_HARD_MB && hook != null) hook.run();
+            if (hook != null && (total >= RESTART_HARD_MB || (want && systemTight))) hook.run();
         } else {
             restartWanted = false;
         }
