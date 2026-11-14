@@ -228,6 +228,8 @@ public class MainActivity extends AppCompatActivity {
             updateChorusGlow();
             syncCoverDrift();
             updateColorJourney();
+            long now = android.os.SystemClock.elapsedRealtime();
+            if (now - lastLockCheck > 20_000L) { lastLockCheck = now; holdScreenOn(); }
             if (activityResumed) handler.postDelayed(this, 500);
         }
     };
@@ -2000,7 +2002,7 @@ private void fetchJellyfinVolume() {
     private void holdScreenOn() {
         boolean keep = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
                 .getBoolean(SettingsActivity.PREF_KEEP_SCREEN_ON, true);
-        if (!keep) { releaseScreenLock(); return; }
+        if (!keep) { releaseScreenLock(); getWindow().getDecorView().setKeepScreenOn(false); return; }
         try {
             if (screenLock == null) {
                 android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
@@ -2009,6 +2011,8 @@ private void fetchJellyfinVolume() {
                 screenLock.setReferenceCounted(false);
             }
             if (!screenLock.isHeld()) screenLock.acquire();
+            View decor = getWindow().getDecorView();
+            if (!decor.getKeepScreenOn()) decor.setKeepScreenOn(true);
         } catch (Exception e) {
             DebugLog.w(TAG, "Screen lock failed: " + e);
         }
@@ -2020,12 +2024,50 @@ private void fetchJellyfinVolume() {
         } catch (Exception ignored) { }
     }
 
+    private long lastTouchAt = android.os.SystemClock.elapsedRealtime();
+    private long lastLockCheck = 0L;
+
+    @Override
+    public void onUserInteraction() {
+        super.onUserInteraction();
+        lastTouchAt = android.os.SystemClock.elapsedRealtime();
+    }
+
+    /** Everything that could explain a screen that went off while the app was in front, for the memory log. */
+    private String screenOffDetails() {
+        StringBuilder sb = new StringBuilder();
+        try {
+            long since = (android.os.SystemClock.elapsedRealtime() - lastTouchAt) / 1000;
+            sb.append("last touch ").append(since).append(" s ago");
+            int timeout = android.provider.Settings.System.getInt(getContentResolver(),
+                    android.provider.Settings.System.SCREEN_OFF_TIMEOUT, -1);
+            sb.append(", system timeout ").append(timeout > 0 ? timeout / 1000 + " s" : "unknown");
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+            if (pm != null) sb.append(", power saver ").append(pm.isPowerSaveMode() ? "ON" : "off");
+            android.content.Intent bat = registerReceiver(null, new android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED));
+            if (bat != null) {
+                int level = bat.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+                int plugged = bat.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0);
+                sb.append(", battery ").append(level).append("% ").append(plugged != 0 ? "charging" : "NOT charging");
+            }
+            sb.append(", keep-screen-on setting ").append(getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
+                    .getBoolean(SettingsActivity.PREF_KEEP_SCREEN_ON, true) ? "on" : "OFF");
+            sb.append(", wake lock ").append(screenLock != null && screenLock.isHeld() ? "held" : "NOT held");
+            sb.append(", window focus ").append(hasWindowFocus() ? "yes" : "NO");
+            sb.append(", clock showing ").append(clockOverlay != null && clockOverlay.getVisibility() == View.VISIBLE ? "yes" : "no");
+            sb.append(", brightness override ").append(getWindow().getAttributes().screenBrightness);
+        } catch (Exception e) {
+            sb.append("(details failed: ").append(e).append(")");
+        }
+        return sb.toString();
+    }
+
     /** Notes in the memory log when the screen goes off or on, so a "the screen turned off" can be matched to what the app was doing. */
     private final android.content.BroadcastReceiver screenStateReceiver = new android.content.BroadcastReceiver() {
         @Override public void onReceive(android.content.Context context, android.content.Intent intent) {
             String a = intent.getAction();
             if (android.content.Intent.ACTION_SCREEN_OFF.equals(a)) {
-                MemoryLog.note("screen turned OFF while the app was in front (playing=" + isPlaying + ")");
+                MemoryLog.note("screen turned OFF while the app was in front (playing=" + isPlaying + "); " + screenOffDetails());
             } else if (android.content.Intent.ACTION_SCREEN_ON.equals(a)) {
                 MemoryLog.note("screen turned on");
             }
