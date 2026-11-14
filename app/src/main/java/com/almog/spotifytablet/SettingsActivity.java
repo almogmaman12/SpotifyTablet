@@ -122,9 +122,16 @@ public class SettingsActivity extends AppCompatActivity {
     private static final class Group {
         final String label;
         final List<Row> rows = new ArrayList<>();
+        /** Rarely needed settings: shown as a collapsed heading until tapped (always open while searching). */
+        boolean advanced;
 
         Group(String label) {
             this.label = label;
+        }
+
+        Group(String label, boolean advanced) {
+            this.label = label;
+            this.advanced = advanced;
         }
     }
 
@@ -775,7 +782,7 @@ public class SettingsActivity extends AppCompatActivity {
         sections.add(weather);
 
         // ---- Data & account ----
-        Section data = new Section("Data & account", "🗂", "System", "Backup, cache, diagnostics, your account and reset.");
+        Section data = new Section("Data & account", "🗂", "The tablet", "Backup, cache, diagnostics, your account and reset.");
         Group backup = new Group("Backup");
         backup.rows.add(actionRow("Export settings",
                 "Saves your settings and keys to a file. Keep it private. Your Spotify login is not included.",
@@ -830,6 +837,153 @@ public class SettingsActivity extends AppCompatActivity {
         data.groups.add(reset);
         data.resettable = false;
         sections.add(data);
+        reorganize();
+    }
+
+    // ---------------------------------------------------------------------
+    // The final layout of the settings: grouped by what you are trying to change, not by where the code lives.
+    // The rows above are built once; this picks them out by title and puts them where you would look for them.
+    // ---------------------------------------------------------------------
+
+    private static Section sectionNamed(List<Section> list, String name) {
+        for (Section sec : list) if (sec.name.equals(name)) return sec;
+        return null;
+    }
+
+    /** Removes and returns the first row with this title from the named old section (null if it is not there). */
+    private static Row take(List<Section> old, String section, String title) {
+        Section sec = sectionNamed(old, section);
+        if (sec == null) return null;
+        for (Group g : sec.groups) {
+            for (int i = 0; i < g.rows.size(); i++) {
+                if (g.rows.get(i).title.equals(title)) return g.rows.remove(i);
+            }
+        }
+        return null;
+    }
+
+    /** Adds the named rows of an old section to [target], in the order given. */
+    private static Group fill(Group target, List<Section> old, String section, String... titles) {
+        for (String t : titles) {
+            Row r = take(old, section, t);
+            if (r != null) target.rows.add(r);
+        }
+        return target;
+    }
+
+    /** Moves a whole old group (with its rows) under a new heading. */
+    private static Group moveGroup(List<Section> old, String section, String label, String newLabel, boolean advanced) {
+        Group out = new Group(newLabel, advanced);
+        Section sec = sectionNamed(old, section);
+        if (sec == null) return out;
+        for (int i = 0; i < sec.groups.size(); i++) {
+            if (sec.groups.get(i).label.equals(label)) {
+                out.rows.addAll(sec.groups.remove(i).rows);
+                break;
+            }
+        }
+        return out;
+    }
+
+    private void reorganize() {
+        final List<Section> old = new ArrayList<>(sections);
+        sections.clear();
+        sections.add(sectionNamed(old, "Overview"));
+
+        // ---- What you see ----
+        Section player = new Section("Player screen", "\uD83D\uDDBC", "What you see",
+                "How the screen looks while music plays: layout, cover, background and the glass panel.");
+        player.groups.add(moveGroup(old, "Looks", "Look presets", "Quick looks", false));
+        player.groups.add(fill(new Group("Layout"), old, "Display", "Home layout"));
+        fill(player.groups.get(player.groups.size() - 1), old, "Lyrics",
+                "Center the player when there are no lyrics", "Show wide covers wide (no lyrics)");
+        fill(player.groups.get(player.groups.size() - 1), old, "Looks", "Poster width");
+        player.groups.add(fill(new Group("Cover and colors"), old, "Looks",
+                "Cover colors", "Color journey", "Cover glow", "Glow strength", "Cover reflection",
+                "Slow cover drift", "Title accent line", "Progress trail"));
+        player.groups.add(fill(new Group("Background"), old, "Looks",
+                "Background blur", "Background vignette", "Keep lyrics readable", "Background cross-fade", "Film grain"));
+        player.groups.add(fill(new Group("Glass panel"), old, "Looks",
+                "Glass lyrics panel", "Panel strength", "Glass edge light"));
+        player.groups.add(fill(new Group("When a song starts"), old, "Looks", "Song-change title", "Title time"));
+        player.groups.add(fill(new Group("Advanced", true), old, "Looks", "Efficient background blur"));
+        sections.add(player);
+
+        Section lyr = new Section("Lyrics", "\uD83C\uDFA4", "What you see",
+                "The text, how the line being sung stands out, where lyrics come from, timing and translation.");
+        lyr.groups.add(fill(new Group("Text"), old, "Lyrics",
+                "Renderer", "Lyrics font", "Lyrics size", "Word animations", "Dynamic line spacing",
+                "Interlude dots", "Up next", "Line blur (original renderer)"));
+        lyr.groups.add(fill(new Group("The line being sung"), old, "Looks",
+                "Lyrics color strength", "Singer colors", "Line bar", "Active line contrast", "Line growth",
+                "Chorus mode", "Chorus growth", "Lyrics fall away"));
+        lyr.groups.add(moveGroup(old, "Lyrics", "Sources", "Sources", false));
+        lyr.groups.add(moveGroup(old, "Lyrics", "Finding lyrics", "Finding and timing", false));
+        Group translation = moveGroup(old, "Lyrics", "Translation & romanization", "Translation and romanization", false);
+        fill(translation, old, "Lyrics", "Translation & romanization size");
+        lyr.groups.add(translation);
+        lyr.groups.add(fill(new Group("Experimental", true), old, "Looks",
+                "Line landing (experimental)", "Long-note stretch (experimental)"));
+        sections.add(lyr);
+
+        Section clock = new Section("Clock & always-on", "\uD83D\uDD52", "What you see",
+                "The clock screen: when it shows, what is on it, and how dim it gets.");
+        clock.groups.add(fill(new Group("When the clock shows"), old, "Display",
+                "Show the clock after playback stops", "Show song when paused"));
+        clock.groups.add(fill(new Group("What it shows"), old, "Display",
+                "Show weather", "Show quote", "Show Shabbat times", "Show next calendar event"));
+        fill(clock.groups.get(clock.groups.size() - 1), old, "Looks", "Holiday clock themes", "Preview a holiday");
+        clock.groups.add(fill(new Group("Google Calendar"), old, "Display",
+                "Google Calendar", "Calendars on the clock", "Refresh calendar now"));
+        clock.groups.add(fill(new Group("Time format"), old, "Display", "Clock format"));
+        clock.groups.add(fill(new Group("Dimming"), old, "Battery", "Dim the clock screen", "Clock screen brightness"));
+        clock.groups.add(moveGroup(old, "Battery", "Dim the clock on a schedule", "Dim on a schedule", false));
+        sections.add(clock);
+
+        // ---- What it plays ----
+        Section music = new Section("Music sources", "\u25B6", "What it plays",
+                "Which player the tablet follows, your browser, and how often it checks.");
+        for (String label : new String[]{"Source", "Browser extension (YouTube, SoundCloud, any page)", "Updates", "Volume"}) {
+            music.groups.add(moveGroup(old, "Playback", label, label, false));
+        }
+        sections.add(music);
+
+        Section conn = new Section("Connections", "\uD83D\uDD0C", "What it plays",
+                "Jellyfin, Home Assistant and the weather location.");
+        conn.groups.add(moveGroup(old, "Jellyfin", "Server", "Jellyfin server", false));
+        conn.groups.add(moveGroup(old, "Jellyfin", "Which session to follow", "Jellyfin: which session to follow", false));
+        conn.groups.add(moveGroup(old, "Smart home", "Home Assistant", "Home Assistant", false));
+        conn.groups.add(moveGroup(old, "Smart home", "Volume webhooks", "Volume webhooks", false));
+        conn.groups.add(moveGroup(old, "Weather", "Location", "Weather location", false));
+        sections.add(conn);
+
+        // ---- The tablet ----
+        Section power = new Section("Screen & power", "\uD83D\uDD0B", "The tablet",
+                "Keeping the screen on, orientation, starting at boot and saving battery.");
+        power.groups.add(fill(new Group("Screen"), old, "Display", "Keep screen on", "Screen orientation"));
+        power.groups.add(moveGroup(old, "Display", "Startup", "Startup", false));
+        power.groups.add(moveGroup(old, "Battery", "Battery saver (turn on only what you want)", "Battery saver", false));
+        sections.add(power);
+
+        Section dataSec = sectionNamed(old, "Data & account");
+        // Safety net: anything not placed above goes to a section of its own instead of vanishing.
+        Section more = new Section("More", "\u2026", "The tablet", "Settings that were not sorted into another section.");
+        for (Section sec : old) {
+            if (sec == dataSec || sec.name.equals("Overview")) continue;
+            for (Group g : sec.groups) {
+                if (g.rows.isEmpty()) continue;
+                Group rest = new Group(sec.name + ": " + g.label);
+                rest.rows.addAll(g.rows);
+                more.groups.add(rest);
+            }
+        }
+        if (!more.groups.isEmpty()) sections.add(more);
+        if (dataSec != null) sections.add(dataSec);
+
+        // Drop headings that ended up empty.
+        for (Section sec : sections) {
+            for (int i = sec.groups.size() - 1; i >= 0; i--) if (sec.groups.get(i).rows.isEmpty()) sec.groups.remove(i);
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -874,7 +1028,7 @@ public class SettingsActivity extends AppCompatActivity {
         boolean jelly = !prefs.getString(Constants.PREF_KEY_JELLYFIN_SERVER_URL, Constants.DEFAULT_JELLYFIN_URL).isEmpty()
                 && !prefs.getString(Constants.PREF_KEY_JELLYFIN_API_KEY, Constants.DEFAULT_JELLYFIN_API_KEY).isEmpty();
         status.rows.add(statusRow("Jellyfin", "Your media server.",
-                jelly ? "Set up" : "Not set up", jelly, () -> jumpTo("Jellyfin")));
+                jelly ? "Set up" : "Not set up", jelly, () -> jumpTo("Connections")));
         String webValue;
         boolean webGood = false;
         if (!BrowserMedia.isEnabled(this)) {
@@ -885,10 +1039,10 @@ public class SettingsActivity extends AppCompatActivity {
             webValue = st == null ? "Listening" : (st.playing ? "Playing: " : "Paused: ") + st.title;
         }
         status.rows.add(statusRow("Browser extension", "YouTube, SoundCloud and other pages from your PC's browser.",
-                webValue, webGood, () -> jumpTo("Playback")));
+                webValue, webGood, () -> jumpTo("Music sources")));
         boolean cal = GoogleCalendarClient.isConnected(this);
         status.rows.add(statusRow("Google Calendar", "Next event on the clock and in Project Mode.",
-                cal ? "Connected" : "Not connected", cal, () -> jumpTo("Display")));
+                cal ? "Connected" : "Not connected", cal, () -> jumpTo("Clock & always-on")));
         com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.init(this);
         int on = 0, total = 0;
         for (com.almog.spotifytablet.lyrics.mobile.MobileLyricsSources.SourceInfo src
@@ -1061,27 +1215,92 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void showSection(int index) {
+        renderSection(index, false);
+    }
+
+    /** Collapsed "Advanced" headings the person has opened (section name + heading). */
+    private final java.util.Set<String> openAdvanced = new java.util.HashSet<>();
+
+    private boolean isAdvancedOpen(Section s, Group g) {
+        if (openAdvanced.contains(s.name + "/" + g.label)) return true;
+        // A group with a setting that was changed from its default stays open, so nothing active hides.
+        for (Row r : g.rows) if (r.key != null && prefs.contains(r.key)) return true;
+        return false;
+    }
+
+    private void renderSection(int index, boolean keepScroll) {
+        final int oldScroll = contentScroll.getScrollY();
         markNav(index);
-        Section s = sections.get(index);
+        final Section s = sections.get(index);
         tvSectionTitle.setText(s.name);
         tvSectionBlurb.setText(s.blurb);
         tvSectionBlurb.setVisibility(s.blurb.isEmpty() ? View.GONE : View.VISIBLE);
         content.removeAllViews();
+        final List<View> targets = new ArrayList<>();
+        // A row of chips to jump to a heading, for the long sections.
+        if (s.groups.size() >= 4) addJumpChips(s, targets);
         boolean anyKey = false;
         for (Group g : s.groups) {
-            addLabel(g.label);
+            final boolean open = !g.advanced || isAdvancedOpen(s, g);
+            TextView label = addLabel(g.advanced ? g.label + "  " + (open ? "\u25BE" : "\u25B8") : g.label);
+            targets.add(label);
+            if (g.advanced) {
+                final String key = s.name + "/" + g.label;
+                label.setClickable(true);
+                label.setOnClickListener(v -> {
+                    if (!openAdvanced.remove(key)) openAdvanced.add(key);
+                    renderSection(index, true);
+                });
+            }
+            for (Row r : g.rows) if (r.key != null) anyKey = true;
+            if (!open) {
+                TextView hint = new TextView(this);
+                hint.setText(g.rows.size() + (g.rows.size() == 1 ? " setting" : " settings") + " \u2013 tap to show");
+                hint.setTextColor(TEXT_DIM);
+                hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                hint.setPadding(dp(6), 0, 0, 0);
+                content.addView(hint);
+                continue;
+            }
             LinearLayout card = newCard();
             for (int i = 0; i < g.rows.size(); i++) {
                 if (i > 0) card.addView(divider());
-                Row r = g.rows.get(i);
-                if (r.key != null) anyKey = true;
-                card.addView(rowView(r));
+                card.addView(rowView(g.rows.get(i)));
             }
             content.addView(card);
         }
         if (s.resettable && anyKey) addResetButton(s);
         fitContent();
-        contentScroll.scrollTo(0, 0);
+        if (keepScroll) contentScroll.post(() -> contentScroll.scrollTo(0, oldScroll));
+        else contentScroll.scrollTo(0, 0);
+    }
+
+    /** One chip per heading; tapping scrolls to it. [targets] is filled with the heading views as they are added. */
+    private void addJumpChips(Section s, List<View> targets) {
+        android.widget.HorizontalScrollView scroller = new android.widget.HorizontalScrollView(this);
+        scroller.setHorizontalScrollBarEnabled(false);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(14), 0, dp(2));
+        for (int i = 0; i < s.groups.size(); i++) {
+            final int at = i;
+            TextView chip = new TextView(this);
+            chip.setText(s.groups.get(i).label);
+            chip.setTextColor(TEXT);
+            chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            chip.setBackgroundResource(R.drawable.bg_chip);
+            chip.setPadding(dp(14), dp(7), dp(14), dp(7));
+            chip.setClickable(true);
+            chip.setOnClickListener(v -> {
+                if (at < targets.size()) contentScroll.smoothScrollTo(0, Math.max(0, targets.get(at).getTop() - dp(8)));
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.setMarginEnd(dp(8));
+            row.addView(chip, lp);
+        }
+        scroller.addView(row);
+        content.addView(scroller);
     }
 
     /** "Reset this section": puts every setting listed in it back to its default. */
@@ -1146,7 +1365,7 @@ public class SettingsActivity extends AppCompatActivity {
         contentScroll.scrollTo(0, 0);
     }
 
-    private void addLabel(String label) {
+    private TextView addLabel(String label) {
         TextView t = new TextView(this);
         t.setText(label.toUpperCase(Locale.ROOT));
         t.setTextColor(ACCENT);
@@ -1155,6 +1374,7 @@ public class SettingsActivity extends AppCompatActivity {
         t.setTypeface(null, Typeface.BOLD);
         t.setPadding(dp(6), dp(20), 0, dp(8));
         content.addView(t);
+        return t;
     }
 
     private LinearLayout newCard() {
