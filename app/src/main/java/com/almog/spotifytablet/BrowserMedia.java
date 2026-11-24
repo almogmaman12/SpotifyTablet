@@ -39,6 +39,8 @@ public final class BrowserMedia {
 
     public static final class State {
         public String key = "", title = "", artist = "", album = "", artwork = "", site = "";
+        /** A friendly name of the site ("Netflix") and what the page plays ("video" or "audio"), when the extension says. */
+        public String siteName = "", kind = "";
         /** The cover as a small data: JPEG sent by the extension, so the tablet does not have to fetch it. */
         public String artworkData = "";
         public int positionMs, durationMs;
@@ -256,6 +258,8 @@ public final class BrowserMedia {
         s.album = o.optString("album", "").trim();
         s.artwork = o.optString("artwork", "");
         s.site = o.optString("site", "");
+        s.siteName = o.optString("siteName", "").trim();
+        s.kind = o.optString("kind", "");
         s.artworkData = o.optString("artworkData", "");
         // The extension sends the picture once in a while; keep it while the same cover is still reported.
         if (s.artworkData.isEmpty() && prev != null && prev.artwork.equals(s.artwork)) s.artworkData = prev.artworkData;
@@ -328,13 +332,25 @@ public final class BrowserMedia {
     private static final String[] MUSIC_SITES = {"music.youtube.com", "open.spotify.com", "soundcloud.com", "bandcamp.com",
             "music.apple.com", "deezer.com", "tidal.com", "listen.tidal.com", "music.amazon.com", "pandora.com"};
 
+    /** Sites for films and series: never worth a lyric lookup, whatever the title says. */
+    private static final String[] VIDEO_SITES = {"netflix.com", "disneyplus.com", "primevideo.com", "hulu.com", "max.com",
+            "hbomax.com", "tv.apple.com", "paramountplus.com", "peacocktv.com", "crunchyroll.com", "twitch.tv",
+            "kan.org.il", "mako.co.il", "reshet.tv", "13tv.co.il"};
+
     /**
      * Whether a lyric lookup is worth it for this page. Plain video sites play plenty of things that are not songs, and a
      * lookup tries every lyric source, so clear non-songs are skipped: very long or very short videos and titles that name
      * a podcast, tutorial, trailer and the like. When unsure (no length yet, a normal-looking title) it says yes.
      */
+    public static boolean isVideoSite(State s) {
+        String site = s.site == null ? "" : s.site.toLowerCase();
+        for (String v : VIDEO_SITES) if (site.equals(v) || site.endsWith("." + v)) return true;
+        return false;
+    }
+
     public static boolean worthLyricLookup(State s) {
         String site = s.site == null ? "" : s.site.toLowerCase();
+        if (isVideoSite(s)) return false;
         for (String m : MUSIC_SITES) if (site.equals(m) || site.endsWith("." + m)) return true;
         if (s.durationMs > 0 && (s.durationMs > 10 * 60_000 || s.durationMs < 40_000)) return false;
         return !NOT_MUSIC_TITLE.matcher(s.title).find();

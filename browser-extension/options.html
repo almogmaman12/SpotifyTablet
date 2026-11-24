@@ -9,6 +9,9 @@
   button { margin-top: 14px; padding: 8px 14px; font-size: 14px; cursor: pointer; }
   #status { margin-top: 12px; min-height: 1.4em; }
   p.hint { color: #5f6b7a; margin: 4px 0 0; }
+  textarea { width: 100%; box-sizing: border-box; padding: 8px; font-size: 14px; min-height: 64px; font-family: inherit; }
+  #now { margin-top: 18px; padding: 10px 12px; border: 1px solid #d5dbe3; border-radius: 8px; background: #f6f8fa; }
+  #now b { display: block; margin-bottom: 4px; }
 </style>
 <h1>Tablet Now Playing</h1>
 <p class="hint">On the tablet: Settings → Playback → turn on "Receive from the browser", then copy the address and code shown there.</p>
@@ -18,4 +21,8 @@
 <input id="token" placeholder="8 letters" autocomplete="off">
 <button id="save">Save and test</button>
 <div id="status"></div>
+<label for="ignore">Sites to leave out</label>
+<textarea id="ignore" placeholder="one site per line, for example&#10;twitch.tv&#10;example.com"></textarea>
+<p class="hint">Pages on these sites are never reported to the tablet.</p>
+<div id="now"><b>What the extension sees right now</b><span id="nowText">Checking…</span></div>
 <script src="options.js"></script>

@@ -1,8 +1,10 @@
 // Posts the chosen tab's report to the tablet app and hands the tablet's commands back to that tab.
+importScripts("lib.js");
 const reports = new Map(); // "tabId:frameId" -> { data, at, tabId, frameId }
 let chosen = null;
 let settings = { address: "", token: "" };
 let loaded = false;
+let lastPost = { at: 0, result: "nothing sent yet" };
 
 async function loadSettings() {
   const s = await chrome.storage.local.get(["address", "token"]);
@@ -79,25 +81,54 @@ function badge(text, color) {
 async function post(body) {
   if (!loaded) await loadSettings();
   const url = baseUrl();
-  if (!url || !settings.token) { badge("?", "#888888"); return null; }
+  if (!url || !settings.token) { badge("?", "#888888"); lastPost = { at: Date.now(), result: "no address or code saved" }; return null; }
   try {
     const res = await fetch(url + "/now", {
       method: "POST",
       headers: { "X-Token": settings.token, "Content-Type": "text/plain" },
       body: JSON.stringify(body)
     });
-    if (res.status === 401) { badge("code", "#d93025"); return null; }
+    if (res.status === 401) { badge("code", "#d93025"); lastPost = { at: Date.now(), result: "the tablet refused the code" }; return null; }
     badge("on", "#1db954");
+    lastPost = { at: Date.now(), result: "ok" };
     const reply = await res.json();
     wantArt = !!(reply && reply.needArt);
     return reply;
   } catch (e) {
     badge("!", "#d93025");
+    lastPost = { at: Date.now(), result: "could not reach the tablet" };
     return null;
   }
 }
 
+// Netflix's watch page names neither the show nor shows a picture, so the title page of the same id is read (once per video).
+const netflixCache = new Map();
+async function netflixInfo(id) {
+  if (netflixCache.has(id)) return netflixCache.get(id);
+  let info = { title: "", image: "" };
+  try {
+    const res = await fetch("https://www.netflix.com/title/" + encodeURIComponent(id), { credentials: "include" });
+    if (res.ok) info = self.TNP.parseOpenGraph(await res.text());
+  } catch (e) { /* offline or blocked: the page's own overlay still names the video */ }
+  if (netflixCache.size > 50) netflixCache.clear();
+  netflixCache.set(id, info);
+  return info;
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg && msg.type === "netflixInfo") {
+    netflixInfo(String(msg.id || "")).then(sendResponse);
+    return true; // the answer comes later
+  }
+  if (msg && msg.type === "status") {
+    const c = choose();
+    sendResponse({
+      playing: c ? { title: c.data.title, artist: c.data.artist, site: c.data.siteName || c.data.site, kind: c.data.kind || "", isPlaying: !!c.data.playing } : null,
+      tabs: reports.size,
+      last: lastPost
+    });
+    return;
+  }
   const tabId = sender.tab && sender.tab.id;
   if (tabId == null) return;
   const key = tabId + ":" + (sender.frameId || 0);

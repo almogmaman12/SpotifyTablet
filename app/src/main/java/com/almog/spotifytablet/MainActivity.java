@@ -3184,7 +3184,7 @@ private void fetchJellyfinVolume() {
             return;
         }
         final String title = st.title;
-        final String artist = st.artist.isEmpty() ? st.site : st.artist;
+        final String artist = st.artist.isEmpty() ? (st.siteName.isEmpty() ? st.site : st.siteName) : st.artist;
         currentAlbumName = st.album;
         long now = System.currentTimeMillis();
         durationMs = st.durationMs;
@@ -3239,8 +3239,9 @@ private void fetchJellyfinVolume() {
             if (lyricsViewModel != null) lyricsViewModel.clearLyrics();
             boolean wantLyrics = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
                     .getBoolean(BrowserMedia.PREF_LYRICS, true);
-            boolean skip = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
-                    .getBoolean(BrowserMedia.PREF_SKIP_NON_SONGS, true) && !BrowserMedia.worthLyricLookup(st);
+            // Films and series sites are never searched for lyrics, even with the "skip non-songs" switch off.
+            boolean skip = BrowserMedia.isVideoSite(st) || (getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE)
+                    .getBoolean(BrowserMedia.PREF_SKIP_NON_SONGS, true) && !BrowserMedia.worthLyricLookup(st));
             if (wantLyrics && skip) DebugLog.i("BrowserMedia", "Not a song, no lyric lookup: " + st.title);
             if (wantLyrics && !skip) {
                 String[] q = BrowserMedia.lyricsQuery(st);
